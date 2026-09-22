@@ -2,7 +2,7 @@
 
 ## Project intent
 
-This repository is a clean-room reimplementation of an authorized GameStore target. Do not treat decompiler pseudocode, strings alone, or inferred server behavior as ground truth.
+This repository is a clean-room reimplementation of an authorized GameStore target. Do not treat decompiler pseudocode, strings alone, inferred server behavior, or behavior from other projects as ground truth.
 
 ## Verified target facts
 
@@ -26,6 +26,28 @@ Static facts:
   - `/device/udid/config/`
 - observed install prefix: `itms-services://?action=download-manifest&url=`
 - observed module/object names include APIService, AppSigningService, DownloadCenter, IPAArchive, IPAInspector, KeychainService, PersistenceService, PostSignInstallService, UDIDService, AppStoreViewModel and SwiftUI views.
+
+## Vetted internal reference project
+
+For implementation experience, inspect:
+- Repository: `a7987083/UnitXP_SP3-Moonstone`
+- Release: `v3.0.0-alphaone13`
+- Commit: `76aebadd826156a1b67d175ea90c88371dc320cf`
+- Artifact: `zonoe_v3.0.0-alphaone13_TrollStore.ipa`
+- Reconstruction script: `HFASign/scripts/reconstruct_alphaone10.sh`
+- Pinned upstream: `Nyasami/Ksign@03a3a9c86897d79f9faf8106037b9971841d56a0`
+
+High-value reference areas:
+- `Ksign/Utilities/Handlers/SigningHandler.swift`: Zsign-based signing pipeline and signature-validation integration.
+- `ZsignSwift`: reference for Swift-facing signature validation.
+- `IPADownloadManager`: download destination collision handling, auto-import and cleanup patterns.
+- `UDIDService`: localhost service lifecycle, background task lifetime and custom URL completion.
+- alphaone8 clean UDID architecture: Domain/Application/Infrastructure/Presentation separation.
+- URL Scheme handling and deterministic reconstruction/build workflow.
+
+Important: this reference is **secondary implementation evidence only**. It does not prove GameStore request formats, server behavior, certificate semantics, local-server ports, OTA manifest shape or UI behavior.
+
+License boundary: `HFASign/LICENSE` is GPLv3. Do not copy GPL-covered implementation code into this clean-room repository without an explicit project licensing decision. Prefer independent implementation based on target evidence and general architectural lessons.
 
 ## Current architecture
 
@@ -54,6 +76,8 @@ Every important conclusion must be marked as one of:
 - physical-device verified
 - unverified/inferred
 
+Reference-project behavior must additionally be marked as `reference-only` unless independently matched to GameStore evidence.
+
 ## Handoff rule
 
 Before changing behavior, inspect:
@@ -62,5 +86,6 @@ Before changing behavior, inspect:
 3. `git status` / diff
 4. `KNOWN_ISSUES.md`
 5. current CI run
+6. target evidence before applying any behavior learned from UnitXP/Ksign
 
 Update all five state files after meaningful development or verification changes.

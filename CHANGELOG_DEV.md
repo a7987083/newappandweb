@@ -44,13 +44,23 @@
 - Verified alphaone12 download logic contains collision-safe rename, auto-import and optional post-import deletion behavior.
 - License boundary recorded: `HFASign/LICENSE` is GPLv3. No GPL-covered implementation code has been copied into GameStore in this change.
 
+### Compatibility decision — iOS 13 through iOS 26
+- Product requirement changed from the bootstrap's iOS 15 deployment target to **minimum iOS 13.0**.
+- Product support ceiling is the latest **iOS 26.x** generation.
+- The target GameStore's own minimum iOS remains a verified target fact at `15.0`; it is not rewritten as product evidence.
+- Apple toolchain validation strategy: Xcode 15.4 for iOS 13 deployment-target compatibility; Xcode 26.x for iOS 26 SDK/latest-system compatibility.
+- Current source/project has **not yet been converted** to iOS 13 in this documentation-only change; the last successful build remains the iOS 15/Xcode 16.4 build.
+- Required follow-up: lower deployment target, audit SwiftUI/API availability, add compatibility fallbacks, and introduce dual CI.
+
 ### Verification status
 - Static target identification: completed.
 - Reference-source analysis: completed for selected UnitXP alphaone13 signing/download/UDID paths.
-- Source written: completed.
-- Git commit: completed.
-- Compile: **verified successful in CI** for implementation commit `0ad791c9bc1abd544ee19303684d459b0470f6c7`.
-- CI: **green for `0ad791c9...`**.
+- Product compatibility requirement: recorded as iOS 13.0–26.x.
+- Source written: completed for v0.1 bootstrap; iOS 13 conversion not yet implemented.
+- Git commit: completed for documentation changes.
+- Compile: **verified successful in CI only for the prior iOS 15 implementation commit** `0ad791c9bc1abd544ee19303684d459b0470f6c7`.
+- iOS 13 build: not yet verified.
+- iOS 26 SDK build: not yet verified.
 - Runtime: not verified.
 - Physical device: not verified.
 - Regression: not verified.

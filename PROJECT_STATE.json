@@ -10,6 +10,25 @@
     "target_min_ios": "15.0",
     "target_main_sha256": "ea4947e192da53ceae434e51108c9af49f6a99d80c9d5e6e7e0d2ac5e6324e4e"
   },
+  "reference_baselines": [
+    {
+      "type": "secondary_implementation_reference",
+      "repository": "a7987083/UnitXP_SP3-Moonstone",
+      "release": "v3.0.0-alphaone13",
+      "commit": "76aebadd826156a1b67d175ea90c88371dc320cf",
+      "upstream": "Nyasami/Ksign@03a3a9c86897d79f9faf8106037b9971841d56a0",
+      "areas": [
+        "zsign_signing",
+        "signature_validation",
+        "download_import",
+        "udid_local_server",
+        "url_scheme",
+        "ci_reconstruction"
+      ],
+      "evidence_status": "reference_only",
+      "license": "GPL-3.0"
+    }
+  ],
   "build": {
     "status": "success",
     "configuration": "Debug",
@@ -28,5 +47,5 @@
     "status": "not_verified"
   },
   "phase": "Phase 1 - Protocol recovery",
-  "next_task": "Recover exact app-list request/response schema, headers and model fields from target evidence."
+  "next_task": "Recover exact app-list request/response schema, headers and model fields from GameStore target evidence; use UnitXP alphaone13 only as secondary implementation guidance for later download/signing/UDID/OTA work."
 }

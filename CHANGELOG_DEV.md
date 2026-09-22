@@ -35,11 +35,21 @@
 - Environment: macOS 15.7.9 runner, Xcode 16.4, iPhoneSimulator 18.5 SDK.
 - Build command: `xcodebuild -project GameStore.xcodeproj -scheme GameStore -configuration Debug -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build`.
 
+### Reference analysis — UnitXP / zonoe alphaone13
+- Added secondary implementation reference: `a7987083/UnitXP_SP3-Moonstone` release `v3.0.0-alphaone13`, commit `76aebadd826156a1b67d175ea90c88371dc320cf`.
+- Verified its reconstruction pipeline pins `Nyasami/Ksign` at `03a3a9c86897d79f9faf8106037b9971841d56a0` and applies a canonical patch series plus additive alphaone11/12/13 transforms.
+- Identified high-value reference areas: `SigningHandler`, Zsign/ZsignSwift integration, download/import behavior, UDID localhost service/callback, URL Scheme routing and deterministic CI reconstruction.
+- Verified the alphaone8 clean UDID callback patch separates Domain/Application/Infrastructure/Presentation responsibilities; useful architectural precedent for GameStore service boundaries.
+- Verified the alpha18 UDID local-server patch keeps the server alive via an iOS background task and completes through a custom URL redirect.
+- Verified alphaone12 download logic contains collision-safe rename, auto-import and optional post-import deletion behavior.
+- License boundary recorded: `HFASign/LICENSE` is GPLv3. No GPL-covered implementation code has been copied into GameStore in this change.
+
 ### Verification status
 - Static target identification: completed.
+- Reference-source analysis: completed for selected UnitXP alphaone13 signing/download/UDID paths.
 - Source written: completed.
 - Git commit: completed.
-- Compile: **verified successful in CI**.
+- Compile: **verified successful in CI** for implementation commit `0ad791c9bc1abd544ee19303684d459b0470f6c7`.
 - CI: **green for `0ad791c9...`**.
 - Runtime: not verified.
 - Physical device: not verified.

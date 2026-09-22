@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import UIKit
 
 @MainActor
@@ -14,7 +15,9 @@ final class UDIDService: ObservableObject {
             queue: .main
         ) { [weak self] note in
             guard let url = note.userInfo?["url"] as? URL else { return }
-            self?.consumeCallback(url)
+            Task { @MainActor in
+                self?.consumeCallback(url)
+            }
         }
     }
 

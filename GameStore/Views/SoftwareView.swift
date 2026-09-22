@@ -49,10 +49,18 @@ struct AppDetailView: View {
                 Text(app.summary ?? "暂无详细介绍")
             }
             Section {
-                LabeledContent("版本", value: app.version ?? "未知版本")
-                LabeledContent("开发者", value: app.developer ?? "未知")
+                keyValueRow("版本", app.version ?? "未知版本")
+                keyValueRow("开发者", app.developer ?? "未知")
             }
         }
         .navigationTitle(app.name)
+    }
+
+    private func keyValueRow(_ key: String, _ value: String) -> some View {
+        HStack {
+            Text(key)
+            Spacer()
+            Text(value).foregroundStyle(.secondary)
+        }
     }
 }

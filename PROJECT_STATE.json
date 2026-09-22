@@ -3,7 +3,7 @@
   "repository": "a7987083/newappandweb",
   "version": "0.1.0-dev",
   "branch": "feature/gamestore-v0.1-bootstrap",
-  "commit": "PENDING",
+  "implementation_commit": "48324eac325213cd9a998d21c6049fdedbda68ee",
   "baseline": {
     "target_bundle_id": "com.GameStore.maicha",
     "target_version": "1.2 (1)",
@@ -16,7 +16,7 @@
     "sdk": "iphonesimulator"
   },
   "ci": {
-    "status": "not_started",
+    "status": "trigger_pending",
     "run_id": null
   },
   "runtime": {
@@ -26,5 +26,5 @@
     "status": "not_verified"
   },
   "phase": "Phase 0 - Bootstrap",
-  "next_task": "Make CI build green, then recover exact app-list API schema."
+  "next_task": "Run CI, fix the first real compiler error, then recover exact app-list API schema."
 }

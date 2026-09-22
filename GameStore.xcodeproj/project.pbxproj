@@ -1,0 +1,116 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		57E7BF5F348BD682C2F48632 /* GameStoreApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D68E78F467EB94B3056A42B4 /* GameStoreApp.swift */; };
+		2EA3F14B18AF484F728245C1 /* AppItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA5E1CB9915A276672B141F /* AppItem.swift */; };
+		CC893E0A2BEC2140C9DC4C48 /* SigningModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE5E269F8DB38CC172D0633D /* SigningModels.swift */; };
+		63CCFE15817FD49B4B34DB26 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93B86B0C360FA3DF9B857015 /* APIService.swift */; };
+		A17DE75B44120741CF22397D /* UDIDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23512DC7C6E4A1B407524CB6 /* UDIDService.swift */; };
+		20F3199E687E78DC28C17C9B /* DownloadCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C7B6C50B8DB55809E70C1A6 /* DownloadCenter.swift */; };
+		7F2B8AD34949855293397653 /* AppSigningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A2B19A5F9D360CE0B83E05E /* AppSigningService.swift */; };
+		44B4852B131CDF2616DF1E75 /* OTAInstallService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02E35CD70AC65FE97C8641DF /* OTAInstallService.swift */; };
+		2EA2861795073CA3403D25FC /* AppStoreViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B16B85BE8CE3610553969D /* AppStoreViewModel.swift */; };
+		F45B3567EE6A6A7B382A2882 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74AEB0BA6E23EF274058A2EC /* ContentView.swift */; };
+		880E9852F85F24EB35334E3A /* SoftwareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F155A819A9FCA2E24031E4 /* SoftwareView.swift */; };
+		49D0F2D2C00C8D9BE3813889 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E258BB71BE37D5CD623C939B /* SearchView.swift */; };
+		12EE47EFC339155E2326F092 /* DownloadCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6755EBD5030562F38C83E91E /* DownloadCenterView.swift */; };
+		DC93A05AD2436991EDB45E4D /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9204A5E96E252FF4D82B817B /* ProfileView.swift */; };
+		8C9EF4970468712E3C6CC1D9 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D94D7B235E2750454BFB221 /* SettingsView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		D68E78F467EB94B3056A42B4 /* GameStoreApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/App/GameStoreApp.swift; sourceTree = "<group>"; };
+		9CA5E1CB9915A276672B141F /* AppItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Models/AppItem.swift; sourceTree = "<group>"; };
+		CE5E269F8DB38CC172D0633D /* SigningModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Models/SigningModels.swift; sourceTree = "<group>"; };
+		93B86B0C360FA3DF9B857015 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Networking/APIService.swift; sourceTree = "<group>"; };
+		23512DC7C6E4A1B407524CB6 /* UDIDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/UDIDService.swift; sourceTree = "<group>"; };
+		5C7B6C50B8DB55809E70C1A6 /* DownloadCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/DownloadCenter.swift; sourceTree = "<group>"; };
+		2A2B19A5F9D360CE0B83E05E /* AppSigningService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/AppSigningService.swift; sourceTree = "<group>"; };
+		02E35CD70AC65FE97C8641DF /* OTAInstallService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/OTAInstallService.swift; sourceTree = "<group>"; };
+		12B16B85BE8CE3610553969D /* AppStoreViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/ViewModels/AppStoreViewModel.swift; sourceTree = "<group>"; };
+		74AEB0BA6E23EF274058A2EC /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/ContentView.swift; sourceTree = "<group>"; };
+		48F155A819A9FCA2E24031E4 /* SoftwareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/SoftwareView.swift; sourceTree = "<group>"; };
+		E258BB71BE37D5CD623C939B /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/SearchView.swift; sourceTree = "<group>"; };
+		6755EBD5030562F38C83E91E /* DownloadCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/DownloadCenterView.swift; sourceTree = "<group>"; };
+		9204A5E96E252FF4D82B817B /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/ProfileView.swift; sourceTree = "<group>"; };
+		3D94D7B235E2750454BFB221 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/SettingsView.swift; sourceTree = "<group>"; };
+		9A25D6B406A7F21575D4B312 /* GameStore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GameStore.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		CAE6B993D1286674150732AC /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0AD3550F5EBC1D28DCB0C9C3 = {isa = PBXGroup; children = (
+				D68E78F467EB94B3056A42B4 /* GameStoreApp.swift */,
+				9CA5E1CB9915A276672B141F /* AppItem.swift */,
+				CE5E269F8DB38CC172D0633D /* SigningModels.swift */,
+				93B86B0C360FA3DF9B857015 /* APIService.swift */,
+				23512DC7C6E4A1B407524CB6 /* UDIDService.swift */,
+				5C7B6C50B8DB55809E70C1A6 /* DownloadCenter.swift */,
+				2A2B19A5F9D360CE0B83E05E /* AppSigningService.swift */,
+				02E35CD70AC65FE97C8641DF /* OTAInstallService.swift */,
+				12B16B85BE8CE3610553969D /* AppStoreViewModel.swift */,
+				74AEB0BA6E23EF274058A2EC /* ContentView.swift */,
+				48F155A819A9FCA2E24031E4 /* SoftwareView.swift */,
+				E258BB71BE37D5CD623C939B /* SearchView.swift */,
+				6755EBD5030562F38C83E91E /* DownloadCenterView.swift */,
+				9204A5E96E252FF4D82B817B /* ProfileView.swift */,
+				3D94D7B235E2750454BFB221 /* SettingsView.swift */,
+				C844D856FEFC392299F6D0F7 /* Products */,
+			); sourceTree = "<group>"; };
+		C844D856FEFC392299F6D0F7 /* Products */ = {isa = PBXGroup; children = (9A25D6B406A7F21575D4B312 /* GameStore.app */,); name = Products; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0E8A3AD980ECB70BF17C4729 /* GameStore */ = {isa = PBXNativeTarget; buildConfigurationList = EE6AFDB9AA085457081E34CD; buildPhases = (209B772E630D0AB850E4DF67, CAE6B993D1286674150732AC, C3CD36430B8D6470B6AEE3FE); buildRules = (); dependencies = (); name = GameStore; productName = GameStore; productReference = 9A25D6B406A7F21575D4B312; productType = "com.apple.product-type.application"; };
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0DFE7A6829B0B51CFDE2E847 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2600; LastUpgradeCheck = 2600; TargetAttributes = {0E8A3AD980ECB70BF17C4729 = {CreatedOnToolsVersion = 26.0;};};}; buildConfigurationList = BCB1FCD5E76270FE953AA65B; compatibilityVersion = "Xcode 14.0"; developmentRegion = zh-Hans; hasScannedForEncodings = 0; knownRegions = (Base, "zh-Hans", "zh-Hant"); mainGroup = 0AD3550F5EBC1D28DCB0C9C3; productRefGroup = C844D856FEFC392299F6D0F7; projectDirPath = ""; projectRoot = ""; targets = (0E8A3AD980ECB70BF17C4729); };
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C3CD36430B8D6470B6AEE3FE /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		209B772E630D0AB850E4DF67 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+				57E7BF5F348BD682C2F48632 /* GameStoreApp.swift in Sources */,
+				2EA3F14B18AF484F728245C1 /* AppItem.swift in Sources */,
+				CC893E0A2BEC2140C9DC4C48 /* SigningModels.swift in Sources */,
+				63CCFE15817FD49B4B34DB26 /* APIService.swift in Sources */,
+				A17DE75B44120741CF22397D /* UDIDService.swift in Sources */,
+				20F3199E687E78DC28C17C9B /* DownloadCenter.swift in Sources */,
+				7F2B8AD34949855293397653 /* AppSigningService.swift in Sources */,
+				44B4852B131CDF2616DF1E75 /* OTAInstallService.swift in Sources */,
+				2EA2861795073CA3403D25FC /* AppStoreViewModel.swift in Sources */,
+				F45B3567EE6A6A7B382A2882 /* ContentView.swift in Sources */,
+				880E9852F85F24EB35334E3A /* SoftwareView.swift in Sources */,
+				49D0F2D2C00C8D9BE3813889 /* SearchView.swift in Sources */,
+				12EE47EFC339155E2326F092 /* DownloadCenterView.swift in Sources */,
+				DC93A05AD2436991EDB45E4D /* ProfileView.swift in Sources */,
+				8C9EF4970468712E3C6CC1D9 /* SettingsView.swift in Sources */,
+			); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		7CE519D056490CF8DF53594E /* Debug project */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 15.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0;}; name = Debug; };
+		9D9364763342BF01A3896013 /* Release project */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 15.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0;}; name = Release; };
+		2FB108080883212427588C5D /* Debug target */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = GameStore/Resources/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 15.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.GameStore.maicha.rebuild; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";}; name = Debug; };
+		44CDB7E7D5BE6E34D69C1005 /* Release target */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = GameStore/Resources/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 15.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.GameStore.maicha.rebuild; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";}; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		BCB1FCD5E76270FE953AA65B = {isa = XCConfigurationList; buildConfigurations = (7CE519D056490CF8DF53594E, 9D9364763342BF01A3896013); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		EE6AFDB9AA085457081E34CD = {isa = XCConfigurationList; buildConfigurations = (2FB108080883212427588C5D, 44CDB7E7D5BE6E34D69C1005); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = 0DFE7A6829B0B51CFDE2E847 /* Project object */;
+}

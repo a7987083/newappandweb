@@ -29,3 +29,9 @@
 **Evidence:** Text/navigation names are based on packaged localization and module names; detailed visual measurements have not been reproduced.  
 **Risk:** v0.1 appearance differs from target.  
 **Next verification:** Build screenshot inventory and compare each screen on the same device class.
+
+## KI-006 — No runtime/device verification yet
+**Status:** Open  
+**Evidence:** CI successfully compiles implementation commit `0ad791c9bc1abd544ee19303684d459b0470f6c7`; no simulator launch or physical-device test has been recorded.  
+**Risk:** Compile success does not prove endpoint compatibility, URL callback behavior, signing, download persistence or OTA installation.  
+**Next verification:** Add a simulator smoke test for app launch, then perform authorized physical-device verification for UDID and OTA flows when those implementations are complete.

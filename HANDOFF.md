@@ -33,6 +33,17 @@ Static facts:
 
 The v0.1 signing service intentionally does not sign. It exists to make the recovered state machine and dependency boundary explicit before a verified Zsign bridge is implemented.
 
+## Current build state
+
+- Development branch: `feature/gamestore-v0.1-bootstrap`
+- Build-verified code commit: `0ad791c9bc1abd544ee19303684d459b0470f6c7`
+- GitHub Actions Run: `35798677918`
+- Job: `106983783519`
+- Build result: **success**
+- Environment: Xcode 16.4, iPhoneSimulator 18.5, deployment target iOS 15.0.
+- Runtime verification: not performed.
+- Physical-device verification: not performed.
+
 ## Evidence policy
 
 Every important conclusion must be marked as one of:

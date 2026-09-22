@@ -3,7 +3,7 @@
   "repository": "a7987083/newappandweb",
   "version": "0.1.0-dev",
   "branch": "feature/gamestore-v0.1-bootstrap",
-  "implementation_commit": "48324eac325213cd9a998d21c6049fdedbda68ee",
+  "build_verified_commit": "0ad791c9bc1abd544ee19303684d459b0470f6c7",
   "baseline": {
     "target_bundle_id": "com.GameStore.maicha",
     "target_version": "1.2 (1)",
@@ -11,13 +11,15 @@
     "target_main_sha256": "ea4947e192da53ceae434e51108c9af49f6a99d80c9d5e6e7e0d2ac5e6324e4e"
   },
   "build": {
-    "status": "not_verified",
+    "status": "success",
     "configuration": "Debug",
-    "sdk": "iphonesimulator"
+    "sdk": "iphonesimulator18.5",
+    "xcode": "16.4"
   },
   "ci": {
-    "status": "trigger_pending",
-    "run_id": null
+    "status": "success",
+    "run_id": 35798677918,
+    "job_id": 106983783519
   },
   "runtime": {
     "status": "not_verified"
@@ -25,6 +27,6 @@
   "device": {
     "status": "not_verified"
   },
-  "phase": "Phase 0 - Bootstrap",
-  "next_task": "Run CI, fix the first real compiler error, then recover exact app-list API schema."
+  "phase": "Phase 1 - Protocol recovery",
+  "next_task": "Recover exact app-list request/response schema, headers and model fields from target evidence."
 }

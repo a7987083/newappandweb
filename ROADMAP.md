@@ -21,7 +21,7 @@ Build a clean-room GameStore implementation whose UI, public request protocol, d
 - [x] Xcode project skeleton.
 - [x] Four primary tabs.
 - [x] API/UDID/download/signing/OTA service boundaries.
-- [ ] macOS CI build green.
+- [x] macOS CI build green on implementation commit `0ad791c9bc1abd544ee19303684d459b0470f6c7`.
 
 ### Phase 1 — Protocol recovery
 - [ ] Recover exact JSON schemas and HTTP methods/headers.
@@ -56,4 +56,4 @@ Build a clean-room GameStore implementation whose UI, public request protocol, d
 
 ## Next Task
 
-Make Phase 0 CI green, then recover exact `/apps/api/app-list/` response schema from captured/authorized traffic or static decoder evidence.
+Phase 1: recover the exact `/apps/api/app-list/` response schema, request method/headers and model field names from target evidence before expanding the UI against guessed payloads.

@@ -16,14 +16,20 @@ final class AppStoreViewModel: ObservableObject {
         self.api = api
     }
 
+    var featuredApps: [AppItem] {
+        Array(apps.prefix(5))
+    }
+
     var filteredApps: [AppItem] {
-        guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
             return apps
         }
-        let needle = searchText.lowercased()
+        let needle = trimmed.lowercased()
         return apps.filter {
             $0.name.lowercased().contains(needle)
             || ($0.developer?.lowercased().contains(needle) ?? false)
+            || ($0.summary?.lowercased().contains(needle) ?? false)
         }
     }
 

@@ -14,35 +14,46 @@ struct ProfileView: View {
                             Text(store.udidService.udid == nil ? "设备未认证" : "已认证设备")
                                 .font(.headline)
                             if let udid = store.udidService.udid {
-                                Text(udid).font(.caption2).textSelection(.enabled)
+                                Text(udid)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                             }
                         }
                     }
                 }
 
-                Section("功能") {
+                Section(header: Text("功能")) {
                     Button("获取认证") {
                         store.udidService.requestProfileConfiguration()
                     }
-                    NavigationLink("我的证书", destination: PlaceholderView(title: "我的证书"))
-                    NavigationLink("我的游戏", destination: PlaceholderView(title: "我的游戏"))
-                    NavigationLink("通用设置", destination: SettingsView())
+                    NavigationLink(destination: PlaceholderView(title: "我的证书")) {
+                        Text("我的证书")
+                    }
+                    NavigationLink(destination: PlaceholderView(title: "我的游戏")) {
+                        Text("我的游戏")
+                    }
+                    NavigationLink(destination: SettingsView()) {
+                        Text("通用设置")
+                    }
                 }
 
                 Section {
-                    NavigationLink("关于我们", destination: PlaceholderView(title: "GameStore"))
+                    NavigationLink(destination: PlaceholderView(title: "GameStore")) {
+                        Text("关于我们")
+                    }
                 }
             }
-            .navigationTitle("个人中心")
+            .navigationBarTitle("个人中心")
         }
     }
 }
 
 private struct PlaceholderView: View {
     let title: String
+
     var body: some View {
         Text("v0.1 已建立模块边界，下一阶段接入真实协议。")
             .padding()
-            .navigationTitle(title)
+            .navigationBarTitle(title)
     }
 }

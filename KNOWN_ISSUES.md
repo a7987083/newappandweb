@@ -47,3 +47,9 @@
 **Evidence:** UnitXP alphaone13 contains useful signing, download, UDID and URL Scheme implementations, but it is a different application based on Ksign.  
 **Risk:** Porting constants, ports, callback formats, persistence keys or UI behavior blindly could create false parity.  
 **Mitigation:** Mark all UnitXP-derived conclusions `reference-only` until independently matched against GameStore static/runtime evidence.
+
+## KI-009 — iOS 13–26 product compatibility is not yet verified
+**Status:** Open  
+**Evidence:** Product requirement is minimum iOS 13.0 through latest iOS 26.x. The only successful GameStore build so far used Xcode 16.4 with deployment target iOS 15.0. Apple lists Xcode 15.4 as supporting deployment targets down to iOS 12, while Xcode 26.x targets iOS 15+ and provides iOS 26 SDK coverage.  
+**Risk:** Current source may use APIs unavailable on iOS 13, and a single modern toolchain cannot validate both the legacy deployment floor and latest iOS 26 SDK behavior.  
+**Next verification:** Lower project deployment target to 13.0, run an availability audit, add Xcode 15.4 legacy CI plus Xcode 26.x modern CI, then perform representative runtime/device checks across legacy and modern systems.

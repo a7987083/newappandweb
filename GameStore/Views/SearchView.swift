@@ -5,11 +5,22 @@ struct SearchView: View {
 
     var body: some View {
         NavigationView {
-            List(store.filteredApps) { app in
-                NavigationLink(app.name, destination: AppDetailView(app: app))
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                    TextField("游戏、应用、开发者", text: $store.searchText)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                }
+                .padding()
+
+                List(store.filteredApps) { app in
+                    NavigationLink(destination: AppDetailView(app: app)) {
+                        Text(app.name)
+                    }
+                }
             }
-            .searchable(text: $store.searchText, prompt: "游戏、应用、开发者")
-            .navigationTitle("搜索")
+            .navigationBarTitle("搜索")
         }
     }
 }

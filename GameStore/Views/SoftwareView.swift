@@ -110,8 +110,7 @@ struct SectionHeader: View {
     var body: some View {
         HStack {
             Text(title)
-                .font(.title3)
-                .fontWeight(.bold)
+                .font(.system(size: 20, weight: .bold))
             Spacer()
         }
     }
@@ -187,8 +186,7 @@ struct AppDetailView: View {
 
                     VStack(alignment: .leading, spacing: 7) {
                         Text(app.name)
-                            .font(.title2)
-                            .fontWeight(.bold)
+                            .font(.system(size: 22, weight: .bold))
 
                         Text(app.developer ?? "GameStore")
                             .font(.subheadline)
@@ -218,8 +216,7 @@ struct AppDetailView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("简介")
-                        .font(.title3)
-                        .fontWeight(.bold)
+                        .font(.system(size: 20, weight: .bold))
                     Text(app.summary ?? "暂无详细介绍")
                         .font(.body)
                         .foregroundColor(.secondary)

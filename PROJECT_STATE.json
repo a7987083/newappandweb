@@ -10,6 +10,20 @@
     "target_min_ios": "15.0",
     "target_main_sha256": "ea4947e192da53ceae434e51108c9af49f6a99d80c9d5e6e7e0d2ac5e6324e4e"
   },
+  "product_compatibility": {
+    "minimum_ios": "13.0",
+    "maximum_ios_generation": "26.x",
+    "status": "requirement_recorded_not_build_verified",
+    "legacy_toolchain": {
+      "xcode": "15.4",
+      "swift": "5.10",
+      "deployment_target": "13.0"
+    },
+    "modern_toolchain": {
+      "xcode": "26.x",
+      "sdk": "iOS 26.x"
+    }
+  },
   "reference_baselines": [
     {
       "type": "secondary_implementation_reference",
@@ -30,15 +44,18 @@
     }
   ],
   "build": {
-    "status": "success",
+    "status": "success_previous_ios15_baseline",
     "configuration": "Debug",
     "sdk": "iphonesimulator18.5",
-    "xcode": "16.4"
+    "xcode": "16.4",
+    "deployment_target": "15.0"
   },
   "ci": {
-    "status": "success",
+    "status": "success_previous_ios15_baseline",
     "run_id": 35798677918,
-    "job_id": 106983783519
+    "job_id": 106983783519,
+    "legacy_ios13_lane": "not_created",
+    "modern_ios26_lane": "not_created"
   },
   "runtime": {
     "status": "not_verified"
@@ -46,6 +63,6 @@
   "device": {
     "status": "not_verified"
   },
-  "phase": "Phase 1 - Protocol recovery",
-  "next_task": "Recover exact app-list request/response schema, headers and model fields from GameStore target evidence; use UnitXP alphaone13 only as secondary implementation guidance for later download/signing/UDID/OTA work."
+  "phase": "Compatibility baseline conversion before Phase 1 continuation",
+  "next_task": "Lower project deployment target to iOS 13.0, audit availability, add Xcode 15.4 and Xcode 26.x CI lanes, then resume exact GameStore app-list protocol recovery."
 }

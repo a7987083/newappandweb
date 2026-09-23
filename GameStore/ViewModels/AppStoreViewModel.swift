@@ -1,7 +1,6 @@
 import Foundation
 import Combine
 
-@MainActor
 final class AppStoreViewModel: ObservableObject {
     @Published var apps: [AppItem] = []
     @Published var searchText = ""
@@ -28,15 +27,22 @@ final class AppStoreViewModel: ObservableObject {
         }
     }
 
-    func reload() async {
+    func reload() {
+        guard !isLoading else { return }
         isLoading = true
-        defer { isLoading = false }
 
-        do {
-            apps = try await api.fetchApps()
-            errorMessage = nil
-        } catch {
-            errorMessage = String(describing: error)
+        api.fetchApps { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isLoading = false
+                switch result {
+                case .success(let apps):
+                    self.apps = apps
+                    self.errorMessage = nil
+                case .failure(let error):
+                    self.errorMessage = String(describing: error)
+                }
+            }
         }
     }
 }

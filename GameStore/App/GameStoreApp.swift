@@ -1,19 +1,24 @@
 import SwiftUI
+import UIKit
 
-@main
-struct GameStoreApp: App {
-    @UIApplicationDelegateAdaptor(GameStoreAppDelegate.self) private var appDelegate
-    @StateObject private var store = AppStoreViewModel()
+@UIApplicationMain
+final class GameStoreAppDelegate: UIResponder, UIApplicationDelegate {
+    var window: UIWindow?
+    private let store = AppStoreViewModel()
 
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-                .environmentObject(store)
-        }
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        let window = UIWindow(frame: UIScreen.main.bounds)
+        let rootView = ContentView()
+            .environmentObject(store)
+        window.rootViewController = UIHostingController(rootView: rootView)
+        window.makeKeyAndVisible()
+        self.window = window
+        return true
     }
-}
 
-final class GameStoreAppDelegate: NSObject, UIApplicationDelegate {
     func application(
         _ application: UIApplication,
         open url: URL,

@@ -44,7 +44,7 @@ Target private URL builder uses:
 - `exclusive -> exclusive`
 - `default -> id`
 
-Target `fetchApps` constructs a GET `URLRequest`, sets browser-like Accept/Accept-Language/Priority/Referer/Sec-Fetch/X-Requested-With/User-Agent headers, sends it with URLSession `dataTaskPublisher`, maps response data, decodes `AppListResponse` with `JSONDecoder`, maps errors, receives on the main queue and erases to AnyPublisher.
+Target `fetchApps` constructs a GET `URLRequest`, sets browser-like headers, sends with URLSession, and decodes `AppListResponse`.
 
 Recovered response envelope:
 - `data: [GameApp]`
@@ -62,22 +62,33 @@ Important limitation: the request/model reconstruction is **static verified**, n
 
 `UIApplicationDelegate -> UIHostingController -> SwiftUI Views -> AppStoreViewModel -> Service protocols/adapters`
 
-`APIService` is intentionally callback-based in the clean-room implementation for iOS 13 compatibility even though the target binary uses Combine. The protocol semantics are reconstructed; the implementation mechanism is allowed to differ where necessary for the expanded OS floor.
+`APIService` is intentionally callback-based in the clean-room implementation for iOS 13 compatibility even though the target binary uses Combine. The protocol semantics are reconstructed; the implementation mechanism may differ where necessary for the expanded OS floor.
 
-## Current Git/build state
+## Current Git/build/artifact state
 
 - Development branch: `feature/gamestore-v0.2-ui-protocol`
 - Exact app-list protocol **code** commit: `299c5bb94d9a7af4cff84673e8dcbd36b16971e4`
-- GitHub Actions Run: `35802424891`
-- Legacy Job `106995546259`: **success** — Xcode 15.4 / iOS 13 deployment target.
-- Modern Job `106995546336`: **success** — Xcode 26.6 / iOS 26 SDK.
+- IPA packaging workflow commit: `76908490c063b7ce6926352bd6e06ab0fcd09cf5`
+- Artifact CI Run: `35823288195`
+- Legacy Job `107059542027`: **success**.
+  - iOS 13 simulator build: success.
+  - Xcode 15.4 `iphoneos` unsigned device build: success.
+  - IPA package/upload: success.
+- Modern Job `107059542322`: **success** — Xcode 26.6 / iOS 26 SDK.
+- GitHub Artifact: `GameStore-v0.2-dev-unsigned-ipa`, ID `10734730203`.
+- Contained file: `GameStore-v0.2-dev-unsigned.ipa`.
+- IPA SHA-256: `df3562b30177a1e379c2a239be5725a56d8cac82412dd713542e81769f210e75`.
+- Verified archive structure: `Payload/GameStore.app` with main executable and `Info.plist`.
+- Signing state: **unsigned**.
 - Runtime launch: not verified.
 - Physical-device verification: not performed.
 - Pixel parity: not verified.
 
+Do not describe the unsigned IPA as directly installable on stock iOS. It is a real device-architecture IPA artifact intended for subsequent signing/testing. Signing/distribution policy remains separate from packaging success.
+
 ## Failure history
 
-Initial v0.2 UI Run `35801537255` exposed unguarded iOS 14 SwiftUI APIs (`navigationBarTitle(_:displayMode:)`, `InsetGroupedListStyle`). They were replaced with iOS 13-compatible paths. Subsequent UI and protocol runs are dual-build green.
+Initial v0.2 UI Run `35801537255` exposed unguarded iOS 14 SwiftUI APIs (`navigationBarTitle(_:displayMode:)`, `InsetGroupedListStyle`). They were replaced with iOS 13-compatible paths. Subsequent UI, protocol and packaging runs are green.
 
 ## Vetted internal reference project
 
@@ -102,9 +113,10 @@ Reference-project behavior is `reference-only` unless independently matched to G
 ## Next task
 
 1. Add deterministic protocol fixtures for the recovered app-list schema/request mapping.
-2. Continue Phase 1 on `/activation/my-games/`, `/activation/device-certificates/` and `/activation/ios-download/` by recovering their exact request methods, headers, bodies/query parameters and response CodingKeys.
+2. Continue Phase 1 on `/activation/my-games/`, `/activation/device-certificates/` and `/activation/ios-download/`.
 3. Keep both legacy and modern CI lanes green.
-4. Do not upgrade static recovery claims to runtime/live-server claims without direct evidence.
+4. Preserve the unsigned IPA artifact pipeline on each meaningful build.
+5. Add a signed installation path only after certificate/signing behavior and distribution expectations are explicitly defined and verified.
 
 ## Handoff rule
 

@@ -1,8 +1,8 @@
 import Foundation
 
 protocol APIClient {
-    func fetchApps() async throws -> [AppItem]
-    func checkUDID(_ udid: String) async throws -> Bool
+    func fetchApps(completion: @escaping (Result<[AppItem], Error>) -> Void)
+    func checkUDID(_ udid: String, completion: @escaping (Result<Bool, Error>) -> Void)
 }
 
 enum APIError: Error {
@@ -22,38 +22,69 @@ final class APIService: APIClient {
         self.session = session
     }
 
-    func fetchApps() async throws -> [AppItem] {
+    func fetchApps(completion: @escaping (Result<[AppItem], Error>) -> Void) {
         let url = Self.baseURL.appendingPathComponent("apps/api/app-list/")
-        let (data, response) = try await session.data(from: url)
-        try validate(response)
-        do {
-            if let direct = try? decoder.decode([AppItem].self, from: data) {
-                return direct
+        session.dataTask(with: url) { [decoder] data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
             }
-            return try decoder.decode(AppListResponse.self, from: data).apps
-        } catch {
-            throw APIError.decoding(error)
-        }
+
+            do {
+                try self.validate(response)
+                guard let data = data else {
+                    throw APIError.invalidResponse
+                }
+                if let direct = try? decoder.decode([AppItem].self, from: data) {
+                    completion(.success(direct))
+                    return
+                }
+                completion(.success(try decoder.decode(AppListResponse.self, from: data).apps))
+            } catch let apiError as APIError {
+                completion(.failure(apiError))
+            } catch {
+                completion(.failure(APIError.decoding(error)))
+            }
+        }.resume()
     }
 
-    func checkUDID(_ udid: String) async throws -> Bool {
+    func checkUDID(_ udid: String, completion: @escaping (Result<Bool, Error>) -> Void) {
         var components = URLComponents(
             url: Self.baseURL.appendingPathComponent("device/check-udid/"),
             resolvingAgainstBaseURL: false
         )!
         components.queryItems = [URLQueryItem(name: "udid", value: udid)]
-        let (data, response) = try await session.data(from: components.url!)
-        try validate(response)
-
-        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            return (object["valid"] as? Bool)
-                ?? (object["success"] as? Bool)
-                ?? false
+        guard let url = components.url else {
+            completion(.failure(APIError.invalidResponse))
+            return
         }
-        return false
+
+        session.dataTask(with: url) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+
+            do {
+                try self.validate(response)
+                guard let data = data else {
+                    throw APIError.invalidResponse
+                }
+                if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let valid = (object["valid"] as? Bool)
+                        ?? (object["success"] as? Bool)
+                        ?? false
+                    completion(.success(valid))
+                } else {
+                    completion(.success(false))
+                }
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
     }
 
-    private func validate(_ response: URLResponse) throws {
+    private func validate(_ response: URLResponse?) throws {
         guard let http = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
         }

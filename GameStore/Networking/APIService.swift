@@ -1,7 +1,30 @@
 import Foundation
 
+enum SortOption: String, CaseIterable {
+    case recent
+    case exclusive
+    case `default`
+
+    /// Target buildURL maps enum tags to backend sort keys.
+    var backendValue: String {
+        switch self {
+        case .recent:
+            return "updated_at"
+        case .exclusive:
+            return "exclusive"
+        case .default:
+            return "id"
+        }
+    }
+}
+
 protocol APIClient {
-    func fetchApps(completion: @escaping (Result<[AppItem], Error>) -> Void)
+    func fetchApps(
+        page: Int,
+        sortBy: SortOption,
+        searchQuery: String?,
+        completion: @escaping (Result<AppListResponse, Error>) -> Void
+    )
     func checkUDID(_ udid: String, completion: @escaping (Result<Bool, Error>) -> Void)
 }
 
@@ -22,9 +45,35 @@ final class APIService: APIClient {
         self.session = session
     }
 
-    func fetchApps(completion: @escaping (Result<[AppItem], Error>) -> Void) {
-        let url = Self.baseURL.appendingPathComponent("apps/api/app-list/")
-        session.dataTask(with: url) { [decoder] data, response, error in
+    func fetchApps(
+        page: Int = 1,
+        sortBy: SortOption = .default,
+        searchQuery: String? = nil,
+        completion: @escaping (Result<AppListResponse, Error>) -> Void
+    ) {
+        guard let url = buildAppsURL(page: page, sortBy: sortBy, searchQuery: searchQuery) else {
+            completion(.failure(APIError.invalidResponse))
+            return
+        }
+
+        var request = URLRequest(url: url, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 60)
+        request.httpMethod = "GET"
+
+        // These values are reconstructed from the target fetchApps implementation.
+        request.setValue("application/json, text/javascript, */*; q=0.01", forHTTPHeaderField: "Accept")
+        request.setValue("zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6", forHTTPHeaderField: "Accept-Language")
+        request.setValue("u=1, i", forHTTPHeaderField: "Priority")
+        request.setValue("https://www.iosgame.tech/apps/applist/", forHTTPHeaderField: "Referer")
+        request.setValue("empty", forHTTPHeaderField: "Sec-Fetch-Dest")
+        request.setValue("cors", forHTTPHeaderField: "Sec-Fetch-Mode")
+        request.setValue("same-origin", forHTTPHeaderField: "Sec-Fetch-Site")
+        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        request.setValue(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+            forHTTPHeaderField: "User-Agent"
+        )
+
+        session.dataTask(with: request) { [decoder] data, response, error in
             if let error = error {
                 completion(.failure(error))
                 return
@@ -35,17 +84,35 @@ final class APIService: APIClient {
                 guard let data = data else {
                     throw APIError.invalidResponse
                 }
-                if let direct = try? decoder.decode([AppItem].self, from: data) {
-                    completion(.success(direct))
-                    return
-                }
-                completion(.success(try decoder.decode(AppListResponse.self, from: data).apps))
+                completion(.success(try decoder.decode(AppListResponse.self, from: data)))
             } catch let apiError as APIError {
                 completion(.failure(apiError))
             } catch {
                 completion(.failure(APIError.decoding(error)))
             }
         }.resume()
+    }
+
+    private func buildAppsURL(page: Int, sortBy: SortOption, searchQuery: String?) -> URL? {
+        var components = URLComponents(
+            string: Self.baseURL.absoluteString + "/apps/api/app-list/"
+        )
+
+        let timestampMilliseconds = Int(Date().timeIntervalSince1970 * 1000)
+        var items = [
+            URLQueryItem(name: "page_number", value: String(page)),
+            URLQueryItem(name: "sort_by", value: sortBy.backendValue),
+            URLQueryItem(name: "platform", value: "ios"),
+            URLQueryItem(name: "_", value: String(timestampMilliseconds))
+        ]
+
+        if let searchQuery = searchQuery,
+           !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items.append(URLQueryItem(name: "search_query", value: searchQuery))
+        }
+
+        components?.queryItems = items
+        return components?.url
     }
 
     func checkUDID(_ udid: String, completion: @escaping (Result<Bool, Error>) -> Void) {

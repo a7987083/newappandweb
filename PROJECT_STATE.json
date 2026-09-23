@@ -1,9 +1,10 @@
 {
   "project": "GameStore clean-room reconstruction",
   "repository": "a7987083/newappandweb",
-  "version": "0.2.1-dev",
+  "version": "0.2.2-dev",
   "branch": "feature/gamestore-v0.2-ui-protocol",
   "build_verified_commit": "299c5bb94d9a7af4cff84673e8dcbd36b16971e4",
+  "artifact_workflow_commit": "76908490c063b7ce6926352bd6e06ab0fcd09cf5",
   "baseline": {
     "target_bundle_id": "com.GameStore.maicha",
     "target_version": "1.2 (1)",
@@ -18,13 +19,13 @@
     "legacy_toolchain": {
       "xcode": "15.4",
       "deployment_target": "13.0",
-      "ci_job_id": 106995546259,
+      "ci_job_id": 107059542027,
       "status": "success"
     },
     "modern_toolchain": {
       "xcode": "26.6",
       "sdk": "iOS 26.x",
-      "ci_job_id": 106995546336,
+      "ci_job_id": 107059542322,
       "status": "success"
     }
   },
@@ -40,13 +41,7 @@
     "app_list_static_verified": {
       "method": "GET",
       "endpoint": "/apps/api/app-list/",
-      "query_keys": [
-        "page_number",
-        "sort_by",
-        "platform",
-        "_",
-        "search_query"
-      ],
+      "query_keys": ["page_number", "sort_by", "platform", "_", "search_query"],
       "platform": "ios",
       "timestamp_semantics": "unix_epoch_milliseconds",
       "sort_mapping": {
@@ -65,11 +60,7 @@
         "X-Requested-With",
         "User-Agent"
       ],
-      "response_envelope": [
-        "data",
-        "current_page",
-        "total_pages"
-      ],
+      "response_envelope": ["data", "current_page", "total_pages"],
       "app_wire_keys": [
         "app_id",
         "app_name",
@@ -102,16 +93,28 @@
     }
   ],
   "build": {
-    "status": "success_dual_toolchain",
+    "status": "success_dual_toolchain_and_device_package",
     "configuration": "Debug",
-    "project_deployment_target": "13.0"
+    "project_deployment_target": "13.0",
+    "device_build": "iphoneos_xcode_15_4_unsigned_success"
   },
   "ci": {
     "status": "success",
-    "run_id": 35802424891,
-    "head_sha": "299c5bb94d9a7af4cff84673e8dcbd36b16971e4",
-    "legacy_ios13_job_id": 106995546259,
-    "modern_ios26_job_id": 106995546336
+    "run_id": 35823288195,
+    "head_sha": "76908490c063b7ce6926352bd6e06ab0fcd09cf5",
+    "legacy_ios13_job_id": 107059542027,
+    "modern_ios26_job_id": 107059542322
+  },
+  "artifact": {
+    "status": "verified_unsigned_ipa",
+    "name": "GameStore-v0.2-dev-unsigned-ipa",
+    "artifact_id": 10734730203,
+    "file": "GameStore-v0.2-dev-unsigned.ipa",
+    "artifact_zip_sha256": "7e1d9801a9ce8c4d0c64395d5fd7a5f6918f0f848bca9202bdbbbf804950e66d",
+    "ipa_sha256": "df3562b30177a1e379c2a239be5725a56d8cac82412dd713542e81769f210e75",
+    "verified_structure": "Payload/GameStore.app",
+    "signing": "unsigned",
+    "stock_ios_direct_install": "not_claimed"
   },
   "runtime": {
     "status": "not_verified"
@@ -120,10 +123,10 @@
     "status": "not_verified"
   },
   "regression": {
-    "build_matrix": "verified_for_app_list_protocol_code",
+    "build_matrix": "verified_for_current_code_and_packaging_workflow",
     "runtime_matrix": "not_verified",
     "visual_parity": "not_verified"
   },
-  "phase": "Phase 1 protocol recovery + Phase 5 first UI structural pass",
-  "next_task": "Add app-list protocol fixtures, then recover activation/my-games, device-certificates and ios-download request/response contracts from target evidence while keeping both compatibility CI lanes green."
+  "phase": "Phase 1 protocol recovery + Phase 5 first UI structural pass + CI artifact packaging",
+  "next_task": "Add app-list protocol fixtures, then recover activation/my-games, device-certificates and ios-download contracts. Preserve the unsigned IPA artifact pipeline; implement a signed installable path only after signing/distribution behavior is explicitly defined and verified."
 }

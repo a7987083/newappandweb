@@ -2,64 +2,86 @@
 
 ## 2026-09-23 — v0.1 bootstrap
 
-### Repository
+### Repository / compatibility baseline
 - Repository: `a7987083/newappandweb`
 - Baseline branch: `main`
-- Development branch: `feature/gamestore-v0.1-bootstrap`
-- Initial main commit: `d065d3d70d5aa6d91e282598d8b1dcebbe90e601`
-- Initial implementation commit: `48324eac325213cd9a998d21c6049fdedbda68ee`
-- Previous iOS 15 build-verified commit: `0ad791c9bc1abd544ee19303684d459b0470f6c7`
+- Initial development branch: `feature/gamestore-v0.1-bootstrap`
 - iOS 13–26 compatibility build-verified commit: `10cebcfd3e240b0dc7b802f3ef521c688703cc55`
+- Dual-CI Run `35800817890`: Legacy Job `106990507365` success; Modern Job `106990507207` success.
+- Product support baseline: iOS 13.0 through latest iOS 26.x.
+- Runtime/device verification remains open.
 
-### Initial implementation
-- SwiftUI shell with Software, Search, Downloads and Profile tabs.
-- Initial `AppStoreViewModel`, API/UDID/download/signing/OTA service boundaries.
-- Target-derived API base/endpoints and signing state names recorded.
-- Five long-term project state files established.
+### Reference baseline
+- `a7987083/UnitXP_SP3-Moonstone` release `v3.0.0-alphaone13`, commit `76aebadd826156a1b67d175ea90c88371dc320cf` is secondary implementation reference only.
+- `HFASign/LICENSE` is GPLv3; no GPL-covered implementation code is copied into GameStore without an explicit license decision.
 
-### Reference analysis — UnitXP / zonoe alphaone13
-- Secondary implementation reference: `a7987083/UnitXP_SP3-Moonstone` release `v3.0.0-alphaone13`, commit `76aebadd826156a1b67d175ea90c88371dc320cf`.
-- Reconstruction pins `Nyasami/Ksign@03a3a9c86897d79f9faf8106037b9971841d56a0` and applies a canonical patch series.
-- Useful reference areas: SigningHandler/Zsign/ZsignSwift, download/import, UDID localhost service/callback, URL Scheme routing and deterministic CI reconstruction.
-- License boundary: `HFASign/LICENSE` is GPLv3; no GPL-covered implementation code was copied into GameStore.
+---
 
-### iOS 13–26 compatibility conversion
-Product requirement is now minimum iOS `13.0` through latest iOS `26.x`. The target GameStore's own minimum remains a separate verified fact at iOS `15.0`.
+## 2026-09-23 — v0.2 target-driven UI / app-list recovery
 
-Implemented compatibility changes:
-- Replaced SwiftUI `App` / `@StateObject` bootstrap with iOS 13-compatible `UIApplicationDelegate + UIWindow + UIHostingController`.
-- Converted `APIService` async URLSession calls to callback-based `URLSessionDataTask` APIs.
-- Converted `AppStoreViewModel` reload flow to callback-based networking with main-queue state updates.
-- Replaced higher-version SwiftUI APIs in the initial shell: `Label`, `ProgressView`, `.searchable`, `.refreshable`, `.task`, newer alert syntax, `@AppStorage`, newer button roles and newer style APIs.
-- Replaced search with an iOS 13-compatible `TextField` implementation.
-- Replaced download `ProgressView` with a custom GeometryReader progress bar.
-- Removed Swift concurrency/actor requirements from `UDIDService`, `DownloadCenter`, `OTAInstallService` and the current signing interface.
-- Set project and target `IPHONEOS_DEPLOYMENT_TARGET = 13.0`.
+### Branch
+- Development branch: `feature/gamestore-v0.2-ui-protocol`
+- Branch created from v0.1 documentation HEAD `6afa2aae7aea564ec2e00ab22243fe49d9f3bf66`.
+- Build-verified v0.2 code commit: `d48147b9a91475d955395ca4fd43f061e1006119`.
 
-### Dual CI
-Workflow now contains:
-- `Legacy iOS 13 / Xcode 15.4` on `macos-14`, compiling with `IPHONEOS_DEPLOYMENT_TARGET=13.0`.
-- `Modern iOS 26 SDK / Xcode 26.6` on `macos-26`, validating the source against the current iOS 26 SDK/toolchain.
+### Target evidence recovered
+Static inspection of the target GameStore binary and packaged localization confirmed:
+- `GameStore.APIService.fetchApps(page:sortBy:searchQuery:)`
+- `GameStore.SortOption`
+- `SoftwareView.featuredSection`
+- `SoftwareView.appListSection`
+- `AppRowView`
+- `FeaturedCardView`
+- `SectionHeader`
+- `AppDetailView`
+- `AppListResponse`
+- localized UI strings such as `精品软件`, `热门推荐`, `全部软件`, `获取`, `游戏、应用、开发者`, `未找到相关内容`, `个人中心`, `我的证书`, `我的游戏`.
+- raw protocol/model strings include `items`, `current_page`, `total_pages`, `results`, `data`, `page`, `query`, `limit`, `offset`, plus item-field candidates such as `app_id`, `bundle_id`, `description`, `download_url`, `exclusive`, `icon`, `iconUrl`, `name`, `screenshots`, `size`, `summary`, `title`, `version`.
 
-First dual-CI run on commit `90f9c9e086ada4727064db7e37c6c2d2cca0333e` failed in both lanes. The first real legacy compiler error was:
-- `AppStoreViewModel.swift`: synchronous construction of `DownloadCenter()` attempted to call a `@MainActor`-isolated initializer.
-- The same audit also exposed `UDIDService.shared` actor isolation as a Swift 6 future error.
+These are static facts/candidates only. Exact HTTP method, headers, sort query key/wire values and complete `App` CodingKeys are not yet runtime-verified.
+
+### UI implementation
+Changed `SoftwareView.swift`, `SearchView.swift`, `ProfileView.swift`, and `AppStoreViewModel.swift`:
+- Rebuilt Software home from a plain list to a target-structure first pass with horizontal featured cards plus all-app rows.
+- Added `FeaturedCardView`, `AppRowView`, `SectionHeader` and richer `AppDetailView` boundaries matching preserved target type names.
+- Added iOS 13-compatible remote icon loading and UIKit activity indicator.
+- Rebuilt Search with packaged target placeholder/empty-state copy while avoiding `.searchable`.
+- Rebuilt Profile sections from packaged target localization: authentication state, certificate/game/settings/about rows.
+- Added `featuredApps` derivation in the view model and expanded local search matching to summary/developer.
+
+### Protocol implementation
+Changed `AppItem.swift`:
+- `AppListResponse` now accepts target-observed `items` and pagination fields `current_page` / `total_pages`.
+- Existing `apps` / `results` / `data` fallbacks are retained temporarily because exact decoder behavior has not yet been recovered.
+- No claim is made that the current `AppItem` field mapping is exact.
+
+### CI failure and root-cause repair
+Initial v0.2 UI Run `35801537255` had:
+- Modern iOS 26 lane: build succeeded.
+- Legacy iOS 13 lane Job `106992759519`: failed.
+
+First real legacy errors from Xcode 15.4 were:
+- `SoftwareView.swift`: `navigationBarTitle(_:displayMode:)` requires iOS 14+.
+- `ProfileView.swift`: `InsetGroupedListStyle` requires iOS 14+.
+- `ProfileView.swift`: additional `navigationBarTitle(_:displayMode:)` usage requires iOS 14+.
 
 Root-cause fix:
-- Removed unnecessary actor isolation from the state-only/bootstrap services and removed remaining concurrency-only interfaces rather than bypassing the error.
+- Removed `displayMode:` title overloads from new screens.
+- Replaced `InsetGroupedListStyle` with iOS 13-compatible `GroupedListStyle`.
+- Audited Search title path at the same time instead of waiting for a second compiler failure.
 
-Final compatibility verification:
-- Commit: `10cebcfd3e240b0dc7b802f3ef521c688703cc55`
-- GitHub Actions Run: `35800817890`
-- Legacy Job `106990507365`: **success** — Xcode 15.4, iOS Simulator SDK 17.5, deployment target iOS 13.0.
-- Modern Job `106990507207`: **success** — Xcode 26.6 / iOS 26 SDK lane.
+### v0.2 build verification
+GitHub Actions Run `35801743955` on code commit `d48147b9a91475d955395ca4fd43f061e1006119`:
+- Modern Job `106993416655`: **Build GameStore against iOS 26 SDK — success**.
+- Legacy Job `106993416990`: **Build GameStore for iOS 13 deployment target — success**.
 
 ### Verification status
-- Static target identification: completed.
-- Reference-source analysis: completed for selected UnitXP alphaone13 paths.
-- Source changes for initial iOS 13 compatibility: completed and committed.
-- iOS 13 compile: **verified successful in CI**.
-- iOS 26 SDK compile: **verified successful in CI**.
-- Runtime launch on iOS 13: not verified.
-- Physical-device verification: not verified.
-- Full iOS 13–26 runtime regression matrix: not verified.
+- Target UI/type/localization evidence: static verified.
+- v0.2 source modifications: committed.
+- iOS 13 compile: build verified in CI.
+- iOS 26 SDK compile: build verified in CI.
+- App-list network contract: partially recovered / static only.
+- Simulator runtime launch: not verified.
+- Physical-device UI parity: not verified.
+- Pixel-perfect visual parity: not verified.
+- Full regression matrix: not verified.

@@ -9,8 +9,8 @@ Build a clean-room GameStore implementation whose UI, public request protocol, d
 - Product minimum iOS: `13.0`.
 - Product maximum/support ceiling: latest `iOS 26.x` available in the iOS 26 generation.
 - Target-app fact remains separate: the verified GameStore target declares minimum iOS `15.0`.
-- Legacy build/compatibility validation: Xcode 15.4 / Swift 5.10 / iOS 13 deployment target.
-- Modern build/SDK validation: Xcode 26.x / iOS 26 SDK.
+- Legacy build validation: Xcode 15.4 / Swift 5.10 / iOS 13 deployment target.
+- Modern build/SDK validation: Xcode 26.6 / iOS 26 SDK.
 - Do not rely on iOS 14+ / 15+ SwiftUI APIs without availability handling or compatible alternatives.
 
 ## Baseline evidence
@@ -30,23 +30,25 @@ The user's existing project is an implementation reference for reusable engineer
 - Release: `v3.0.0-alphaone13`
 - Release commit: `76aebadd826156a1b67d175ea90c88371dc320cf`
 - Release artifact: `zonoe_v3.0.0-alphaone13_TrollStore.ipa`
-- Relevant reference areas: Ksign/Zsign signing integration, `SigningHandler`, `ZsignSwift`, download/import handling, UDID local HTTP service and callback architecture, URL Scheme routing, build/reconstruction CI.
-- The reference project reconstructs from pinned `Nyasami/Ksign` commit `03a3a9c86897d79f9faf8106037b9971841d56a0` plus a canonical patch stack.
-- `HFASign/LICENSE` is GPLv3. Do not copy GPL-covered implementation code into this clean-room project without an explicit license decision; prefer behavioral/architectural reference and independent implementation.
+- Relevant areas: Ksign/Zsign signing integration, `SigningHandler`, `ZsignSwift`, download/import handling, UDID local HTTP service and callback architecture, URL Scheme routing, build/reconstruction CI.
+- Reconstruction pins `Nyasami/Ksign@03a3a9c86897d79f9faf8106037b9971841d56a0` plus a canonical patch stack.
+- `HFASign/LICENSE` is GPLv3. Do not copy GPL-covered implementation code into this clean-room project without an explicit license decision.
 
 ## Phases
 
-### Phase 0 — Bootstrap
+### Phase 0 — Bootstrap and compatibility baseline
 - [x] Repository initialized.
 - [x] Long-term state documents established.
 - [x] Xcode project skeleton.
 - [x] Four primary tabs.
 - [x] API/UDID/download/signing/OTA service boundaries.
-- [x] macOS CI build green on implementation commit `0ad791c9bc1abd544ee19303684d459b0470f6c7` using the previous iOS 15/Xcode 16.4 baseline.
 - [x] Internal reference baseline `UnitXP_SP3-Moonstone@v3.0.0-alphaone13` recorded.
 - [x] Product compatibility requirement fixed at iOS 13.0 through iOS 26.x.
-- [ ] Convert project deployment target from iOS 15.0 to iOS 13.0 and remove/guard incompatible APIs.
-- [ ] Add dual CI: Xcode 15.4 legacy build plus Xcode 26.x modern SDK build.
+- [x] Project deployment target converted from iOS 15.0 to iOS 13.0.
+- [x] SwiftUI app lifecycle replaced with iOS 13-compatible `UIApplicationDelegate + UIHostingController` bootstrap.
+- [x] iOS 14/15+ bootstrap APIs removed or replaced in the initial UI/network/service shell.
+- [x] Dual CI added: Xcode 15.4 legacy build plus Xcode 26.6 modern SDK build.
+- [x] Dual CI green on commit `10cebcfd3e240b0dc7b802f3ef521c688703cc55`, Run `35800817890`.
 
 ### Phase 1 — Protocol recovery
 - [ ] Recover exact JSON schemas and HTTP methods/headers.
@@ -85,4 +87,4 @@ The user's existing project is an implementation reference for reusable engineer
 
 ## Next Task
 
-First update the implementation baseline to product minimum iOS 13.0 and establish dual legacy/modern CI. Then continue Phase 1 by recovering the exact `/apps/api/app-list/` response schema, request method/headers and model field names from target evidence. UnitXP alphaone13 remains a vetted secondary reference for later download/signing/UDID/OTA phases, never proof of GameStore behavior.
+Resume Phase 1: recover the exact `/apps/api/app-list/` request method, headers, response envelope and model/CodingKeys from target evidence. Keep the dual iOS 13 / iOS 26 build lanes green while feature code grows.

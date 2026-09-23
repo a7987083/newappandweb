@@ -37,7 +37,7 @@ struct SearchView: View {
                 }
             }
             .background(Color(UIColor.systemGroupedBackground).edgesIgnoringSafeArea(.all))
-            .navigationBarTitle("搜索", displayMode: .large)
+            .navigationBarTitle("搜索")
             .onAppear {
                 if store.apps.isEmpty {
                     store.reload()

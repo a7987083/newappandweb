@@ -22,46 +22,62 @@ This repository is a clean-room reimplementation of an authorized GameStore targ
 - Known endpoints include `/apps/api/app-list/`, activation/certificate/download/manifest paths and device UDID paths.
 - Install prefix: `itms-services://?action=download-manifest&url=`.
 
-## v0.2 target UI / protocol evidence
+## v0.2 UI evidence
 
-Static binary + packaged localization evidence now additionally confirms:
-- `APIService.fetchApps(page:sortBy:searchQuery:)`
-- `SortOption`
-- `SoftwareView.featuredSection`
-- `SoftwareView.appListSection`
-- `AppRowView`, `FeaturedCardView`, `SectionHeader`, `AppDetailView`
-- `AppListResponse`
-- response/model string candidates including `items`, `current_page`, `total_pages`, `results`, `data`, `page`, `query`, `limit`, `offset`, `app_id`, `bundle_id`, `description`, `download_url`, `exclusive`, `icon`, `iconUrl`, `name`, `screenshots`, `size`, `summary`, `title`, `version`.
-- packaged Simplified Chinese copy for featured/all-app/search/profile/auth/certificate/game/settings/about states.
+Static binary + packaged localization evidence confirms `SoftwareView.featuredSection`, `SoftwareView.appListSection`, `AppRowView`, `FeaturedCardView`, `SectionHeader`, `AppDetailView`, plus the first-pass Software/Search/Profile labels/states. The current UI implements this structure but is not yet pixel/runtime verified.
 
-Do **not** infer the exact sort query key or exact `App` model mapping from these strings alone. Runtime traffic or stronger call-site/CodingKeys evidence is still required.
+## app-list protocol — current exact static recovery
+
+Target function:
+`APIService.fetchApps(page:sortBy:searchQuery:) -> AnyPublisher<AppListResponse, Error>`
+
+Target private URL builder uses:
+- `/apps/api/app-list/`
+- `page_number=<page>`
+- `sort_by=<mapped sort>`
+- `platform=ios`
+- `_` = Unix epoch milliseconds
+- optional `search_query=<query>`
+
+`SortOption` case order and backend values:
+- `recent -> updated_at`
+- `exclusive -> exclusive`
+- `default -> id`
+
+Target `fetchApps` constructs a GET `URLRequest`, sets browser-like Accept/Accept-Language/Priority/Referer/Sec-Fetch/X-Requested-With/User-Agent headers, sends it with URLSession `dataTaskPublisher`, maps response data, decodes `AppListResponse` with `JSONDecoder`, maps errors, receives on the main queue and erases to AnyPublisher.
+
+Recovered response envelope:
+- `data: [GameApp]`
+- `current_page`
+- `total_pages`
+
+Recovered GameApp wire keys:
+`app_id`, `app_name`, `mod_description`, `icon`, `store_url`, `appstore_url`, `package_name`, `current_version`, `app_version`, `mod_update_time`, `file_size`, `screenshots`, `alist_url`, `is_permanent_vip_only`, `is_hot`.
+
+Target decoder also contains `Both app_id and id are missing.`, establishing an observed identifier fallback to `id`.
+
+Important limitation: the request/model reconstruction is **static verified**, not live-server verified. The current execution environment could not resolve `new.iosgame.vip`, so do not claim network interoperability until traffic/fixtures or device runtime confirms it.
 
 ## Current architecture
 
 `UIApplicationDelegate -> UIHostingController -> SwiftUI Views -> AppStoreViewModel -> Service protocols/adapters`
 
-Current v0.2 UI first pass:
-- Software home: featured horizontal cards + all-app rows + detail view.
-- Search: iOS 13-compatible search field using target packaged copy/empty states.
-- Profile: authentication/certificate/games/settings/about sections using target packaged copy.
-- Remote app icons use callback-based URLSession and are not a claim of target cache semantics.
-
-Signing remains intentionally unimplemented beyond the recovered interface/state boundary.
+`APIService` is intentionally callback-based in the clean-room implementation for iOS 13 compatibility even though the target binary uses Combine. The protocol semantics are reconstructed; the implementation mechanism is allowed to differ where necessary for the expanded OS floor.
 
 ## Current Git/build state
 
 - Development branch: `feature/gamestore-v0.2-ui-protocol`
-- v0.2 build-verified **code** commit: `d48147b9a91475d955395ca4fd43f061e1006119`
-- GitHub Actions Run: `35801743955`
-- Modern Job `106993416655`: build against iOS 26 SDK **success**.
-- Legacy Job `106993416990`: iOS 13 deployment-target build **success**.
+- Exact app-list protocol **code** commit: `299c5bb94d9a7af4cff84673e8dcbd36b16971e4`
+- GitHub Actions Run: `35802424891`
+- Legacy Job `106995546259`: **success** — Xcode 15.4 / iOS 13 deployment target.
+- Modern Job `106995546336`: **success** — Xcode 26.6 / iOS 26 SDK.
 - Runtime launch: not verified.
 - Physical-device verification: not performed.
 - Pixel parity: not verified.
 
-## v0.2 failure history
+## Failure history
 
-Run `35801537255` showed Modern build success but Legacy failure. The first real iOS 13 compiler errors were unguarded iOS 14 SwiftUI APIs introduced in the new UI: `navigationBarTitle(_:displayMode:)` and `InsetGroupedListStyle`. These were removed/replaced with iOS 13-compatible APIs. Subsequent Run `35801743955` successfully compiled both modern and legacy build steps.
+Initial v0.2 UI Run `35801537255` exposed unguarded iOS 14 SwiftUI APIs (`navigationBarTitle(_:displayMode:)`, `InsetGroupedListStyle`). They were replaced with iOS 13-compatible paths. Subsequent UI and protocol runs are dual-build green.
 
 ## Vetted internal reference project
 
@@ -85,7 +101,10 @@ Reference-project behavior is `reference-only` unless independently matched to G
 
 ## Next task
 
-Continue exact `/apps/api/app-list/` recovery: HTTP method, headers, query key names, `SortOption` wire values, pagination behavior and exact `App` CodingKeys/types. Then add fixture tests. Keep both CI lanes green after compatibility-sensitive changes.
+1. Add deterministic protocol fixtures for the recovered app-list schema/request mapping.
+2. Continue Phase 1 on `/activation/my-games/`, `/activation/device-certificates/` and `/activation/ios-download/` by recovering their exact request methods, headers, bodies/query parameters and response CodingKeys.
+3. Keep both legacy and modern CI lanes green.
+4. Do not upgrade static recovery claims to runtime/live-server claims without direct evidence.
 
 ## Handoff rule
 

@@ -2,14 +2,14 @@
 
 ## KI-001 — Exact API schema not recovered
 **Status:** Open  
-**Evidence:** Static endpoint strings only; v0.1 decoder accepts several common envelope keys.  
+**Evidence:** Static endpoint strings only; v0.1 decoder still accepts several common envelope keys.  
 **Risk:** Server payload may use different keys/types or methods/headers.  
 **Next verification:** Recover Swift `CodingKeys`/decoder call sites or capture authorized traffic.
 
 ## KI-002 — Signing implementation intentionally absent
 **Status:** Open  
 **Evidence:** Target contains Zsign/signing state evidence, but v0.1 only defines the interface/state machine. UnitXP alphaone13 provides a vetted secondary implementation reference for Ksign/Zsign and ZsignSwift integration.  
-**Risk:** No IPA can be signed by this build; copying UnitXP/Ksign behavior without target verification could also produce a functionally different pipeline.  
+**Risk:** No IPA can be signed by this build; blindly copying UnitXP/Ksign behavior could produce a functionally different pipeline.  
 **Next verification:** Recover exact GameStore bridge ABI and packaging pipeline, then compare invariants against UnitXP alphaone13 before independent implementation.
 
 ## KI-003 — Download center is state-only
@@ -32,9 +32,9 @@
 
 ## KI-006 — No runtime/device verification yet
 **Status:** Open  
-**Evidence:** CI successfully compiles implementation commit `0ad791c9bc1abd544ee19303684d459b0470f6c7`; no simulator launch or physical-device test has been recorded.  
+**Evidence:** Commit `10cebcfd3e240b0dc7b802f3ef521c688703cc55` compiles successfully in both the iOS 13/Xcode 15.4 and iOS 26/Xcode 26.6 CI lanes. No simulator launch on a legacy runtime or physical-device test has been recorded.  
 **Risk:** Compile success does not prove endpoint compatibility, URL callback behavior, signing, download persistence or OTA installation.  
-**Next verification:** Add a simulator smoke test for app launch, then perform authorized physical-device verification for UDID and OTA flows when those implementations are complete.
+**Next verification:** Add representative simulator/runtime smoke tests and later perform authorized physical-device verification for UDID, signing and OTA flows.
 
 ## KI-007 — GPL boundary for UnitXP/Ksign reference
 **Status:** Open / Controlled  
@@ -48,8 +48,14 @@
 **Risk:** Porting constants, ports, callback formats, persistence keys or UI behavior blindly could create false parity.  
 **Mitigation:** Mark all UnitXP-derived conclusions `reference-only` until independently matched against GameStore static/runtime evidence.
 
-## KI-009 — iOS 13–26 product compatibility is not yet verified
-**Status:** Open  
-**Evidence:** Product requirement is minimum iOS 13.0 through latest iOS 26.x. The only successful GameStore build so far used Xcode 16.4 with deployment target iOS 15.0. Apple lists Xcode 15.4 as supporting deployment targets down to iOS 12, while Xcode 26.x targets iOS 15+ and provides iOS 26 SDK coverage.  
-**Risk:** Current source may use APIs unavailable on iOS 13, and a single modern toolchain cannot validate both the legacy deployment floor and latest iOS 26 SDK behavior.  
-**Next verification:** Lower project deployment target to 13.0, run an availability audit, add Xcode 15.4 legacy CI plus Xcode 26.x modern CI, then perform representative runtime/device checks across legacy and modern systems.
+## KI-009 — iOS 13–26 build compatibility vs runtime compatibility
+**Status:** Build baseline verified / Runtime open  
+**Evidence:** GitHub Actions Run `35800817890` passed both Legacy Job `106990507365` (Xcode 15.4, deployment target 13.0) and Modern Job `106990507207` (Xcode 26.6/iOS 26 SDK lane) on commit `10cebcfd3e240b0dc7b802f3ef521c688703cc55`.  
+**Risk:** Building at the iOS 13 floor and against the latest SDK does not prove every runtime version from iOS 13 through iOS 26 behaves correctly.  
+**Next verification:** Establish representative runtime/device coverage across legacy, middle and current OS generations as functionality becomes real.
+
+## KI-010 — Hosted legacy CI runner lifecycle
+**Status:** Open / Infrastructure risk  
+**Evidence:** The legacy lane currently depends on GitHub-hosted `macos-14` to obtain Xcode 15.4. GitHub runner images evolve and older images/toolchains are eventually retired.  
+**Risk:** A future hosted-runner retirement can break legacy build verification even when source compatibility is unchanged.  
+**Mitigation:** Before hosted `macos-14` becomes unavailable, move the Xcode 15.4 lane to a pinned/self-hosted macOS runner or another reproducible legacy toolchain environment.

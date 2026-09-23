@@ -44,6 +44,10 @@ The user's existing project is an implementation reference for reusable engineer
 - [x] UIKit application bootstrap for iOS 13.
 - [x] Dual CI: Xcode 15.4 legacy lane plus Xcode 26.6 modern lane.
 - [x] Compatibility baseline green on `10cebcfd3e240b0dc7b802f3ef521c688703cc55`, Run `35800817890`.
+- [x] CI device packaging lane builds `iphoneos` with Xcode 15.4 and creates `GameStore-v0.2-dev-unsigned.ipa`.
+- [x] Artifact pipeline verified on workflow commit `76908490c063b7ce6926352bd6e06ab0fcd09cf5`, Run `35823288195`.
+- [x] Verified IPA structure contains `Payload/GameStore.app`; IPA SHA-256 `df3562b30177a1e379c2a239be5725a56d8cac82412dd713542e81769f210e75`.
+- [ ] Add a signed/release packaging path after the certificate/signing policy is defined; current artifact is intentionally unsigned.
 
 ### Phase 1 — Protocol recovery
 - [~] Recover `/apps/api/app-list/` contract.
@@ -92,4 +96,4 @@ The user's existing project is an implementation reference for reusable engineer
 
 ## Next Task
 
-Add deterministic app-list protocol fixtures and then continue Phase 1 with `/activation/my-games/`, `/activation/device-certificates/` and `/activation/ios-download/`, using the same rule: static assembly/CodingKeys first, runtime confirmation second, and keep both iOS 13 and iOS 26 CI lanes green.
+Add deterministic app-list protocol fixtures and then continue Phase 1 with `/activation/my-games/`, `/activation/device-certificates/` and `/activation/ios-download/`, using the same rule: static assembly/CodingKeys first, runtime confirmation second, and keep both iOS 13 and iOS 26 CI lanes green. The downloadable CI IPA remains an unsigned development artifact until signing is implemented and verified.

@@ -32,7 +32,6 @@ The user's existing project is an implementation reference for reusable engineer
 - Release: `v3.0.0-alphaone13`
 - Release commit: `76aebadd826156a1b67d175ea90c88371dc320cf`
 - Relevant areas: Ksign/Zsign signing integration, `SigningHandler`, `ZsignSwift`, download/import handling, UDID local HTTP service and callback architecture, URL Scheme routing, build/reconstruction CI.
-- Reconstruction pins `Nyasami/Ksign@03a3a9c86897d79f9faf8106037b9971841d56a0` plus a canonical patch stack.
 - `HFASign/LICENSE` is GPLv3. Do not copy GPL-covered implementation code into this clean-room project without an explicit license decision.
 
 ## Phases
@@ -48,22 +47,25 @@ The user's existing project is an implementation reference for reusable engineer
 
 ### Phase 1 — Protocol recovery
 - [~] Recover `/apps/api/app-list/` contract.
-  - [x] Target static evidence confirms `fetchApps(page:sortBy:searchQuery:)` and `SortOption`.
-  - [x] Target raw strings expose response candidates `items`, `current_page`, `total_pages` plus compatibility candidates `results` / `data`.
-  - [x] Decoder now models `items/current_page/total_pages` while retaining fallback envelopes until exact decoder call-site recovery is complete.
-  - [ ] Recover exact HTTP method/headers/query key names and exact `App` CodingKeys/types.
-  - [ ] Recover exact sort transport values for default/recent/exclusive.
-  - [ ] Validate against authorized runtime traffic or fixtures.
+  - [x] Exact function signature recovered: `fetchApps(page:sortBy:searchQuery:)`.
+  - [x] Request method recovered as `GET` using `URLRequest` + `URLSession.DataTaskPublisher` in the target.
+  - [x] Exact query keys recovered from `buildURL`: `page_number`, `sort_by`, `platform=ios`, `_` millisecond timestamp, optional `search_query`.
+  - [x] `SortOption` enum order and transport mapping recovered: `recent -> updated_at`, `exclusive -> exclusive`, `default -> id`.
+  - [x] Target fetch headers recovered: Accept, Accept-Language, Priority, Referer, Sec-Fetch-Dest/Mode/Site, X-Requested-With and User-Agent.
+  - [x] Response envelope recovered as `data/current_page/total_pages`.
+  - [x] Target app wire keys recovered: `app_id`, `app_name`, `mod_description`, `icon`, `store_url`, `appstore_url`, `package_name`, `current_version`, `app_version`, `mod_update_time`, `file_size`, `screenshots`, `alist_url`, `is_permanent_vip_only`, `is_hot`, with target fallback evidence for `id`.
+  - [x] Repository implementation updated to these static-verified request/model contracts.
+  - [x] Dual CI green on protocol code commit `299c5bb94d9a7af4cff84673e8dcbd36b16971e4`, Run `35802424891`.
+  - [ ] Validate live server response types/semantics against authorized traffic or fixtures; current environment could not resolve the public API hostname.
+  - [ ] Add protocol fixture tests.
 - [ ] Reconstruct activation-code workflow.
 - [ ] Reconstruct device-certificate workflow.
-- [ ] Add protocol fixture tests.
 
 ### Phase 2 — Downloads and persistence
 - [ ] Background URLSession transfer.
 - [ ] Pause/resume/retry/delete.
 - [ ] Persistent task recovery.
 - [ ] Cache accounting.
-- [ ] Use UnitXP alphaone13 `IPADownloadManager` only as a secondary architectural reference.
 
 ### Phase 3 — Signing
 - [ ] IPA inspector/archive implementation.
@@ -80,9 +82,9 @@ The user's existing project is an implementation reference for reusable engineer
 
 ### Phase 5 — UI parity
 - [x] First target-evidence-driven structural pass for Software, Search and Profile.
-- [x] Software home now contains target-observed featured section, all-app list, app row, featured card and detail view boundaries.
+- [x] Software home contains target-observed featured section, all-app list, app row, featured card and detail view boundaries.
 - [x] Search copy/empty states and profile copy/sections use packaged target localization evidence.
-- [x] First-pass UI remains build-compatible with iOS 13 and iOS 26 SDK lanes on `d48147b9a91475d955395ca4fd43f061e1006119`, Run `35801743955`.
+- [x] First-pass UI remains build-compatible with iOS 13 and iOS 26 SDK lanes.
 - [ ] Extract visual measurements/assets and perform screenshot comparison.
 - [ ] Rebuild activation/certificate/signing-log screens from stronger evidence.
 - [ ] Simplified/Traditional Chinese parity.
@@ -90,4 +92,4 @@ The user's existing project is an implementation reference for reusable engineer
 
 ## Next Task
 
-Continue Phase 1: recover the exact `/apps/api/app-list/` HTTP method, headers, query parameter names, `SortOption` wire values and `App` model CodingKeys/types from target evidence. In parallel, keep the v0.2 target-driven UI structure compiling in both iOS 13 and iOS 26 lanes. Do not mark visual 1:1 parity until screenshot/runtime comparison exists.
+Add deterministic app-list protocol fixtures and then continue Phase 1 with `/activation/my-games/`, `/activation/device-certificates/` and `/activation/ios-download/`, using the same rule: static assembly/CodingKeys first, runtime confirmation second, and keep both iOS 13 and iOS 26 CI lanes green.

@@ -4,16 +4,28 @@ struct ContentView: View {
     var body: some View {
         TabView {
             SoftwareView()
-                .tabItem { Label("软件", systemImage: "square.grid.2x2") }
+                .tabItem {
+                    Image(systemName: "square.grid.2x2")
+                    Text("软件")
+                }
 
             SearchView()
-                .tabItem { Label("搜索", systemImage: "magnifyingglass") }
+                .tabItem {
+                    Image(systemName: "magnifyingglass")
+                    Text("搜索")
+                }
 
             DownloadCenterView()
-                .tabItem { Label("下载", systemImage: "arrow.down.circle") }
+                .tabItem {
+                    Image(systemName: "arrow.down.circle")
+                    Text("下载")
+                }
 
             ProfileView()
-                .tabItem { Label("我的", systemImage: "person.crop.circle") }
+                .tabItem {
+                    Image(systemName: "person.crop.circle")
+                    Text("我的")
+                }
         }
     }
 }

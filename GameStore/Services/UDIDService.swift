@@ -2,7 +2,6 @@ import Foundation
 import Combine
 import UIKit
 
-@MainActor
 final class UDIDService: ObservableObject {
     static let shared = UDIDService()
 
@@ -15,15 +14,13 @@ final class UDIDService: ObservableObject {
             queue: .main
         ) { [weak self] note in
             guard let url = note.userInfo?["url"] as? URL else { return }
-            Task { @MainActor in
-                self?.consumeCallback(url)
-            }
+            self?.consumeCallback(url)
         }
     }
 
     func requestProfileConfiguration() {
         guard let url = URL(string: "https://new.iosgame.vip/device/udid/config/") else { return }
-        UIApplication.shared.open(url)
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
     }
 
     private func consumeCallback(_ url: URL) {
@@ -33,7 +30,7 @@ final class UDIDService: ObservableObject {
             ["udid", "UDID"].contains($0.name)
         })?.value
 
-        guard let value, !value.isEmpty else { return }
+        guard let value = value, !value.isEmpty else { return }
         udid = value
     }
 }

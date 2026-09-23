@@ -37,22 +37,10 @@ Disassembly of target `APIService.fetchApps(page:sortBy:searchQuery:)` and priva
   - `recent -> updated_at`
   - `exclusive -> exclusive`
   - `default -> id`
-- Target request headers in `fetchApps`:
-  - `Accept: application/json, text/javascript, */*; q=0.01`
-  - `Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6`
-  - `Priority: u=1, i`
-  - `Referer: https://www.iosgame.tech/apps/applist/`
-  - `Sec-Fetch-Dest: empty`
-  - `Sec-Fetch-Mode: cors`
-  - `Sec-Fetch-Site: same-origin`
-  - `X-Requested-With: XMLHttpRequest`
-  - Chrome/macOS User-Agent preserved by the target.
+- Target request headers in `fetchApps`: Accept, Accept-Language, Priority, Referer, Sec-Fetch-Dest/Mode/Site, X-Requested-With and target browser User-Agent.
 
 ### Exact app-list model recovery
-Target wire-key region and Swift metadata recover the response envelope as:
-- `data`
-- `current_page`
-- `total_pages`
+Target response envelope: `data/current_page/total_pages`.
 
 Target GameApp wire keys recovered:
 - `app_id`
@@ -71,28 +59,54 @@ Target GameApp wire keys recovered:
 - `is_permanent_vip_only`
 - `is_hot`
 
-Target custom decoder contains the diagnostic `Both app_id and id are missing.`, so the clean-room decoder preserves `id` as an observed fallback for identifier recovery.
+Target custom decoder contains `Both app_id and id are missing.`, so the clean-room decoder preserves `id` as an observed fallback for identifier recovery.
 
 ### Repository changes
-- `GameStore/Networking/APIService.swift`
-  - added `SortOption` and exact target query/header reconstruction;
-  - changed app-list client result from bare array to `AppListResponse`;
-  - removed guessed direct-array/fallback-envelope behavior for this endpoint.
-- `GameStore/Models/AppItem.swift`
-  - replaced guessed generic app keys with target wire schema;
-  - added normalized UI-facing computed properties to avoid leaking wire names into views;
-  - response envelope now uses `data/current_page/total_pages`.
-- `GameStore/ViewModels/AppStoreViewModel.swift`
-  - now tracks sort and pagination state;
-  - consumes the recovered response envelope;
-  - prefers `is_hot` items for the featured strip when present.
+- `GameStore/Networking/APIService.swift`: exact target query/header reconstruction and response result shape.
+- `GameStore/Models/AppItem.swift`: target wire schema and normalized UI-facing properties.
+- `GameStore/ViewModels/AppStoreViewModel.swift`: sort/pagination state and recovered response envelope.
 
 ### Verification status
 - Request construction: **static verified from target assembly**.
 - Sort mapping: **static verified from enum reflection + buildURL assembly**.
 - Model keys/envelope: **static verified from target strings/Swift metadata/decoder evidence**.
 - Repository changes: **committed and dual-toolchain build verified**.
-- Live server response/content types: **not verified**; the current execution environment could not resolve the API hostname.
+- Live server response/content types: **not verified**; current execution environment could not resolve the API hostname.
 - Simulator runtime launch: not verified.
 - Physical-device UI/network verification: not verified.
 - Pixel-perfect visual parity: not verified.
+
+---
+
+## 2026-09-23 — v0.2 unsigned IPA artifact pipeline
+
+### CI packaging implementation
+Workflow commit: `76908490c063b7ce6926352bd6e06ab0fcd09cf5`.
+
+Legacy/Xcode 15.4 lane now performs, in addition to the existing iOS 13 simulator build:
+- `iphoneos` Debug build with `IPHONEOS_DEPLOYMENT_TARGET=13.0`;
+- signing disabled for deterministic CI packaging;
+- output collected from `DerivedDataDevice/Build/Products/Debug-iphoneos/GameStore.app`;
+- app wrapped as `Payload/GameStore.app`;
+- archive created as `GameStore-v0.2-dev-unsigned.ipa`;
+- IPA and build logs uploaded as GitHub Actions artifacts.
+
+### Artifact verification
+GitHub Actions Run `35823288195`:
+- Legacy Job `107059542027`: **success**.
+  - iOS 13 simulator build: success.
+  - unsigned `iphoneos` device build: success.
+  - IPA packaging: success.
+  - IPA artifact upload: success.
+- Modern Job `107059542322`: **success** — Xcode 26.6 / iOS 26 SDK build.
+
+Artifact:
+- Artifact name: `GameStore-v0.2-dev-unsigned-ipa`
+- Artifact ID: `10734730203`
+- Artifact ZIP digest: `sha256:7e1d9801a9ce8c4d0c64395d5fd7a5f6918f0f848bca9202bdbbbf804950e66d`
+- Contained IPA: `GameStore-v0.2-dev-unsigned.ipa`
+- IPA SHA-256 after extraction: `df3562b30177a1e379c2a239be5725a56d8cac82412dd713542e81769f210e75`
+- Verified IPA contents include `Payload/GameStore.app/GameStore` and `Payload/GameStore.app/Info.plist`.
+
+### Important limitation
+The produced package is an **unsigned development IPA**. It is a real `iphoneos` application package suitable for subsequent signing/testing workflows, but it is not a claim that stock iOS devices can install it directly. A signed distribution/development/TrollStore-compatible path remains separate future work.

@@ -4,6 +4,15 @@
 
 This repository is a clean-room reimplementation of an authorized GameStore target. Do not treat decompiler pseudocode, strings alone, inferred server behavior, or behavior from other projects as ground truth.
 
+## Product compatibility requirement
+
+- Minimum supported OS: **iOS 13.0**.
+- Maximum/current support target: **latest iOS 26.x**.
+- Legacy build validation: Xcode 15.4 / Swift 5.10 with iOS 13 deployment target.
+- Modern build validation: Xcode 26.x with iOS 26 SDK.
+- Keep target facts separate from product requirements: the original GameStore target declares minimum iOS `15.0`.
+- Any API introduced after iOS 13 must be guarded or replaced with an iOS 13-compatible path.
+
 ## Verified target facts
 
 Target main executable SHA-256:
@@ -13,7 +22,7 @@ Static facts:
 - arm64 Mach-O
 - bundle id `com.GameStore.maicha`
 - version `1.2 (1)`
-- minimum iOS `15.0`
+- target minimum iOS `15.0`
 - URL scheme `gamestore`
 - base URL `https://new.iosgame.vip`
 - observed paths:
@@ -62,9 +71,20 @@ The v0.1 signing service intentionally does not sign. It exists to make the reco
 - GitHub Actions Run: `35798677918`
 - Job: `106983783519`
 - Build result: **success**
-- Environment: Xcode 16.4, iPhoneSimulator 18.5, deployment target iOS 15.0.
+- Verified environment: Xcode 16.4, iPhoneSimulator 18.5, deployment target iOS 15.0.
+- New product requirement iOS 13.0–26.x is **recorded but not yet build-verified**.
 - Runtime verification: not performed.
 - Physical-device verification: not performed.
+
+## Next implementation baseline change
+
+Before expanding features:
+1. Set project deployment target to iOS 13.0.
+2. Audit all SwiftUI/Foundation/UIKit APIs for iOS 13 availability.
+3. Replace or guard newer APIs.
+4. Add Xcode 15.4 legacy CI.
+5. Add Xcode 26.x modern SDK CI.
+6. Only mark iOS 13–26 compatibility verified after both build lanes pass and representative runtime/device checks exist.
 
 ## Evidence policy
 

@@ -1,10 +1,9 @@
 {
   "project": "GameStore clean-room reconstruction",
   "repository": "a7987083/newappandweb",
-  "version": "0.1.0-dev",
-  "branch": "feature/gamestore-v0.1-bootstrap",
-  "head_after_compatibility_code": "10cebcfd3e240b0dc7b802f3ef521c688703cc55",
-  "build_verified_commit": "10cebcfd3e240b0dc7b802f3ef521c688703cc55",
+  "version": "0.2.0-dev",
+  "branch": "feature/gamestore-v0.2-ui-protocol",
+  "build_verified_commit": "d48147b9a91475d955395ca4fd43f061e1006119",
   "baseline": {
     "target_bundle_id": "com.GameStore.maicha",
     "target_version": "1.2 (1)",
@@ -18,17 +17,41 @@
     "runtime_status": "not_verified",
     "legacy_toolchain": {
       "xcode": "15.4",
-      "sdk": "iphonesimulator17.5",
       "deployment_target": "13.0",
-      "ci_job_id": 106990507365,
-      "status": "success"
+      "ci_job_id": 106993416990,
+      "status": "build_success"
     },
     "modern_toolchain": {
       "xcode": "26.6",
       "sdk": "iOS 26.x",
-      "ci_job_id": 106990507207,
-      "status": "success"
+      "ci_job_id": 106993416655,
+      "status": "build_success"
     }
+  },
+  "target_evidence": {
+    "ui_static_verified": [
+      "SoftwareView.featuredSection",
+      "SoftwareView.appListSection",
+      "AppRowView",
+      "FeaturedCardView",
+      "SectionHeader",
+      "AppDetailView"
+    ],
+    "protocol_static_verified": [
+      "APIService.fetchApps(page:sortBy:searchQuery:)",
+      "SortOption",
+      "AppListResponse",
+      "items",
+      "current_page",
+      "total_pages"
+    ],
+    "protocol_unverified_details": [
+      "HTTP method",
+      "headers",
+      "exact sort query key",
+      "SortOption wire values",
+      "exact App CodingKeys and field types"
+    ]
   },
   "reference_baselines": [
     {
@@ -37,14 +60,6 @@
       "release": "v3.0.0-alphaone13",
       "commit": "76aebadd826156a1b67d175ea90c88371dc320cf",
       "upstream": "Nyasami/Ksign@03a3a9c86897d79f9faf8106037b9971841d56a0",
-      "areas": [
-        "zsign_signing",
-        "signature_validation",
-        "download_import",
-        "udid_local_server",
-        "url_scheme",
-        "ci_reconstruction"
-      ],
       "evidence_status": "reference_only",
       "license": "GPL-3.0"
     }
@@ -55,11 +70,11 @@
     "project_deployment_target": "13.0"
   },
   "ci": {
-    "status": "success",
-    "run_id": 35800817890,
-    "head_sha": "10cebcfd3e240b0dc7b802f3ef521c688703cc55",
-    "legacy_ios13_job_id": 106990507365,
-    "modern_ios26_job_id": 106990507207
+    "status": "build_steps_success",
+    "run_id": 35801743955,
+    "head_sha": "d48147b9a91475d955395ca4fd43f061e1006119",
+    "legacy_ios13_job_id": 106993416990,
+    "modern_ios26_job_id": 106993416655
   },
   "runtime": {
     "status": "not_verified"
@@ -68,9 +83,10 @@
     "status": "not_verified"
   },
   "regression": {
-    "build_matrix": "verified",
-    "runtime_matrix": "not_verified"
+    "build_matrix": "verified_for_v0.2_code",
+    "runtime_matrix": "not_verified",
+    "visual_parity": "not_verified"
   },
-  "phase": "Phase 1 - Protocol recovery",
-  "next_task": "Recover the exact /apps/api/app-list/ request method, headers, response envelope and model fields/CodingKeys from GameStore target evidence while keeping both compatibility CI lanes green."
+  "phase": "Phase 1 protocol recovery + Phase 5 first UI structural pass",
+  "next_task": "Recover the exact /apps/api/app-list/ HTTP method, headers, query keys, SortOption wire values and exact App model CodingKeys/types from target evidence, then add fixtures and continue visual parity work without losing iOS 13 compatibility."
 }

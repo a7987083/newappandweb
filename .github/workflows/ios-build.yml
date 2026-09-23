@@ -32,12 +32,53 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build | tee xcodebuild-legacy.log
 
-      - name: Upload legacy build log
+      - name: Build unsigned device app
+        run: |
+          set -o pipefail
+          rm -rf DerivedDataDevice
+          xcodebuild \
+            -project GameStore.xcodeproj \
+            -scheme GameStore \
+            -configuration Debug \
+            -sdk iphoneos \
+            -derivedDataPath DerivedDataDevice \
+            IPHONEOS_DEPLOYMENT_TARGET=13.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build | tee xcodebuild-device.log
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="DerivedDataDevice/Build/Products/Debug-iphoneos/GameStore.app"
+          test -d "$APP_PATH"
+          rm -rf ipa
+          mkdir -p ipa/Payload
+          cp -R "$APP_PATH" ipa/Payload/GameStore.app
+          (
+            cd ipa
+            /usr/bin/zip -qry ../GameStore-v0.2-dev-unsigned.ipa Payload
+          )
+          /usr/bin/unzip -l GameStore-v0.2-dev-unsigned.ipa | tee ipa-contents.log
+          test -s GameStore-v0.2-dev-unsigned.ipa
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameStore-v0.2-dev-unsigned-ipa
+          path: GameStore-v0.2-dev-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Upload legacy build logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: xcodebuild-legacy-log
-          path: xcodebuild-legacy.log
+          name: xcodebuild-legacy-logs
+          path: |
+            xcodebuild-legacy.log
+            xcodebuild-device.log
+            ipa-contents.log
+          if-no-files-found: ignore
 
   modern-ios26:
     name: Modern iOS 26 SDK / Xcode 26.6

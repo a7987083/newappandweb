@@ -22,28 +22,41 @@ struct AppItem: Identifiable, Codable, Hashable {
 
 struct AppListResponse: Codable {
     let apps: [AppItem]
+    let currentPage: Int?
+    let totalPages: Int?
 
     enum CodingKeys: String, CodingKey {
         case apps
+        case items
         case results
         case data
+        case currentPage = "current_page"
+        case totalPages = "total_pages"
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        if let apps = try? container.decode([AppItem].self, forKey: .apps) {
-            self.apps = apps
-        } else if let apps = try? container.decode([AppItem].self, forKey: .results) {
-            self.apps = apps
-        } else if let apps = try? container.decode([AppItem].self, forKey: .data) {
-            self.apps = apps
+
+        if let value = try? container.decode([AppItem].self, forKey: .items) {
+            apps = value
+        } else if let value = try? container.decode([AppItem].self, forKey: .apps) {
+            apps = value
+        } else if let value = try? container.decode([AppItem].self, forKey: .results) {
+            apps = value
+        } else if let value = try? container.decode([AppItem].self, forKey: .data) {
+            apps = value
         } else {
-            self.apps = []
+            apps = []
         }
+
+        currentPage = try? container.decode(Int.self, forKey: .currentPage)
+        totalPages = try? container.decode(Int.self, forKey: .totalPages)
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(apps, forKey: .apps)
+        try container.encode(apps, forKey: .items)
+        try container.encodeIfPresent(currentPage, forKey: .currentPage)
+        try container.encodeIfPresent(totalPages, forKey: .totalPages)
     }
 }

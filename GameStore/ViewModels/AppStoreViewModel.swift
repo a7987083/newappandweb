@@ -4,6 +4,9 @@ import Combine
 final class AppStoreViewModel: ObservableObject {
     @Published var apps: [AppItem] = []
     @Published var searchText = ""
+    @Published var selectedSort: SortOption = .default
+    @Published var currentPage = 1
+    @Published var totalPages = 1
     @Published var isLoading = false
     @Published var errorMessage: String?
 
@@ -17,7 +20,8 @@ final class AppStoreViewModel: ObservableObject {
     }
 
     var featuredApps: [AppItem] {
-        Array(apps.prefix(5))
+        let hot = apps.filter { $0.isHot }
+        return Array((hot.isEmpty ? apps : hot).prefix(5))
     }
 
     var filteredApps: [AppItem] {
@@ -34,16 +38,27 @@ final class AppStoreViewModel: ObservableObject {
     }
 
     func reload() {
+        fetchPage(1, replacing: true)
+    }
+
+    func fetchPage(_ page: Int, replacing: Bool) {
         guard !isLoading else { return }
         isLoading = true
 
-        api.fetchApps { [weak self] result in
+        let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        api.fetchApps(
+            page: page,
+            sortBy: selectedSort,
+            searchQuery: trimmedSearch.isEmpty ? nil : trimmedSearch
+        ) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.isLoading = false
                 switch result {
-                case .success(let apps):
-                    self.apps = apps
+                case .success(let response):
+                    self.apps = replacing ? response.data : self.apps + response.data
+                    self.currentPage = response.currentPage
+                    self.totalPages = response.totalPages
                     self.errorMessage = nil
                 case .failure(let error):
                     self.errorMessage = String(describing: error)

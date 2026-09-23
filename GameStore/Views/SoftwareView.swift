@@ -7,7 +7,13 @@ struct SoftwareView: View {
         NavigationView {
             Group {
                 if store.isLoading && store.apps.isEmpty {
-                    ProgressView("正在载入…")
+                    VStack(spacing: 10) {
+                        Text("正在载入…")
+                            .font(.headline)
+                        Text("请稍候")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 } else {
                     List(store.apps) { app in
                         NavigationLink(destination: AppDetailView(app: app)) {
@@ -15,26 +21,27 @@ struct SoftwareView: View {
                                 Text(app.name).font(.headline)
                                 Text(app.developer ?? "未知开发者")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundColor(.secondary)
                             }
                         }
                     }
-                    .refreshable { await store.reload() }
                 }
             }
-            .navigationTitle("精品软件")
-            .task {
+            .navigationBarTitle("精品软件")
+            .onAppear {
                 if store.apps.isEmpty {
-                    await store.reload()
+                    store.reload()
                 }
             }
-            .alert("错误", isPresented: Binding(
+            .alert(isPresented: Binding(
                 get: { store.errorMessage != nil },
                 set: { if !$0 { store.errorMessage = nil } }
             )) {
-                Button("确定", role: .cancel) {}
-            } message: {
-                Text(store.errorMessage ?? "")
+                Alert(
+                    title: Text("错误"),
+                    message: Text(store.errorMessage ?? ""),
+                    dismissButton: .default(Text("确定"))
+                )
             }
         }
     }
@@ -45,7 +52,7 @@ struct AppDetailView: View {
 
     var body: some View {
         List {
-            Section("简介") {
+            Section(header: Text("简介")) {
                 Text(app.summary ?? "暂无详细介绍")
             }
             Section {
@@ -53,14 +60,14 @@ struct AppDetailView: View {
                 keyValueRow("开发者", app.developer ?? "未知")
             }
         }
-        .navigationTitle(app.name)
+        .navigationBarTitle(app.name)
     }
 
     private func keyValueRow(_ key: String, _ value: String) -> some View {
         HStack {
             Text(key)
             Spacer()
-            Text(value).foregroundStyle(.secondary)
+            Text(value).foregroundColor(.secondary)
         }
     }
 }

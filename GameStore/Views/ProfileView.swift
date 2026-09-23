@@ -65,8 +65,8 @@ struct ProfileView: View {
                     }
                 }
             }
-            .listStyle(InsetGroupedListStyle())
-            .navigationBarTitle("个人中心", displayMode: .large)
+            .listStyle(GroupedListStyle())
+            .navigationBarTitle("个人中心")
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
@@ -119,7 +119,7 @@ private struct AboutView: View {
                 .foregroundColor(.secondary)
         }
         .padding(.top, 50)
-        .navigationBarTitle("GameStore", displayMode: .inline)
+        .navigationBarTitle("GameStore")
     }
 }
 
@@ -138,6 +138,6 @@ private struct PlaceholderView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 28)
         }
-        .navigationBarTitle(title, displayMode: .inline)
+        .navigationBarTitle(title)
     }
 }

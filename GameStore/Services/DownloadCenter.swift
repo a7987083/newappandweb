@@ -1,7 +1,6 @@
 import Foundation
 import Combine
 
-@MainActor
 final class DownloadCenter: ObservableObject {
     enum State: String {
         case queued, downloading, paused, completed, failed, cancelled

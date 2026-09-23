@@ -3,7 +3,8 @@
   "repository": "a7987083/newappandweb",
   "version": "0.1.0-dev",
   "branch": "feature/gamestore-v0.1-bootstrap",
-  "build_verified_commit": "0ad791c9bc1abd544ee19303684d459b0470f6c7",
+  "head_after_compatibility_code": "10cebcfd3e240b0dc7b802f3ef521c688703cc55",
+  "build_verified_commit": "10cebcfd3e240b0dc7b802f3ef521c688703cc55",
   "baseline": {
     "target_bundle_id": "com.GameStore.maicha",
     "target_version": "1.2 (1)",
@@ -13,15 +14,20 @@
   "product_compatibility": {
     "minimum_ios": "13.0",
     "maximum_ios_generation": "26.x",
-    "status": "requirement_recorded_not_build_verified",
+    "status": "dual_toolchain_build_verified",
+    "runtime_status": "not_verified",
     "legacy_toolchain": {
       "xcode": "15.4",
-      "swift": "5.10",
-      "deployment_target": "13.0"
+      "sdk": "iphonesimulator17.5",
+      "deployment_target": "13.0",
+      "ci_job_id": 106990507365,
+      "status": "success"
     },
     "modern_toolchain": {
-      "xcode": "26.x",
-      "sdk": "iOS 26.x"
+      "xcode": "26.6",
+      "sdk": "iOS 26.x",
+      "ci_job_id": 106990507207,
+      "status": "success"
     }
   },
   "reference_baselines": [
@@ -44,18 +50,16 @@
     }
   ],
   "build": {
-    "status": "success_previous_ios15_baseline",
+    "status": "success_dual_toolchain",
     "configuration": "Debug",
-    "sdk": "iphonesimulator18.5",
-    "xcode": "16.4",
-    "deployment_target": "15.0"
+    "project_deployment_target": "13.0"
   },
   "ci": {
-    "status": "success_previous_ios15_baseline",
-    "run_id": 35798677918,
-    "job_id": 106983783519,
-    "legacy_ios13_lane": "not_created",
-    "modern_ios26_lane": "not_created"
+    "status": "success",
+    "run_id": 35800817890,
+    "head_sha": "10cebcfd3e240b0dc7b802f3ef521c688703cc55",
+    "legacy_ios13_job_id": 106990507365,
+    "modern_ios26_job_id": 106990507207
   },
   "runtime": {
     "status": "not_verified"
@@ -63,6 +67,10 @@
   "device": {
     "status": "not_verified"
   },
-  "phase": "Compatibility baseline conversion before Phase 1 continuation",
-  "next_task": "Lower project deployment target to iOS 13.0, audit availability, add Xcode 15.4 and Xcode 26.x CI lanes, then resume exact GameStore app-list protocol recovery."
+  "regression": {
+    "build_matrix": "verified",
+    "runtime_matrix": "not_verified"
+  },
+  "phase": "Phase 1 - Protocol recovery",
+  "next_task": "Recover the exact /apps/api/app-list/ request method, headers, response envelope and model fields/CodingKeys from GameStore target evidence while keeping both compatibility CI lanes green."
 }

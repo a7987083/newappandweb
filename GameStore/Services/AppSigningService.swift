@@ -3,8 +3,9 @@ import Foundation
 protocol AppSigning {
     func sign(
         request: SigningRequest,
-        progress: @escaping @Sendable (SigningState) -> Void
-    ) async throws -> SignedArtifact
+        progress: @escaping (SigningState) -> Void,
+        completion: @escaping (Result<SignedArtifact, Error>) -> Void
+    )
 }
 
 enum SigningServiceError: LocalizedError {
@@ -21,9 +22,10 @@ enum SigningServiceError: LocalizedError {
 final class AppSigningService: AppSigning {
     func sign(
         request: SigningRequest,
-        progress: @escaping @Sendable (SigningState) -> Void
-    ) async throws -> SignedArtifact {
+        progress: @escaping (SigningState) -> Void,
+        completion: @escaping (Result<SignedArtifact, Error>) -> Void
+    ) {
         progress(.prepareContext)
-        throw SigningServiceError.implementationPending
+        completion(.failure(SigningServiceError.implementationPending))
     }
 }

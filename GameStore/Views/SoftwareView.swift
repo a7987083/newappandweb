@@ -26,7 +26,7 @@ struct SoftwareView: View {
                     }
                 }
             }
-            .navigationBarTitle("精品软件", displayMode: .large)
+            .navigationBarTitle("精品软件")
             .navigationBarItems(trailing: Button(action: store.reload) {
                 Image(systemName: "arrow.clockwise")
             })
@@ -226,7 +226,7 @@ struct AppDetailView: View {
             .padding(16)
         }
         .background(Color(UIColor.systemGroupedBackground).edgesIgnoringSafeArea(.all))
-        .navigationBarTitle(app.name, displayMode: .inline)
+        .navigationBarTitle(app.name)
     }
 }
 

@@ -7,8 +7,10 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
     static let shared = UDIDService()
 
     static let didUpdateNotification = Notification.Name("GameStoreUDIDDidUpdate")
-    private static let storageKey = "gamestore.deviceUDID"
-    private static let pendingCallbackKey = "gamestore.pendingUDIDCallback"
+    private static let storageKey = "zonoe.deviceUDID"
+    private static let pendingCallbackKey = "zonoe.pendingUDIDCallback"
+    private static let legacyStorageKey = "gamestore.deviceUDID"
+    private static let legacyPendingCallbackKey = "gamestore.pendingUDIDCallback"
 
     @Published private(set) var udid: String?
 
@@ -16,7 +18,23 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
 
     private override init() {
-        udid = UserDefaults.standard.string(forKey: Self.storageKey)
+        let defaults = UserDefaults.standard
+
+        if defaults.string(forKey: Self.storageKey) == nil,
+           let legacyUDID = defaults.string(forKey: Self.legacyStorageKey),
+           !legacyUDID.isEmpty {
+            defaults.set(legacyUDID, forKey: Self.storageKey)
+            defaults.removeObject(forKey: Self.legacyStorageKey)
+        }
+
+        if defaults.string(forKey: Self.pendingCallbackKey) == nil,
+           let legacyCallback = defaults.string(forKey: Self.legacyPendingCallbackKey),
+           !legacyCallback.isEmpty {
+            defaults.set(legacyCallback, forKey: Self.pendingCallbackKey)
+            defaults.removeObject(forKey: Self.legacyPendingCallbackKey)
+        }
+
+        udid = defaults.string(forKey: Self.storageKey)
         super.init()
 
         NotificationCenter.default.addObserver(

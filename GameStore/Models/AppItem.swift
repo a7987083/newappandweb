@@ -21,7 +21,12 @@ struct AppItem: Identifiable, Codable, Hashable {
         screenshots: [String],
         alistURL: String?,
         isPermanentVIPOnly: Bool,
-        isHot: Bool
+        isHot: Bool,
+        sourceURL: String? = nil,
+        sourcePayURL: String? = nil,
+        sourceUnlockURL: String? = nil,
+        sourceNeedsUnlock: Bool? = nil,
+        sourceAppType: Int? = nil
     ) {
         self.appID = appID
         self.appName = appName
@@ -38,6 +43,11 @@ struct AppItem: Identifiable, Codable, Hashable {
         self.alistURL = alistURL
         self.isPermanentVIPOnly = isPermanentVIPOnly
         self.isHot = isHot
+        self.sourceURL = sourceURL
+        self.sourcePayURL = sourcePayURL
+        self.sourceUnlockURL = sourceUnlockURL
+        self.sourceNeedsUnlock = sourceNeedsUnlock
+        self.sourceAppType = sourceAppType
     }
 
     let appID: Int
@@ -55,6 +65,11 @@ struct AppItem: Identifiable, Codable, Hashable {
     let alistURL: String?
     let isPermanentVIPOnly: Bool
     let isHot: Bool
+    let sourceURL: String?
+    let sourcePayURL: String?
+    let sourceUnlockURL: String?
+    let sourceNeedsUnlock: Bool?
+    let sourceAppType: Int?
 
     var id: Int { appID }
 
@@ -83,6 +98,11 @@ struct AppItem: Identifiable, Codable, Hashable {
         case alistURL = "alist_url"
         case isPermanentVIPOnly = "is_permanent_vip_only"
         case isHot = "is_hot"
+        case sourceURL = "_source_url"
+        case sourcePayURL = "_source_pay_url"
+        case sourceUnlockURL = "_source_unlock_url"
+        case sourceNeedsUnlock = "_source_needs_unlock"
+        case sourceAppType = "_source_app_type"
     }
 
     init(from decoder: Decoder) throws {
@@ -115,6 +135,11 @@ struct AppItem: Identifiable, Codable, Hashable {
         alistURL = Self.decodeString(container, key: .alistURL)
         isPermanentVIPOnly = Self.decodeBool(container, key: .isPermanentVIPOnly) ?? false
         isHot = Self.decodeBool(container, key: .isHot) ?? false
+        sourceURL = Self.decodeString(container, key: .sourceURL)
+        sourcePayURL = Self.decodeString(container, key: .sourcePayURL)
+        sourceUnlockURL = Self.decodeString(container, key: .sourceUnlockURL)
+        sourceNeedsUnlock = Self.decodeBool(container, key: .sourceNeedsUnlock)
+        sourceAppType = Self.decodeInt(container, key: .sourceAppType)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -134,6 +159,11 @@ struct AppItem: Identifiable, Codable, Hashable {
         try container.encodeIfPresent(alistURL, forKey: .alistURL)
         try container.encode(isPermanentVIPOnly, forKey: .isPermanentVIPOnly)
         try container.encode(isHot, forKey: .isHot)
+        try container.encodeIfPresent(sourceURL, forKey: .sourceURL)
+        try container.encodeIfPresent(sourcePayURL, forKey: .sourcePayURL)
+        try container.encodeIfPresent(sourceUnlockURL, forKey: .sourceUnlockURL)
+        try container.encodeIfPresent(sourceNeedsUnlock, forKey: .sourceNeedsUnlock)
+        try container.encodeIfPresent(sourceAppType, forKey: .sourceAppType)
     }
 
     private static func decodeInt(

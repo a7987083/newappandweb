@@ -3,7 +3,7 @@ import Combine
 import UIKit
 import SafariServices
 
-final class UDIDService: ObservableObject {
+final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDelegate {
     static let shared = UDIDService()
 
     static let didUpdateNotification = Notification.Name("GameStoreUDIDDidUpdate")
@@ -14,8 +14,9 @@ final class UDIDService: ObservableObject {
     private var localServer: UDIDLocalServer?
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
 
-    private init() {
+    private override init() {
         udid = UserDefaults.standard.string(forKey: Self.storageKey)
+        super.init()
 
         NotificationCenter.default.addObserver(
             forName: .gameStoreDidOpenURL,
@@ -49,8 +50,36 @@ final class UDIDService: ObservableObject {
             }
 
             let safari = SFSafariViewController(url: url)
+            safari.delegate = self
             safari.modalPresentationStyle = .pageSheet
             presenter.present(safari, animated: true)
+        }
+    }
+
+
+    func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
+        openDownloadedProfileSettings()
+    }
+
+    private func openDownloadedProfileSettings() {
+        let candidates = [
+            "App-prefs:root=General&path=ManagedConfigurationList/PurgatoryInstallRequested",
+            "App-prefs:root=General&path=ManagedConfigurationList"
+        ]
+
+        openSettingsCandidate(candidates, index: 0)
+    }
+
+    private func openSettingsCandidate(_ candidates: [String], index: Int) {
+        guard index < candidates.count, let url = URL(string: candidates[index]) else {
+            guard let fallback = URL(string: UIApplication.openSettingsURLString) else { return }
+            UIApplication.shared.open(fallback, options: [:], completionHandler: nil)
+            return
+        }
+
+        UIApplication.shared.open(url, options: [:]) { success in
+            guard !success else { return }
+            self.openSettingsCandidate(candidates, index: index + 1)
         }
     }
 

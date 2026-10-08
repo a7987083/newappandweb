@@ -238,7 +238,7 @@ private struct SourcesView: View {
                     .edgesIgnoringSafeArea(.all)
 
                 VStack(spacing: 12) {
-                    ActivityIndicator()
+                    SourceActivityIndicator()
                         .frame(width: 30, height: 30)
                     Text("正在添加软件源")
                         .font(.headline)
@@ -346,6 +346,16 @@ private struct SourcesView: View {
 
         return current
     }
+}
+
+private struct SourceActivityIndicator: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIActivityIndicatorView {
+        let view = UIActivityIndicatorView(style: .medium)
+        view.startAnimating()
+        return view
+    }
+
+    func updateUIView(_ uiView: UIActivityIndicatorView, context: Context) {}
 }
 
 private struct PlaceholderView: View {

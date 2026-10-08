@@ -248,8 +248,8 @@ private struct DownloadActionButton: View {
                 switch item.state {
                 case .queued, .downloading:
                     HStack(spacing: 6) {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle())
+                        ActivityIndicator()
+                            .frame(width: 18, height: 18)
                         Text("\(Int(item.progress * 100))%")
                             .font(.subheadline)
                             .fontWeight(.semibold)
@@ -258,12 +258,14 @@ private struct DownloadActionButton: View {
                     .padding(.vertical, 8)
 
                 case .completed:
-                    Label("已导入", systemImage: "checkmark.circle.fill")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.green)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
+                    HStack(spacing: 5) {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("已导入")
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(.green)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
 
                 case .failed:
                     Button(action: startDownload) {

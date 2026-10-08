@@ -51,10 +51,17 @@ final class SourceRepositoryLoader {
                 return
             }
 
-            do {
-                completion(.success(try Self.decode(data, sourceURL: url)))
-            } catch {
-                completion(.failure(error))
+            QNQSourcePayloadDecoder.decode(data) { decodedResult in
+                switch decodedResult {
+                case .success(let decodedData):
+                    do {
+                        completion(.success(try Self.decode(decodedData, sourceURL: url)))
+                    } catch {
+                        completion(.failure(error))
+                    }
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
         }.resume()
     }

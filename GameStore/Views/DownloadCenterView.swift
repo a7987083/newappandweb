@@ -33,9 +33,16 @@ struct DownloadCenterView: View {
                                 }
                             }
                             .frame(height: 4)
-                            Text("\(Int(item.progress * 100))% · \(item.state.rawValue)")
+                            Text(statusText(for: item))
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(item.state == .failed ? .red : .secondary)
+
+                            if let localURL = item.localURL, item.state == .completed {
+                                Text(localURL.lastPathComponent)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                            }
                         }
                         .padding(.vertical, 4)
                     }
@@ -43,5 +50,22 @@ struct DownloadCenterView: View {
             }
             .navigationBarTitle("下载管理")
         }
+
+    private func statusText(for item: DownloadCenter.Item) -> String {
+        switch item.state {
+        case .queued:
+            return "等待下载"
+        case .downloading:
+            return "\(Int(item.progress * 100))% · 下载中"
+        case .paused:
+            return "已暂停"
+        case .completed:
+            return "100% · 已下载并导入"
+        case .failed:
+            return item.errorDescription ?? "下载失败"
+        case .cancelled:
+            return "已取消"
+        }
+    }
     }
 }

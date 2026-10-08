@@ -13,15 +13,34 @@ final class AppStoreViewModel: ObservableObject {
     let downloadCenter = DownloadCenter()
     let udidService = UDIDService.shared
 
-    private let api: APIClient
+    private let sourceStore = SoftwareSourceStore.shared
+    private var cancellables: Set<AnyCancellable> = []
 
     init(api: APIClient = APIService.shared) {
-        self.api = api
+        sourceStore.$apps
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] apps in
+                self?.apps = apps
+            }
+            .store(in: &cancellables)
+
+        sourceStore.$isLoading
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] loading in
+                self?.isLoading = loading
+            }
+            .store(in: &cancellables)
+
+        sourceStore.$errorMessage
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] message in
+                self?.errorMessage = message
+            }
+            .store(in: &cancellables)
     }
 
     var featuredApps: [AppItem] {
-        let hot = apps.filter { $0.isHot }
-        return Array((hot.isEmpty ? apps : hot).prefix(5))
+        Array(apps.prefix(5))
     }
 
     var filteredApps: [AppItem] {
@@ -29,6 +48,7 @@ final class AppStoreViewModel: ObservableObject {
         guard !trimmed.isEmpty else {
             return apps
         }
+
         let needle = trimmed.lowercased()
         return apps.filter {
             $0.name.lowercased().contains(needle)
@@ -38,32 +58,10 @@ final class AppStoreViewModel: ObservableObject {
     }
 
     func reload() {
-        fetchPage(1, replacing: true)
+        sourceStore.reloadAll()
     }
 
     func fetchPage(_ page: Int, replacing: Bool) {
-        guard !isLoading else { return }
-        isLoading = true
-
-        let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        api.fetchApps(
-            page: page,
-            sortBy: selectedSort,
-            searchQuery: trimmedSearch.isEmpty ? nil : trimmedSearch
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                self.isLoading = false
-                switch result {
-                case .success(let response):
-                    self.apps = replacing ? response.data : self.apps + response.data
-                    self.currentPage = response.currentPage
-                    self.totalPages = response.totalPages
-                    self.errorMessage = nil
-                case .failure(let error):
-                    self.errorMessage = String(describing: error)
-                }
-            }
-        }
+        sourceStore.reloadAll()
     }
 }

@@ -13,7 +13,7 @@ struct DownloadCenterView: View {
                             .foregroundColor(.secondary)
                         Text("暂无下载任务")
                             .font(.headline)
-                        Text("在应用详情页验证激活码后，下载任务将显示在这里")
+                        Text("在应用详情页点击获取后，下载任务将显示在这里")
                             .font(.footnote)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
@@ -23,6 +23,7 @@ struct DownloadCenterView: View {
                     List(store.downloadCenter.items) { item in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(item.sourceURL.lastPathComponent)
+
                             GeometryReader { proxy in
                                 ZStack(alignment: .leading) {
                                     Rectangle()
@@ -33,13 +34,14 @@ struct DownloadCenterView: View {
                                 }
                             }
                             .frame(height: 4)
+
                             Text(statusText(for: item))
                                 .font(.caption)
                                 .foregroundColor(item.state == .failed ? .red : .secondary)
 
                             if let localURL = item.localURL, item.state == .completed {
                                 Text(localURL.lastPathComponent)
-                                    .font(.caption2)
+                                    .font(.caption)
                                     .foregroundColor(.secondary)
                                     .lineLimit(1)
                             }
@@ -50,6 +52,7 @@ struct DownloadCenterView: View {
             }
             .navigationBarTitle("下载管理")
         }
+    }
 
     private func statusText(for item: DownloadCenter.Item) -> String {
         switch item.state {
@@ -66,6 +69,5 @@ struct DownloadCenterView: View {
         case .cancelled:
             return "已取消"
         }
-    }
     }
 }

@@ -316,7 +316,7 @@ final class RemoteImageLoader: ObservableObject {
     }
 }
 
-private struct ActivityIndicator: UIViewRepresentable {
+struct ActivityIndicator: UIViewRepresentable {
     func makeUIView(context: Context) -> UIActivityIndicatorView {
         let view = UIActivityIndicatorView(style: .medium)
         view.startAnimating()

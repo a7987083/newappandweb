@@ -188,31 +188,6 @@ private struct AboutView: View {
     }
 }
 
-private final class SoftwareSourceStore: ObservableObject {
-    static let shared = SoftwareSourceStore()
-    private static let storageKey = "zonoe.sources"
-
-    @Published private(set) var sources: [String]
-
-    private init() {
-        sources = UserDefaults.standard.stringArray(forKey: Self.storageKey) ?? []
-    }
-
-    func add(_ value: String) {
-        var updated = sources
-        updated.append(value)
-        UserDefaults.standard.set(updated, forKey: Self.storageKey)
-        sources = updated
-    }
-
-    func remove(at offsets: IndexSet) {
-        var updated = sources
-        updated.remove(atOffsets: offsets)
-        UserDefaults.standard.set(updated, forKey: Self.storageKey)
-        sources = updated
-    }
-}
-
 private struct SourcesView: View {
     @ObservedObject private var sourceStore = SoftwareSourceStore.shared
 
@@ -305,7 +280,13 @@ private struct SourcesView: View {
             return
         }
 
-        sourceStore.add(normalized)
+        sourceStore.add(url) { result in
+            DispatchQueue.main.async {
+                if case .failure(let error) = result {
+                    showError(error.localizedDescription)
+                }
+            }
+        }
     }
 
     private func deleteSources(at offsets: IndexSet) {

@@ -196,46 +196,69 @@ private struct SourcesView: View {
     }
 
     var body: some View {
-        List {
-            if sources.isEmpty {
-                Section {
-                    VStack(spacing: 10) {
-                        Image(systemName: "tray")
-                            .font(.system(size: 34))
-                            .foregroundColor(.secondary)
-                        Text("暂无软件源")
-                            .font(.headline)
-                        Text("点击右上角 + 添加 HTTP/HTTPS 软件源地址")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 24)
-                }
-            } else {
-                Section(header: Text("已添加")) {
-                    ForEach(sources, id: \.self) { value in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(sourceDisplayName(value))
+        ZStack {
+            List {
+                if sources.isEmpty {
+                    Section {
+                        VStack(spacing: 10) {
+                            Image(systemName: "tray")
+                                .font(.system(size: 34))
+                                .foregroundColor(.secondary)
+                            Text("暂无软件源")
                                 .font(.headline)
-                            Text(value)
+                            Text("点击右上角 + 添加 HTTP/HTTPS 软件源地址")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                                .lineLimit(2)
+                                .multilineTextAlignment(.center)
                         }
-                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
                     }
-                    .onDelete(perform: deleteSources)
+                } else {
+                    Section(header: Text("已添加")) {
+                        ForEach(sources, id: \.self) { value in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(sourceDisplayName(value))
+                                    .font(.headline)
+                                Text(value)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(2)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .onDelete(perform: deleteSources)
+                    }
                 }
             }
+            .listStyle(GroupedListStyle())
+
+            if sourceStore.isLoading {
+                Color.black.opacity(0.18)
+                    .edgesIgnoringSafeArea(.all)
+
+                VStack(spacing: 12) {
+                    ActivityIndicator()
+                        .frame(width: 30, height: 30)
+                    Text("正在添加软件源")
+                        .font(.headline)
+                    Text("正在请求并解析软件源…")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 22)
+                .background(Color(UIColor.secondarySystemBackground))
+                .cornerRadius(18)
+                .shadow(radius: 8)
+            }
         }
-        .listStyle(GroupedListStyle())
         .navigationBarTitle("软件源")
         .navigationBarItems(trailing:
             Button(action: presentAddSourceAlert) {
                 Image(systemName: "plus")
             }
+            .disabled(sourceStore.isLoading)
         )
     }
 

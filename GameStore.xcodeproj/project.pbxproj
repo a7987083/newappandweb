@@ -6,6 +6,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B1A2C3D4E5F6012345678901 /* UDIDLocalServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A2C3D4E5F6012345678902 /* UDIDLocalServer.swift */; };
+		B1A2C3D4E5F6012345678903 /* UDIDRequest.mobileconfig in Resources */ = {isa = PBXBuildFile; fileRef = B1A2C3D4E5F6012345678904 /* UDIDRequest.mobileconfig */; };
 		57E7BF5F348BD682C2F48632 /* GameStoreApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D68E78F467EB94B3056A42B4 /* GameStoreApp.swift */; };
 		2EA3F14B18AF484F728245C1 /* AppItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA5E1CB9915A276672B141F /* AppItem.swift */; };
 		CC893E0A2BEC2140C9DC4C48 /* SigningModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE5E269F8DB38CC172D0633D /* SigningModels.swift */; };
@@ -24,6 +26,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		B1A2C3D4E5F6012345678902 /* UDIDLocalServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/UDIDLocalServer.swift; sourceTree = "<group>"; };
+		B1A2C3D4E5F6012345678904 /* UDIDRequest.mobileconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = GameStore/Resources/UDIDRequest.mobileconfig; sourceTree = "<group>"; };
 		D68E78F467EB94B3056A42B4 /* GameStoreApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/App/GameStoreApp.swift; sourceTree = "<group>"; };
 		9CA5E1CB9915A276672B141F /* AppItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Models/AppItem.swift; sourceTree = "<group>"; };
 		CE5E269F8DB38CC172D0633D /* SigningModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Models/SigningModels.swift; sourceTree = "<group>"; };
@@ -53,6 +57,8 @@
 				CE5E269F8DB38CC172D0633D /* SigningModels.swift */,
 				93B86B0C360FA3DF9B857015 /* APIService.swift */,
 				23512DC7C6E4A1B407524CB6 /* UDIDService.swift */,
+				B1A2C3D4E5F6012345678902 /* UDIDLocalServer.swift */,
+				B1A2C3D4E5F6012345678904 /* UDIDRequest.mobileconfig */,
 				5C7B6C50B8DB55809E70C1A6 /* DownloadCenter.swift */,
 				2A2B19A5F9D360CE0B83E05E /* AppSigningService.swift */,
 				02E35CD70AC65FE97C8641DF /* OTAInstallService.swift */,
@@ -77,7 +83,9 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		C3CD36430B8D6470B6AEE3FE /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		C3CD36430B8D6470B6AEE3FE /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (
+				B1A2C3D4E5F6012345678903 /* UDIDRequest.mobileconfig in Resources */,
+			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -87,6 +95,7 @@
 				CC893E0A2BEC2140C9DC4C48 /* SigningModels.swift in Sources */,
 				63CCFE15817FD49B4B34DB26 /* APIService.swift in Sources */,
 				A17DE75B44120741CF22397D /* UDIDService.swift in Sources */,
+				B1A2C3D4E5F6012345678901 /* UDIDLocalServer.swift in Sources */,
 				20F3199E687E78DC28C17C9B /* DownloadCenter.swift in Sources */,
 				7F2B8AD34949855293397653 /* AppSigningService.swift in Sources */,
 				44B4852B131CDF2616DF1E75 /* OTAInstallService.swift in Sources */,

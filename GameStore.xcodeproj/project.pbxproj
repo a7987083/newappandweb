@@ -6,6 +6,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1B2C3D4E5F60718293A4007 /* SoftwareSourceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4008 /* SoftwareSourceStore.swift */; };
 		A1B2C3D4E5F60718293A4005 /* QNQSourcePayloadDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4006 /* QNQSourcePayloadDecoder.swift */; };
 		A1B2C3D4E5F60718293A4001 /* SourceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4002 /* SourceModels.swift */; };
 		A1B2C3D4E5F60718293A4003 /* SourceRepositoryLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4004 /* SourceRepositoryLoader.swift */; };
@@ -29,6 +30,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A1B2C3D4E5F60718293A4008 /* SoftwareSourceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/SoftwareSourceStore.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4006 /* QNQSourcePayloadDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/QNQSourcePayloadDecoder.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4002 /* SourceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/Models/SourceModels.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4004 /* SourceRepositoryLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/SourceRepositoryLoader.swift; sourceTree = "<group>"; };
@@ -65,6 +67,7 @@
 				A1B2C3D4E5F60718293A4002 /* SourceModels.swift */,
 				A1B2C3D4E5F60718293A4004 /* SourceRepositoryLoader.swift */,
 				A1B2C3D4E5F60718293A4006 /* QNQSourcePayloadDecoder.swift */,
+				A1B2C3D4E5F60718293A4008 /* SoftwareSourceStore.swift */,
 				23512DC7C6E4A1B407524CB6 /* UDIDService.swift */,
 				B1A2C3D4E5F6012345678902 /* UDIDLocalServer.swift */,
 				B1A2C3D4E5F6012345678904 /* UDIDRequest.mobileconfig */,
@@ -106,6 +109,7 @@
 				A1B2C3D4E5F60718293A4001 /* SourceModels.swift in Sources */,
 				A1B2C3D4E5F60718293A4003 /* SourceRepositoryLoader.swift in Sources */,
 				A1B2C3D4E5F60718293A4005 /* QNQSourcePayloadDecoder.swift in Sources */,
+				A1B2C3D4E5F60718293A4007 /* SoftwareSourceStore.swift in Sources */,
 				A17DE75B44120741CF22397D /* UDIDService.swift in Sources */,
 				B1A2C3D4E5F6012345678901 /* UDIDLocalServer.swift in Sources */,
 				20F3199E687E78DC28C17C9B /* DownloadCenter.swift in Sources */,

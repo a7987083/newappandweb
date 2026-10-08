@@ -99,28 +99,86 @@ private struct ProfileRow: View {
 }
 
 private struct AboutView: View {
+    private let schemes: [(title: String, value: String, note: String)] = [
+        (
+            "App 内打开网页",
+            "gamestore://web?url=https%3A%2F%2Fexample.com",
+            "在 GameStore 内使用 Safari View 打开 HTTP/HTTPS 网页。"
+        ),
+        (
+            "下载 IPA",
+            "gamestore://download/https%3A%2F%2Fexample.com%2Fapp.ipa",
+            "把 HTTP/HTTPS IPA 地址加入 GameStore 下载队列。"
+        ),
+        (
+            "导入 / 安装 IPA",
+            "gamestore://install/https%3A%2F%2Fexample.com%2Fapp.ipa",
+            "把 HTTP/HTTPS IPA 地址加入现有下载/导入入口。"
+        ),
+        (
+            "UDID Provider",
+            "gamestore://udid?callback=example%3A%2F%2Fcallback",
+            "返回已保存的 UDID；未认证时先完成设备认证，再回调请求方。"
+        )
+    ]
+
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "app.fill")
-                .font(.system(size: 62))
-                .foregroundColor(.accentColor)
-            Text("GameStore")
-                .font(.system(size: 24, weight: .bold))
-            Text("为你精选全球精品应用与游戏，安全可靠，即装即用。")
-                .font(.body)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 28)
-            Text("Version 0.2-dev")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Spacer()
-            Text("© 2025 GameStore Team")
-                .font(.caption)
-                .foregroundColor(.secondary)
+        List {
+            Section {
+                HStack(spacing: 12) {
+                    Image(systemName: "app.fill")
+                        .font(.system(size: 34))
+                        .foregroundColor(.accentColor)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("GameStore")
+                            .font(.headline)
+                        Text("URL Scheme")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section(header: Text("URL Scheme 说明")) {
+                ForEach(schemes.indices, id: \.self) { index in
+                    let item = schemes[index]
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(item.title)
+                            .font(.headline)
+
+                        Text(item.value)
+                            .font(.system(.footnote, design: .monospaced))
+                            .foregroundColor(.primary)
+                            .textSelection(.enabled)
+
+                        HStack(alignment: .top, spacing: 12) {
+                            Text(item.note)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer(minLength: 8)
+                            Button(action: {
+                                UIPasteboard.general.string = item.value
+                                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                            }) {
+                                Label("复制", systemImage: "doc.on.doc")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(BorderlessButtonStyle())
+                        }
+                    }
+                    .padding(.vertical, 5)
+                }
+            }
+
+            Section {
+                Text("Version 0.2-dev")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
-        .padding(.top, 50)
-        .navigationBarTitle("GameStore")
+        .listStyle(GroupedListStyle())
+        .navigationBarTitle("关于我们")
     }
 }
 

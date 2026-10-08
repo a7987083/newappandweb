@@ -4,6 +4,7 @@ import Combine
 final class AppStoreViewModel: ObservableObject {
     @Published var apps: [AppItem] = []
     @Published var searchText = ""
+    @Published private(set) var searchResults: [AppItem] = []
     @Published var selectedSort: SortOption = .default
     @Published var currentPage = 1
     @Published var totalPages = 1
@@ -15,12 +16,15 @@ final class AppStoreViewModel: ObservableObject {
 
     private let sourceStore = SoftwareSourceStore.shared
     private var cancellables: Set<AnyCancellable> = []
+    private var searchGeneration = 0
 
     init(api: APIClient = APIService.shared) {
         sourceStore.$apps
             .receive(on: DispatchQueue.main)
             .sink { [weak self] apps in
-                self?.apps = apps
+                guard let self = self else { return }
+                self.apps = apps
+                self.scheduleSearch()
             }
             .store(in: &cancellables)
 
@@ -37,6 +41,14 @@ final class AppStoreViewModel: ObservableObject {
                 self?.errorMessage = message
             }
             .store(in: &cancellables)
+
+        $searchText
+            .removeDuplicates()
+            .debounce(for: .milliseconds(280), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.scheduleSearch()
+            }
+            .store(in: &cancellables)
     }
 
     var featuredApps: [AppItem] {
@@ -44,17 +56,7 @@ final class AppStoreViewModel: ObservableObject {
     }
 
     var filteredApps: [AppItem] {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return apps
-        }
-
-        let needle = trimmed.lowercased()
-        return apps.filter {
-            $0.name.lowercased().contains(needle)
-            || ($0.developer?.lowercased().contains(needle) ?? false)
-            || ($0.summary?.lowercased().contains(needle) ?? false)
-        }
+        searchResults
     }
 
     func reload() {
@@ -63,5 +65,31 @@ final class AppStoreViewModel: ObservableObject {
 
     func fetchPage(_ page: Int, replacing: Bool) {
         sourceStore.reloadAll()
+    }
+
+    private func scheduleSearch() {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        searchGeneration &+= 1
+        let generation = searchGeneration
+        let snapshot = apps
+
+        guard !query.isEmpty else {
+            searchResults = []
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let needle = query.lowercased()
+            let results = snapshot.filter { app in
+                app.name.lowercased().contains(needle)
+                    || (app.developer?.lowercased().contains(needle) ?? false)
+                    || (app.summary?.lowercased().contains(needle) ?? false)
+            }
+
+            DispatchQueue.main.async {
+                guard let self = self, generation == self.searchGeneration else { return }
+                self.searchResults = results
+            }
+        }
     }
 }

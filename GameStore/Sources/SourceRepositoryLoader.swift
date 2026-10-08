@@ -1,0 +1,269 @@
+import Foundation
+
+final class SourceRepositoryLoader {
+    static let shared = SourceRepositoryLoader()
+
+    private let session: URLSession
+
+    init(session: URLSession = .shared) {
+        self.session = session
+    }
+
+    func fetch(
+        from url: URL,
+        completion: @escaping (Result<SourceRepository, Error>) -> Void
+    ) {
+        guard let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              url.host != nil else {
+            completion(.failure(SourceLoaderError.invalidURL))
+            return
+        }
+
+        var request = URLRequest(
+            url: url,
+            cachePolicy: .reloadIgnoringLocalCacheData,
+            timeoutInterval: 30
+        )
+        request.httpMethod = "GET"
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("zonoe/0.2", forHTTPHeaderField: "User-Agent")
+
+        session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+
+            guard let http = response as? HTTPURLResponse else {
+                completion(.failure(SourceLoaderError.invalidResponse))
+                return
+            }
+
+            guard (200...299).contains(http.statusCode) else {
+                completion(.failure(SourceLoaderError.httpStatus(http.statusCode)))
+                return
+            }
+
+            guard let data = data, !data.isEmpty else {
+                completion(.failure(SourceLoaderError.emptyResponse))
+                return
+            }
+
+            do {
+                completion(.success(try Self.decode(data, sourceURL: url)))
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+
+    static func decode(_ data: Data, sourceURL: URL) throws -> SourceRepository {
+        let object: Any
+        do {
+            object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        } catch {
+            if looksLikeHTML(data) {
+                throw SourceLoaderError.htmlResponse
+            }
+            throw SourceLoaderError.invalidJSON(error.localizedDescription)
+        }
+
+        guard let root = repositoryDictionary(from: object) else {
+            throw SourceLoaderError.unsupportedFormat
+        }
+
+        if root["appstore"] is String || root["appstore_v2"] is String {
+            throw SourceLoaderError.encryptedPayloadRequiresDecoder
+        }
+
+        let rawApps = appDictionaries(from: root)
+        let sourceName = firstString(root, keys: ["name", "title", "repoName", "sourceName"])
+            ?? sourceURL.host
+            ?? "软件源"
+        let identifier = firstString(root, keys: ["identifier", "id", "bundleIdentifier"])
+            ?? sourceURL.absoluteString
+        let iconURL = firstURL(root, keys: ["iconURL", "icon", "sourceicon", "sourceIcon"])
+
+        let apps = rawApps.compactMap { app in
+            decodeApp(app, sourceURL: sourceURL)
+        }
+
+        return SourceRepository(
+            sourceURL: sourceURL,
+            identifier: identifier,
+            name: sourceName,
+            iconURL: iconURL,
+            apps: apps
+        )
+    }
+
+    private static func repositoryDictionary(from object: Any) -> [String: Any]? {
+        if let dictionary = object as? [String: Any] {
+            if dictionary["apps"] != nil
+                || dictionary["applications"] != nil
+                || dictionary["appstore"] != nil
+                || dictionary["appstore_v2"] != nil {
+                return dictionary
+            }
+
+            for key in ["repository", "repo", "data", "result"] {
+                if let nested = dictionary[key] as? [String: Any],
+                   nested["apps"] != nil || nested["applications"] != nil {
+                    return nested
+                }
+            }
+
+            return dictionary
+        }
+        return nil
+    }
+
+    private static func appDictionaries(from root: [String: Any]) -> [[String: Any]] {
+        for key in ["apps", "applications", "items"] {
+            if let apps = root[key] as? [[String: Any]] {
+                return apps
+            }
+        }
+
+        if let data = root["data"] as? [[String: Any]] {
+            return data
+        }
+
+        return []
+    }
+
+    private static func decodeApp(_ app: [String: Any], sourceURL: URL) -> SourceApp? {
+        let name = firstString(app, keys: [
+            "name", "localizedName", "appName", "app_name", "title"
+        ])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        guard !name.isEmpty else { return nil }
+
+        let identifier = firstString(app, keys: [
+            "bundleIdentifier", "identifier", "bundle_id", "bundleID", "packageName", "package_name", "id"
+        ]) ?? stableFallbackIdentifier(name: name, sourceURL: sourceURL)
+
+        return SourceApp(
+            identifier: identifier,
+            name: name,
+            version: firstString(app, keys: [
+                "version", "versionCode", "versionName", "current_version", "app_version"
+            ]),
+            iconURL: firstURL(app, keys: [
+                "iconURL", "icon", "iconUrl", "icon_url", "artworkURL", "artworkUrl"
+            ]),
+            downloadURL: firstURL(app, keys: [
+                "downloadURL", "downloadUrl", "download_url", "url", "ipa", "ipaURL",
+                "alist_url", "store_url"
+            ]),
+            summary: firstString(app, keys: [
+                "localizedDescription", "description", "desc", "summary", "mod_description"
+            ]),
+            developer: firstString(app, keys: [
+                "developer", "author", "sellerName", "seller", "package_name"
+            ]),
+            minimumOSVersion: firstString(app, keys: [
+                "minimumOSVersion", "minOSVersion", "min_iOS", "support"
+            ]),
+            updatedAt: firstDate(app, keys: [
+                "versionDate", "updatedAt", "updated_at", "date", "mod_update_time"
+            ])
+        )
+    }
+
+    private static func firstString(_ dictionary: [String: Any], keys: [String]) -> String? {
+        for key in keys {
+            guard let value = dictionary[key], !(value is NSNull) else { continue }
+
+            if let string = value as? String {
+                let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { return trimmed }
+            } else if let number = value as? NSNumber {
+                return number.stringValue
+            }
+        }
+        return nil
+    }
+
+    private static func firstURL(_ dictionary: [String: Any], keys: [String]) -> URL? {
+        guard var value = firstString(dictionary, keys: keys) else { return nil }
+        value = value.replacingOccurrences(of: "\\/", with: "/")
+        return URL(string: value)
+    }
+
+    private static func firstDate(_ dictionary: [String: Any], keys: [String]) -> Date? {
+        guard let value = firstString(dictionary, keys: keys) else { return nil }
+
+        if let unix = Double(value) {
+            let seconds = unix > 10_000_000_000 ? unix / 1000 : unix
+            return Date(timeIntervalSince1970: seconds)
+        }
+
+        let iso = ISO8601DateFormatter()
+        if let date = iso.date(from: value) {
+            return date
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        for format in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd"] {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: value) {
+                return date
+            }
+        }
+
+        return nil
+    }
+
+    private static func stableFallbackIdentifier(name: String, sourceURL: URL) -> String {
+        let seed = sourceURL.absoluteString + "|" + name
+        var hash: UInt64 = 1469598103934665603
+        for byte in seed.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1099511628211
+        }
+        return "zonoe.source." + String(hash, radix: 16)
+    }
+
+    private static func looksLikeHTML(_ data: Data) -> Bool {
+        guard let text = String(data: data.prefix(512), encoding: .utf8)?.lowercased() else {
+            return false
+        }
+        return text.contains("<!doctype html") || text.contains("<html")
+    }
+}
+
+enum SourceLoaderError: LocalizedError {
+    case invalidURL
+    case invalidResponse
+    case httpStatus(Int)
+    case emptyResponse
+    case invalidJSON(String)
+    case htmlResponse
+    case unsupportedFormat
+    case encryptedPayloadRequiresDecoder
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL:
+            return "软件源地址无效"
+        case .invalidResponse:
+            return "软件源返回了无效响应"
+        case .httpStatus(let code):
+            return "软件源服务器返回 HTTP \(code)"
+        case .emptyResponse:
+            return "软件源没有返回数据"
+        case .invalidJSON(let message):
+            return "软件源 JSON 无效：\(message)"
+        case .htmlResponse:
+            return "服务器返回了网页，而不是软件源 JSON"
+        case .unsupportedFormat:
+            return "不支持的软件源格式"
+        case .encryptedPayloadRequiresDecoder:
+            return "该软件源使用 QNQ/全能签加密格式，需下一阶段解码器"
+        }
+    }
+}

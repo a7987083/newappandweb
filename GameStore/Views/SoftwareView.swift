@@ -110,9 +110,9 @@ struct FeaturedCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            RemoteAppIcon(url: currentApp.iconURL, size: 78, cornerRadius: 18)
+            RemoteAppIcon(url: app.iconURL, size: 78, cornerRadius: 18)
 
-            Text(currentApp.name)
+            Text(app.name)
                 .font(.headline)
                 .foregroundColor(.primary)
                 .lineLimit(1)

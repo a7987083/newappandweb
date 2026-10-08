@@ -134,7 +134,7 @@ final class SoftwareSourceStore: ObservableObject {
                 for sourceApp in repository.apps {
                     let identity = sourceApp.identifier.lowercased()
                     guard seen.insert(identity).inserted else { continue }
-                    mapped.append(Self.makeAppItem(from: sourceApp))
+                    mapped.append(Self.makeAppItem(from: sourceApp, repository: repository))
                 }
             }
 
@@ -153,7 +153,7 @@ final class SoftwareSourceStore: ObservableObject {
         ISO8601DateFormatter()
     }()
 
-    private static func makeAppItem(from app: SourceApp) -> AppItem {
+    private static func makeAppItem(from app: SourceApp, repository: SourceRepository) -> AppItem {
         AppItem(
             appID: stableIntegerID(app.identifier),
             appName: app.name,
@@ -169,7 +169,12 @@ final class SoftwareSourceStore: ObservableObject {
             screenshots: [],
             alistURL: app.downloadURL?.absoluteString,
             isPermanentVIPOnly: false,
-            isHot: false
+            isHot: false,
+            sourceURL: repository.sourceURL.absoluteString,
+            sourcePayURL: repository.access.payURL?.absoluteString,
+            sourceUnlockURL: repository.access.unlockURL?.absoluteString,
+            sourceNeedsUnlock: app.access.isNeedLock,
+            sourceAppType: app.access.appType
         )
     }
 

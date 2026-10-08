@@ -66,7 +66,7 @@ struct DownloadCenterView: View {
         case .paused:
             return "已暂停"
         case .completed:
-            return "100% · 已下载并导入"
+            return "100% · 已下载"
         case .failed:
             return item.errorDescription ?? "下载失败"
         case .cancelled:

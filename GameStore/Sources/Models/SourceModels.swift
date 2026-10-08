@@ -1,0 +1,21 @@
+import Foundation
+
+struct SourceRepository: Equatable {
+    let sourceURL: URL
+    let identifier: String
+    let name: String
+    let iconURL: URL?
+    let apps: [SourceApp]
+}
+
+struct SourceApp: Equatable {
+    let identifier: String
+    let name: String
+    let version: String?
+    let iconURL: URL?
+    let downloadURL: URL?
+    let summary: String?
+    let developer: String?
+    let minimumOSVersion: String?
+    let updatedAt: Date?
+}

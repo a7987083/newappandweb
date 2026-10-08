@@ -46,8 +46,10 @@ final class SoftwareSourceStore: ObservableObject {
                     self.sources = updatedSources
                     UserDefaults.standard.set(updatedSources, forKey: Self.storageKey)
 
-                    self.repositories.append(repository)
-                    self.rebuildApps()
+                    var updatedRepositories = self.repositories
+                    updatedRepositories.append(repository)
+                    self.repositories = updatedRepositories
+                    self.rebuildApps(from: updatedRepositories)
                     self.errorMessage = nil
                     completion(.success(repository))
 
@@ -70,7 +72,7 @@ final class SoftwareSourceStore: ObservableObject {
         UserDefaults.standard.set(updated, forKey: Self.storageKey)
 
         repositories.removeAll { removedURLs.contains($0.sourceURL.absoluteString) }
-        rebuildApps()
+        rebuildApps(from: repositories)
     }
 
     func reloadAll() {
@@ -111,29 +113,45 @@ final class SoftwareSourceStore: ObservableObject {
 
         group.notify(queue: .main) { [weak self] in
             guard let self = self, generation == self.loadGeneration else { return }
-            self.repositories = loaded.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-            self.rebuildApps()
+            let sortedRepositories = loaded.sorted {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+            self.repositories = sortedRepositories
+            self.rebuildApps(from: sortedRepositories)
             self.isLoading = false
             self.errorMessage = firstError?.localizedDescription
         }
     }
 
-    private func rebuildApps() {
-        var seen = Set<String>()
-        var mapped: [AppItem] = []
+    private func rebuildApps(from repositories: [SourceRepository]) {
+        let snapshot = repositories
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var seen = Set<String>()
+            var mapped: [AppItem] = []
+            mapped.reserveCapacity(snapshot.reduce(0) { $0 + $1.apps.count })
 
-        for repository in repositories {
-            for sourceApp in repository.apps {
-                let identity = sourceApp.identifier.lowercased()
-                guard seen.insert(identity).inserted else { continue }
-                mapped.append(Self.makeAppItem(from: sourceApp))
+            for repository in snapshot {
+                for sourceApp in repository.apps {
+                    let identity = sourceApp.identifier.lowercased()
+                    guard seen.insert(identity).inserted else { continue }
+                    mapped.append(Self.makeAppItem(from: sourceApp))
+                }
+            }
+
+            mapped.sort {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.apps = mapped
             }
         }
-
-        apps = mapped.sorted {
-            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-        }
     }
+
+    private static let sourceDateFormatter: ISO8601DateFormatter = {
+        ISO8601DateFormatter()
+    }()
 
     private static func makeAppItem(from app: SourceApp) -> AppItem {
         AppItem(
@@ -146,7 +164,7 @@ final class SoftwareSourceStore: ObservableObject {
             packageName: app.identifier,
             currentVersion: app.version,
             appVersion: app.version,
-            modUpdateTime: app.updatedAt.map { ISO8601DateFormatter().string(from: $0) },
+            modUpdateTime: app.updatedAt.map { sourceDateFormatter.string(from: $0) },
             fileSize: nil,
             screenshots: [],
             alistURL: app.downloadURL?.absoluteString,

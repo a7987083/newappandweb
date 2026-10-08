@@ -14,7 +14,7 @@
         </array>
     </dict>
     <key>PayloadOrganization</key>
-    <string>GameStore</string>
+    <string>zonoe</string>
     <key>PayloadDisplayName</key>
     <string>获取本机 UDID</string>
     <key>PayloadVersion</key>
@@ -22,9 +22,9 @@
     <key>PayloadUUID</key>
     <string>DB52BA6B-675E-498F-91C2-B34864608494</string>
     <key>PayloadIdentifier</key>
-    <string>com.GameStore.maicha.udid.profile-service</string>
+    <string>com.zonoe.udid.profile-service</string>
     <key>PayloadDescription</key>
-    <string>仅用于向本机 GameStore 返回设备信息</string>
+    <string>仅用于向本机 zonoe 返回设备信息</string>
     <key>PayloadType</key>
     <string>Profile Service</string>
 </dict>

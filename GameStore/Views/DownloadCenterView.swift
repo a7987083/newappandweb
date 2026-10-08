@@ -13,7 +13,7 @@ struct DownloadCenterView: View {
                             .foregroundColor(.secondary)
                         Text("暂无下载任务")
                             .font(.headline)
-                        Text("在应用详情页点击获取后，下载任务将显示在这里")
+                        Text("在应用详情页点击“获取”后，下载任务将显示在这里")
                             .font(.footnote)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
@@ -30,7 +30,10 @@ struct DownloadCenterView: View {
                                         .fill(Color.secondary.opacity(0.2))
                                     Rectangle()
                                         .fill(Color.accentColor)
-                                        .frame(width: proxy.size.width * CGFloat(max(0, min(1, item.progress))))
+                                        .frame(
+                                            width: proxy.size.width
+                                                * CGFloat(max(0, min(1, item.progress)))
+                                        )
                                 }
                             }
                             .frame(height: 4)

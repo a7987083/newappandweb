@@ -110,9 +110,9 @@ struct FeaturedCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            RemoteAppIcon(url: app.iconURL, size: 78, cornerRadius: 18)
+            RemoteAppIcon(url: currentApp.iconURL, size: 78, cornerRadius: 18)
 
-            Text(app.name)
+            Text(currentApp.name)
                 .font(.headline)
                 .foregroundColor(.primary)
                 .lineLimit(1)
@@ -168,6 +168,10 @@ struct AppDetailView: View {
     @EnvironmentObject private var store: AppStoreViewModel
     let app: AppItem
 
+    private var currentApp: AppItem {
+        store.apps.first(where: { $0.id == app.id }) ?? app
+    }
+
     private static func displayUpdateTime(_ rawValue: String?) -> String {
         guard let rawValue = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
               !rawValue.isEmpty else {
@@ -195,13 +199,15 @@ struct AppDetailView: View {
                         Text(app.name)
                             .font(.system(size: 22, weight: .bold))
 
-                        Text(app.developer ?? "GameStore")
+                        Text(currentApp.developer ?? "GameStore")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
 
                         DownloadActionButton(
-                            app: app,
-                            downloadCenter: store.downloadCenter
+                            app: currentApp,
+                            downloadCenter: store.downloadCenter,
+                            udidService: store.udidService,
+                            onUnlocked: store.reload
                         )
                     }
 
@@ -209,18 +215,18 @@ struct AppDetailView: View {
                 }
 
                 HStack(spacing: 0) {
-                    DetailStat(title: "版本", value: app.version ?? "未知版本")
+                    DetailStat(title: "版本", value: currentApp.version ?? "未知版本")
                     Divider().frame(height: 34)
-                    DetailStat(title: "大小", value: app.fileSize ?? "未知大小")
+                    DetailStat(title: "大小", value: currentApp.fileSize ?? "未知大小")
                     Divider().frame(height: 34)
-                    DetailStat(title: "更新", value: Self.displayUpdateTime(app.modUpdateTime))
+                    DetailStat(title: "更新", value: Self.displayUpdateTime(currentApp.modUpdateTime))
                 }
                 .padding(.vertical, 10)
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("简介")
                         .font(.system(size: 20, weight: .bold))
-                    Text(app.summary ?? "暂无详细介绍")
+                    Text(currentApp.summary ?? "暂无详细介绍")
                         .font(.body)
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -229,13 +235,54 @@ struct AppDetailView: View {
             .padding(16)
         }
         .background(Color(UIColor.systemGroupedBackground).edgesIgnoringSafeArea(.all))
-        .navigationBarTitle(app.name)
+        .navigationBarTitle(currentApp.name)
     }
 }
 
 private struct DownloadActionButton: View {
     let app: AppItem
     @ObservedObject var downloadCenter: DownloadCenter
+    @ObservedObject var udidService: UDIDService
+    let onUnlocked: () -> Void
+
+    @State private var showUnlockCode = false
+    @State private var unlockCode = ""
+    @State private var isUnlocking = false
+    @State private var unlockError: String?
+
+    private var sourceURL: URL? {
+        app.sourceURL.flatMap(URL.init(string:))
+    }
+
+    private var unlockURL: URL? {
+        app.sourceUnlockURL.flatMap(URL.init(string:))
+    }
+
+    private var payURL: URL? {
+        app.sourcePayURL.flatMap(URL.init(string:))
+    }
+
+    private var hasGrant: Bool {
+        guard let sourceURL = sourceURL,
+              let udid = udidService.udid,
+              !udid.isEmpty else {
+            return false
+        }
+        return SourceUnlockService.shared.hasGrant(
+            sourceURL: sourceURL,
+            appIdentifier: app.packageName,
+            appName: app.name,
+            udid: udid
+        )
+    }
+
+    private var isLocked: Bool {
+        if let needsUnlock = app.sourceNeedsUnlock {
+            if !needsUnlock { return false }
+            return !hasGrant
+        }
+        return app.downloadURL == nil
+    }
 
     private var item: DownloadCenter.Item? {
         guard let url = app.downloadURL else { return nil }
@@ -244,7 +291,18 @@ private struct DownloadActionButton: View {
 
     var body: some View {
         Group {
-            if let item = item {
+            if isLocked {
+                Button(action: beginUnlock) {
+                    Text("解锁")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 8)
+                        .background(Color.orange)
+                        .clipShape(Capsule())
+                }
+            } else if let item = item {
                 switch item.state {
                 case .queued, .downloading:
                     HStack(spacing: 6) {
@@ -268,49 +326,154 @@ private struct DownloadActionButton: View {
                     .padding(.vertical, 8)
 
                 case .failed:
-                    Button(action: startDownload) {
-                        Text("重试")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 22)
-                            .padding(.vertical, 8)
-                            .background(Color.red)
-                            .clipShape(Capsule())
-                    }
+                    actionButton(title: "重试", background: .red, action: startDownload)
 
                 case .cancelled, .paused:
-                    Button(action: startDownload) {
-                        Text("获取")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 22)
-                            .padding(.vertical, 8)
-                            .background(Color.accentColor)
-                            .clipShape(Capsule())
-                    }
+                    actionButton(title: "获取", background: .accentColor, action: startDownload)
                 }
             } else {
-                Button(action: startDownload) {
-                    Text(app.downloadURL == nil ? "无下载地址" : "获取")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 8)
-                        .background(app.downloadURL == nil ? Color.secondary : Color.accentColor)
-                        .clipShape(Capsule())
-                }
+                actionButton(
+                    title: app.downloadURL == nil ? "暂无下载地址" : "获取",
+                    background: app.downloadURL == nil ? .secondary : .accentColor,
+                    action: startDownload
+                )
                 .disabled(app.downloadURL == nil)
             }
         }
         .buttonStyle(PlainButtonStyle())
+        .sheet(isPresented: $showUnlockCode) {
+            UnlockCodeSheet(
+                code: $unlockCode,
+                isUnlocking: isUnlocking,
+                errorMessage: unlockError,
+                payURL: payURL,
+                onCancel: {
+                    guard !isUnlocking else { return }
+                    showUnlockCode = false
+                    unlockCode = ""
+                    unlockError = nil
+                },
+                onConfirm: unlock
+            )
+        }
+    }
+
+    private func beginUnlock() {
+        unlockError = nil
+
+        guard let udid = udidService.udid, !udid.isEmpty else {
+            udidService.requestProfileConfiguration()
+            return
+        }
+
+        showUnlockCode = true
+    }
+
+    private func unlock() {
+        guard !isUnlocking else { return }
+        guard let sourceURL = sourceURL else {
+            unlockError = "软件源上下文缺失"
+            return
+        }
+        guard let unlockURL = unlockURL else {
+            unlockError = "该软件源未提供解锁接口"
+            return
+        }
+        guard let udid = udidService.udid, !udid.isEmpty else {
+            unlockError = "请先获取本机 UDID"
+            return
+        }
+
+        isUnlocking = true
+        unlockError = nil
+
+        SourceUnlockService.shared.unlock(
+            sourceURL: sourceURL,
+            unlockURL: unlockURL,
+            appIdentifier: app.packageName,
+            appName: app.name,
+            udid: udid,
+            code: unlockCode
+        ) { result in
+            DispatchQueue.main.async {
+                self.isUnlocking = false
+                switch result {
+                case .success:
+                    self.showUnlockCode = false
+                    self.unlockCode = ""
+                    self.unlockError = nil
+                    self.onUnlocked()
+
+                case .failure(let error):
+                    self.unlockError = error.localizedDescription
+                }
+            }
+        }
     }
 
     private func startDownload() {
-        guard let url = app.downloadURL else { return }
+        guard !isLocked, let url = app.downloadURL else { return }
         downloadCenter.enqueue(url)
+    }
+
+    private func actionButton(
+        title: String,
+        background: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 8)
+                .background(background)
+                .clipShape(Capsule())
+        }
+    }
+}
+
+private struct UnlockCodeSheet: View {
+    @Binding var code: String
+    let isUnlocking: Bool
+    let errorMessage: String?
+    let payURL: URL?
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("解锁码")) {
+                    TextField("请输入卡密", text: $code)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                }
+
+                if let errorMessage = errorMessage, !errorMessage.isEmpty {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundColor(.red)
+                    }
+                }
+
+                if let payURL = payURL {
+                    Section {
+                        Button("获取解锁码") {
+                            UIApplication.shared.open(payURL)
+                        }
+                    }
+                }
+            }
+            .navigationBarTitle("解锁软件源", displayMode: .inline)
+            .navigationBarItems(
+                leading: Button("取消", action: onCancel).disabled(isUnlocking),
+                trailing: Button(isUnlocking ? "验证中…" : "验证", action: onConfirm)
+                    .disabled(isUnlocking || code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            )
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
     }
 }
 

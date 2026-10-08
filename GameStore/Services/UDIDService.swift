@@ -58,29 +58,55 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
 
 
     func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
-        openDownloadedProfileSettings()
+        controller.dismiss(animated: true) { [weak self] in
+            guard let self = self else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.openProfileSettings()
+            }
+        }
     }
 
-    private func openDownloadedProfileSettings() {
+    private func openProfileSettings() {
         let candidates = [
-            "App-prefs:root=General&path=ManagedConfigurationList/PurgatoryInstallRequested",
-            "App-prefs:root=General&path=ManagedConfigurationList"
+            "prefs:root=General&path=ManagedConfigurationList/PurgatoryInstallRequested",
+            "prefs:root=General&path=ManagedConfigurationList",
+            "App-Prefs:root=General&path=ManagedConfigurationList/PurgatoryInstallRequested",
+            "App-Prefs:root=General&path=ManagedConfigurationList"
         ]
 
-        openSettingsCandidate(candidates, index: 0)
+        DispatchQueue.main.async {
+            self.openProfileSettings(candidates, at: 0)
+        }
     }
 
-    private func openSettingsCandidate(_ candidates: [String], index: Int) {
+    private func openProfileSettings(_ candidates: [String], at index: Int) {
         guard index < candidates.count, let url = URL(string: candidates[index]) else {
-            guard let fallback = URL(string: UIApplication.openSettingsURLString) else { return }
-            UIApplication.shared.open(fallback, options: [:], completionHandler: nil)
+            showProfileSettingsFallback()
             return
         }
 
         UIApplication.shared.open(url, options: [:]) { success in
-            guard !success else { return }
-            self.openSettingsCandidate(candidates, index: index + 1)
+            DispatchQueue.main.async {
+                if !success {
+                    self.openProfileSettings(candidates, at: index + 1)
+                }
+            }
         }
+    }
+
+    private func showProfileSettingsFallback() {
+        let alert = UIAlertController(
+            title: "描述文件已下载",
+            message: "请前往“设置 → 通用 → VPN 与设备管理”，安装“获取本机 UDID”。",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "打开设置", style: .default) { _ in
+            guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+            UIApplication.shared.open(url)
+        })
+        guard let presenter = Self.topViewController() else { return }
+        presenter.present(alert, animated: true)
     }
 
     private func ensureLocalServerRunning() throws {

@@ -110,8 +110,10 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                 throw DownloadCenterError.httpStatus(response.statusCode)
             }
 
-            try Self.validateIPA(at: location)
-            let destination = try Self.importDestination(for: downloadTask.originalRequest?.url)
+            let destination = try Self.downloadDestination(
+                suggestedFilename: downloadTask.response?.suggestedFilename,
+                sourceURL: downloadTask.originalRequest?.url
+            )
             let fileManager = FileManager.default
 
             if fileManager.fileExists(atPath: destination.path) {
@@ -166,27 +168,10 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         items[index] = item
     }
 
-    private static func validateIPA(at url: URL) throws {
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-        guard let size = attributes[.size] as? NSNumber, size.int64Value > 0 else {
-            throw DownloadCenterError.emptyFile
-        }
-
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
-        let signature = handle.readData(ofLength: 4)
-        let bytes = [UInt8](signature)
-
-        guard bytes.count >= 4,
-              bytes[0] == 0x50,
-              bytes[1] == 0x4B,
-              (bytes[2] == 0x03 || bytes[2] == 0x05 || bytes[2] == 0x07),
-              (bytes[3] == 0x04 || bytes[3] == 0x06 || bytes[3] == 0x08) else {
-            throw DownloadCenterError.invalidIPA
-        }
-    }
-
-    private static func importDestination(for sourceURL: URL?) throws -> URL {
+    private static func downloadDestination(
+        suggestedFilename: String?,
+        sourceURL: URL?
+    ) throws -> URL {
         let fileManager = FileManager.default
         let root = try fileManager.url(
             for: .applicationSupportDirectory,
@@ -194,29 +179,40 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             appropriateFor: nil,
             create: true
         )
-        let directory = root.appendingPathComponent("ImportedApps", isDirectory: true)
+        let directory = root.appendingPathComponent("Downloads", isDirectory: true)
         try fileManager.createDirectory(
             at: directory,
             withIntermediateDirectories: true,
             attributes: nil
         )
 
-        var fileName = sourceURL?.lastPathComponent ?? "download.ipa"
-        if fileName.isEmpty {
+        var fileName = suggestedFilename?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if fileName == nil || fileName?.isEmpty == true {
+            fileName = sourceURL?.lastPathComponent
+        }
+        if fileName == nil || fileName?.isEmpty == true {
             fileName = "download.ipa"
         }
-        fileName = fileName.replacingOccurrences(of: "/", with: "_")
-        if !fileName.lowercased().hasSuffix(".ipa") {
-            fileName += ".ipa"
-        }
 
-        let base = (fileName as NSString).deletingPathExtension
-        let ext = (fileName as NSString).pathExtension
-        var destination = directory.appendingPathComponent(fileName)
+        let sanitized = fileName!
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "\\", with: "_")
+
+        let base = (sanitized as NSString).deletingPathExtension
+        let ext = (sanitized as NSString).pathExtension
+        var destination = directory.appendingPathComponent(sanitized)
         var suffix = 2
 
         while fileManager.fileExists(atPath: destination.path) {
-            destination = directory.appendingPathComponent("\(base)-\(suffix).\(ext)")
+            let candidate: String
+            if ext.isEmpty {
+                candidate = "\(base)-\(suffix)"
+            } else {
+                candidate = "\(base)-\(suffix).\(ext)"
+            }
+            destination = directory.appendingPathComponent(candidate)
             suffix += 1
         }
 
@@ -226,17 +222,11 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
 
 enum DownloadCenterError: LocalizedError {
     case httpStatus(Int)
-    case emptyFile
-    case invalidIPA
 
     var errorDescription: String? {
         switch self {
         case .httpStatus(let code):
             return "下载服务器返回 HTTP \(code)"
-        case .emptyFile:
-            return "下载文件为空"
-        case .invalidIPA:
-            return "下载内容不是有效的 IPA/ZIP 文件"
         }
     }
 }

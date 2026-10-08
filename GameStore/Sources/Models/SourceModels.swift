@@ -1,10 +1,22 @@
 import Foundation
 
+struct SourceAccessMetadata: Equatable {
+    let payURL: URL?
+    let unlockURL: URL?
+    let legacyKey: String?
+}
+
+struct SourceAppAccessMetadata: Equatable {
+    let isNeedLock: Bool?
+    let appType: Int?
+}
+
 struct SourceRepository: Equatable {
     let sourceURL: URL
     let identifier: String
     let name: String
     let iconURL: URL?
+    let access: SourceAccessMetadata
     let apps: [SourceApp]
 }
 
@@ -20,4 +32,5 @@ struct SourceApp: Equatable {
     let developer: String?
     let minimumOSVersion: String?
     let updatedAt: Date?
+    let access: SourceAppAccessMetadata
 }

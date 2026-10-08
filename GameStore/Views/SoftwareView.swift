@@ -277,11 +277,22 @@ private struct DownloadActionButton: View {
     }
 
     private var isLocked: Bool {
+        // Server-authoritative path: when the repository is fetched with the
+        // current UDID, an authorised app exposes its download URL even if the
+        // source keeps its lock flag set.
+        if app.downloadURL != nil {
+            return false
+        }
+
         if let needsUnlock = app.sourceNeedsUnlock {
             if !needsUnlock { return false }
+
+            // Legacy fallback for sources whose unlock state is represented
+            // only by the local grant after a successful redemption.
             return !hasGrant
         }
-        return app.downloadURL == nil
+
+        return true
     }
 
     private var item: DownloadCenter.Item? {

@@ -127,7 +127,7 @@ final class UDIDLocalServer {
             }
 
             var callback = URLComponents()
-            callback.scheme = "gamestore"
+            callback.scheme = "zonoe"
             callback.host = "udid-complete"
             callback.queryItems = [URLQueryItem(name: "udid", value: udid)]
 

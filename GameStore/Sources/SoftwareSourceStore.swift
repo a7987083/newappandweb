@@ -157,7 +157,7 @@ final class SoftwareSourceStore: ObservableObject {
         AppItem(
             appID: stableIntegerID(app.identifier),
             appName: app.name,
-            modDescription: app.summary,
+            modDescription: app.summary ?? app.releaseNotes,
             icon: app.iconURL?.absoluteString,
             storeURL: app.downloadURL?.absoluteString,
             appStoreURL: nil,
@@ -165,7 +165,7 @@ final class SoftwareSourceStore: ObservableObject {
             currentVersion: app.version,
             appVersion: app.version,
             modUpdateTime: app.updatedAt.map { sourceDateFormatter.string(from: $0) },
-            fileSize: nil,
+            fileSize: app.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) },
             screenshots: [],
             alistURL: app.downloadURL?.absoluteString,
             isPermanentVIPOnly: false,

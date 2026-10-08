@@ -3,6 +3,7 @@ import UIKit
 
 struct ProfileView: View {
     @EnvironmentObject private var store: AppStoreViewModel
+    @ObservedObject private var udidService = UDIDService.shared
 
     var body: some View {
         NavigationView {
@@ -13,16 +14,16 @@ struct ProfileView: View {
                             Circle()
                                 .fill(Color.accentColor.opacity(0.14))
                                 .frame(width: 58, height: 58)
-                            Image(systemName: store.udidService.udid == nil ? "iphone.slash" : "checkmark.seal.fill")
+                            Image(systemName: udidService.udid == nil ? "iphone.slash" : "checkmark.seal.fill")
                                 .font(.system(size: 27))
                                 .foregroundColor(.accentColor)
                         }
 
                         VStack(alignment: .leading, spacing: 5) {
-                            Text(store.udidService.udid == nil ? "设备未认证" : "已认证设备")
+                            Text(udidService.udid == nil ? "设备未认证" : "已认证设备")
                                 .font(.headline)
 
-                            if let udid = store.udidService.udid {
+                            if let udid = udidService.udid {
                                 Text(udid)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
@@ -38,9 +39,9 @@ struct ProfileView: View {
                 }
 
                 Section(header: Text("功能")) {
-                    if store.udidService.udid == nil {
+                    if udidService.udid == nil {
                         Button(action: {
-                            store.udidService.requestProfileConfiguration()
+                            udidService.requestProfileConfiguration()
                         }) {
                             ProfileRow(icon: "checkmark.shield", title: "获取认证", subtitle: "安装描述文件并验证设备")
                         }

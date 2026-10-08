@@ -7,23 +7,39 @@ struct SoftwareView: View {
 
     var body: some View {
         NavigationView {
-            ZStack {
-                Color(UIColor.systemGroupedBackground)
-                    .edgesIgnoringSafeArea(.all)
-
+            Group {
                 if store.isLoading && store.apps.isEmpty {
                     loadingPlaceholder
+                } else if store.apps.isEmpty {
+                    emptyPlaceholder
                 } else {
-                    ScrollView {
-                        VStack(spacing: 22) {
-                            if !store.featuredApps.isEmpty {
-                                featuredSection
+                    List {
+                        if !store.featuredApps.isEmpty {
+                            Section(header: Text("热门推荐")) {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 14) {
+                                        ForEach(store.featuredApps) { app in
+                                            NavigationLink(destination: AppDetailView(app: app)) {
+                                                FeaturedCardView(app: app)
+                                            }
+                                            .buttonStyle(PlainButtonStyle())
+                                        }
+                                    }
+                                    .padding(.vertical, 6)
+                                }
                             }
-
-                            appListSection
                         }
-                        .padding(.vertical, 14)
+
+                        Section(header: Text("全部软件")) {
+                            ForEach(store.apps) { app in
+                                NavigationLink(destination: AppDetailView(app: app)) {
+                                    AppRowView(app: app)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
                     }
+                    .listStyle(GroupedListStyle())
                 }
             }
             .navigationBarTitle("精品软件")
@@ -49,48 +65,6 @@ struct SoftwareView: View {
         .navigationViewStyle(StackNavigationViewStyle())
     }
 
-    private var featuredSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "热门推荐")
-                .padding(.horizontal, 16)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 14) {
-                    ForEach(store.featuredApps) { app in
-                        NavigationLink(destination: AppDetailView(app: app)) {
-                            FeaturedCardView(app: app)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-        }
-    }
-
-    private var appListSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "全部软件")
-                .padding(.horizontal, 16)
-
-            VStack(spacing: 0) {
-                ForEach(Array(store.apps.enumerated()), id: \.element.id) { index, app in
-                    NavigationLink(destination: AppDetailView(app: app)) {
-                        AppRowView(app: app)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-
-                    if index != store.apps.count - 1 {
-                        Divider().padding(.leading, 86)
-                    }
-                }
-            }
-            .background(Color(UIColor.secondarySystemGroupedBackground))
-            .cornerRadius(14)
-            .padding(.horizontal, 16)
-        }
-    }
-
     private var loadingPlaceholder: some View {
         VStack(spacing: 12) {
             ActivityIndicator()
@@ -100,6 +74,21 @@ struct SoftwareView: View {
             Text("请稍候")
                 .font(.caption)
                 .foregroundColor(.secondary)
+        }
+    }
+
+    private var emptyPlaceholder: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "square.stack.3d.up.slash")
+                .font(.system(size: 34))
+                .foregroundColor(.secondary)
+            Text("暂无软件")
+                .font(.headline)
+            Text("请先在“个人中心 → 软件源”添加并解析软件源")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
         }
     }
 }

@@ -21,8 +21,10 @@ final class SourceRepositoryLoader {
             return
         }
 
+        let requestURL = Self.sourceRequestURL(from: url)
+
         var request = URLRequest(
-            url: url,
+            url: requestURL,
             cachePolicy: .reloadIgnoringLocalCacheData,
             timeoutInterval: 30
         )
@@ -65,6 +67,21 @@ final class SourceRepositoryLoader {
                 }
             }
         }.resume()
+    }
+
+    private static func sourceRequestURL(from sourceURL: URL) -> URL {
+        let udid = UserDefaults.standard.string(forKey: "zonoe.deviceUDID")?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !udid.isEmpty,
+              var components = URLComponents(url: sourceURL, resolvingAgainstBaseURL: false) else {
+            return sourceURL
+        }
+
+        var items = components.queryItems ?? []
+        items.removeAll { $0.name.caseInsensitiveCompare("udid") == .orderedSame }
+        items.append(URLQueryItem(name: "udid", value: udid))
+        components.queryItems = items
+        return components.url ?? sourceURL
     }
 
     static func decode(_ data: Data, sourceURL: URL) throws -> SourceRepository {

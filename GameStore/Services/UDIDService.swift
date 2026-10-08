@@ -8,6 +8,7 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
 
     static let didUpdateNotification = Notification.Name("GameStoreUDIDDidUpdate")
     private static let storageKey = "gamestore.deviceUDID"
+    private static let pendingCallbackKey = "gamestore.pendingUDIDCallback"
 
     @Published private(set) var udid: String?
 
@@ -26,6 +27,24 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
             guard let url = note.userInfo?["url"] as? URL else { return }
             self?.consumeCallback(url)
         }
+    }
+
+    func handleProviderRequest(_ url: URL) {
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        guard let callbackValue = components?.queryItems?.first(where: {
+            $0.name.caseInsensitiveCompare("callback") == .orderedSame
+        })?.value,
+        let callbackURL = URL(string: callbackValue) else {
+            return
+        }
+
+        if let udid = udid, !udid.isEmpty {
+            openProviderCallback(callbackURL, udid: udid)
+            return
+        }
+
+        UserDefaults.standard.set(callbackURL.absoluteString, forKey: Self.pendingCallbackKey)
+        requestProfileConfiguration()
     }
 
     func requestProfileConfiguration() {
@@ -132,6 +151,30 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
         DispatchQueue.main.async {
             self.udid = value
             NotificationCenter.default.post(name: Self.didUpdateNotification, object: value)
+            self.completePendingProviderCallback(with: value)
+        }
+    }
+
+    private func completePendingProviderCallback(with udid: String) {
+        guard let value = UserDefaults.standard.string(forKey: Self.pendingCallbackKey),
+              let callbackURL = URL(string: value) else {
+            return
+        }
+
+        UserDefaults.standard.removeObject(forKey: Self.pendingCallbackKey)
+        openProviderCallback(callbackURL, udid: udid)
+    }
+
+    private func openProviderCallback(_ callbackURL: URL, udid: String) {
+        guard var components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false) else { return }
+        var items = components.queryItems ?? []
+        items.removeAll { $0.name.caseInsensitiveCompare("udid") == .orderedSame }
+        items.append(URLQueryItem(name: "udid", value: udid))
+        components.queryItems = items
+
+        guard let target = components.url else { return }
+        DispatchQueue.main.async {
+            UIApplication.shared.open(target, options: [:], completionHandler: nil)
         }
     }
 

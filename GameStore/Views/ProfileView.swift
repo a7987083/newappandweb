@@ -358,16 +358,6 @@ private struct SourceActivityIndicator: UIViewRepresentable {
     func updateUIView(_ uiView: UIActivityIndicatorView, context: Context) {}
 }
 
-private struct SourceActivityIndicator: UIViewRepresentable {
-    func makeUIView(context: Context) -> UIActivityIndicatorView {
-        let view = UIActivityIndicatorView(style: .medium)
-        view.startAnimating()
-        return view
-    }
-
-    func updateUIView(_ uiView: UIActivityIndicatorView, context: Context) {}
-}
-
 private struct PlaceholderView: View {
     let title: String
     let message: String

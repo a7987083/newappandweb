@@ -167,6 +167,23 @@ struct AppRowView: View {
 struct AppDetailView: View {
     let app: AppItem
 
+    private static func displayUpdateTime(_ rawValue: String?) -> String {
+        guard let rawValue = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawValue.isEmpty else {
+            return "未知时间"
+        }
+
+        let iso = ISO8601DateFormatter()
+        if let date = iso.date(from: rawValue) {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "zh_CN")
+            formatter.dateFormat = "yyyy-MM-dd"
+            return formatter.string(from: date)
+        }
+
+        return rawValue
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -197,9 +214,9 @@ struct AppDetailView: View {
                 HStack(spacing: 0) {
                     DetailStat(title: "版本", value: app.version ?? "未知版本")
                     Divider().frame(height: 34)
-                    DetailStat(title: "大小", value: "未知大小")
+                    DetailStat(title: "大小", value: app.fileSize ?? "未知大小")
                     Divider().frame(height: 34)
-                    DetailStat(title: "更新", value: "未知时间")
+                    DetailStat(title: "更新", value: Self.displayUpdateTime(app.modUpdateTime))
                 }
                 .padding(.vertical, 10)
 

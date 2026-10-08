@@ -25,7 +25,7 @@ final class GameStoreAppDelegate: UIResponder, UIApplicationDelegate {
         open url: URL,
         options: [UIApplication.OpenURLOptionsKey: Any] = [:]
     ) -> Bool {
-        guard url.scheme?.lowercased() == "gamestore" else { return false }
+        guard url.scheme?.lowercased() == "zonoe" else { return false }
 
         NotificationCenter.default.post(
             name: .gameStoreDidOpenURL,
@@ -47,7 +47,7 @@ final class GameStoreAppDelegate: UIResponder, UIApplicationDelegate {
             presentInAppWeb(target)
 
         case "download", "install":
-            let prefix = "gamestore://\(action)/"
+            let prefix = "zonoe://\(action)/"
             guard url.absoluteString.lowercased().hasPrefix(prefix),
                   let payload = String(url.absoluteString.dropFirst(prefix.count)).removingPercentEncoding,
                   let target = URL(string: payload),

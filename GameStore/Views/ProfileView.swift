@@ -55,6 +55,10 @@ struct ProfileView: View {
                         ProfileRow(icon: "gamecontroller", title: "我的游戏", subtitle: "已激活游戏与激活码")
                     }
 
+                    NavigationLink(destination: SourcesView()) {
+                        ProfileRow(icon: "tray.full", title: "软件源", subtitle: "添加和管理软件源")
+                    }
+
                     NavigationLink(destination: SettingsView()) {
                         ProfileRow(icon: "gearshape", title: "通用设置", subtitle: nil)
                     }
@@ -181,6 +185,141 @@ private struct AboutView: View {
         }
         .listStyle(GroupedListStyle())
         .navigationBarTitle("关于我们")
+    }
+}
+
+private struct SourcesView: View {
+    private static let storageKey = "zonoe.sources"
+
+    @State private var sources: [String] = UserDefaults.standard.stringArray(forKey: storageKey) ?? []
+
+    var body: some View {
+        List {
+            if sources.isEmpty {
+                Section {
+                    VStack(spacing: 10) {
+                        Image(systemName: "tray")
+                            .font(.system(size: 34))
+                            .foregroundColor(.secondary)
+                        Text("暂无软件源")
+                            .font(.headline)
+                        Text("点击右上角 + 添加 HTTP/HTTPS 软件源地址")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+                }
+            } else {
+                Section(header: Text("已添加")) {
+                    ForEach(sources, id: \.self) { value in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(sourceDisplayName(value))
+                                .font(.headline)
+                            Text(value)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(2)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .onDelete(perform: deleteSources)
+                }
+            }
+        }
+        .listStyle(GroupedListStyle())
+        .navigationBarTitle("软件源")
+        .navigationBarItems(trailing:
+            Button(action: presentAddSourceAlert) {
+                Image(systemName: "plus")
+            }
+        )
+    }
+
+    private func presentAddSourceAlert() {
+        let alert = UIAlertController(
+            title: "添加软件源",
+            message: "请输入 HTTP 或 HTTPS 软件源地址",
+            preferredStyle: .alert
+        )
+
+        alert.addTextField { field in
+            field.placeholder = "https://example.com/repo.json"
+            field.keyboardType = .URL
+            field.autocapitalizationType = .none
+            field.autocorrectionType = .no
+            field.clearButtonMode = .whileEditing
+        }
+
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "添加", style: .default) { _ in
+            let value = alert.textFields?.first?.text ?? ""
+            addSource(value)
+        })
+
+        guard let presenter = topViewController() else { return }
+        presenter.present(alert, animated: true)
+    }
+
+    private func addSource(_ rawValue: String) {
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: value),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              url.host != nil else {
+            showError("请输入有效的 HTTP 或 HTTPS 软件源地址。")
+            return
+        }
+
+        let normalized = url.absoluteString
+        guard !sources.contains(normalized) else {
+            showError("该软件源已经添加。")
+            return
+        }
+
+        sources.append(normalized)
+        persistSources()
+    }
+
+    private func deleteSources(at offsets: IndexSet) {
+        sources.remove(atOffsets: offsets)
+        persistSources()
+    }
+
+    private func persistSources() {
+        UserDefaults.standard.set(sources, forKey: Self.storageKey)
+    }
+
+    private func sourceDisplayName(_ value: String) -> String {
+        URL(string: value)?.host ?? "软件源"
+    }
+
+    private func showError(_ message: String) {
+        let alert = UIAlertController(title: "添加软件源失败", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确定", style: .default))
+        guard let presenter = topViewController() else { return }
+        presenter.present(alert, animated: true)
+    }
+
+    private func topViewController() -> UIViewController? {
+        let root = UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.rootViewController
+            ?? UIApplication.shared.windows.first?.rootViewController
+
+        var current = root
+        while let presented = current?.presentedViewController {
+            current = presented
+        }
+
+        if let navigation = current as? UINavigationController {
+            return navigation.visibleViewController ?? navigation
+        }
+
+        if let tab = current as? UITabBarController {
+            return tab.selectedViewController ?? tab
+        }
+
+        return current
     }
 }
 

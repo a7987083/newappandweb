@@ -5,6 +5,41 @@ import Foundation
 /// Static target evidence identifies the server keys below. UI-facing computed
 /// properties keep the rest of the app decoupled from the wire schema.
 struct AppItem: Identifiable, Codable, Hashable {
+
+    init(
+        appID: Int,
+        appName: String,
+        modDescription: String?,
+        icon: String?,
+        storeURL: String?,
+        appStoreURL: String?,
+        packageName: String?,
+        currentVersion: String?,
+        appVersion: String?,
+        modUpdateTime: String?,
+        fileSize: String?,
+        screenshots: [String],
+        alistURL: String?,
+        isPermanentVIPOnly: Bool,
+        isHot: Bool
+    ) {
+        self.appID = appID
+        self.appName = appName
+        self.modDescription = modDescription
+        self.icon = icon
+        self.storeURL = storeURL
+        self.appStoreURL = appStoreURL
+        self.packageName = packageName
+        self.currentVersion = currentVersion
+        self.appVersion = appVersion
+        self.modUpdateTime = modUpdateTime
+        self.fileSize = fileSize
+        self.screenshots = screenshots
+        self.alistURL = alistURL
+        self.isPermanentVIPOnly = isPermanentVIPOnly
+        self.isHot = isHot
+    }
+
     let appID: Int
     let appName: String
     let modDescription: String?

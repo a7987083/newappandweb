@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>PayloadContent</key>
+    <dict>
+        <key>URL</key>
+        <string>http://127.0.0.1:14302/udid</string>
+        <key>DeviceAttributes</key>
+        <array>
+            <string>UDID</string>
+            <string>VERSION</string>
+            <string>PRODUCT</string>
+        </array>
+    </dict>
+    <key>PayloadOrganization</key>
+    <string>GameStore</string>
+    <key>PayloadDisplayName</key>
+    <string>获取本机 UDID</string>
+    <key>PayloadVersion</key>
+    <integer>1</integer>
+    <key>PayloadUUID</key>
+    <string>DB52BA6B-675E-498F-91C2-B34864608494</string>
+    <key>PayloadIdentifier</key>
+    <string>com.GameStore.maicha.udid.profile-service</string>
+    <key>PayloadDescription</key>
+    <string>仅用于向本机 GameStore 返回设备信息</string>
+    <key>PayloadType</key>
+    <string>Profile Service</string>
+</dict>
+</plist>

@@ -158,6 +158,9 @@ final class SourceRepositoryLoader {
             version: firstString(app, keys: [
                 "version", "versionCode", "versionName", "current_version", "app_version"
             ]),
+            size: firstInt64(app, keys: [
+                "size", "fileSize", "file_size"
+            ]),
             iconURL: firstURL(app, keys: [
                 "iconURL", "icon", "iconUrl", "icon_url", "artworkURL", "artworkUrl"
             ]),
@@ -166,7 +169,11 @@ final class SourceRepositoryLoader {
                 "alist_url", "store_url"
             ]),
             summary: firstString(app, keys: [
-                "localizedDescription", "description", "desc", "summary", "mod_description"
+                "localizedDescription", "description", "desc", "summary",
+                "mod_description", "versionDescription", "releaseNotes"
+            ]),
+            releaseNotes: firstString(app, keys: [
+                "versionDescription", "releaseNotes", "release_notes", "whatsNew"
             ]),
             developer: firstString(app, keys: [
                 "developer", "author", "sellerName", "seller", "package_name"
@@ -194,6 +201,24 @@ final class SourceRepositoryLoader {
         return nil
     }
 
+    private static func firstInt64(_ dictionary: [String: Any], keys: [String]) -> Int64? {
+        for key in keys {
+            guard let value = dictionary[key], !(value is NSNull) else { continue }
+
+            if let number = value as? NSNumber {
+                return Int64(number.doubleValue)
+            }
+
+            if let string = value as? String {
+                let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let number = Double(trimmed) {
+                    return Int64(number)
+                }
+            }
+        }
+        return nil
+    }
+
     private static func firstURL(_ dictionary: [String: Any], keys: [String]) -> URL? {
         guard var value = firstString(dictionary, keys: keys) else { return nil }
         value = value.replacingOccurrences(of: "\\/", with: "/")
@@ -215,7 +240,7 @@ final class SourceRepositoryLoader {
 
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        for format in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd"] {
+        for format in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd", "yyyy/MM/dd"] {
             formatter.dateFormat = format
             if let date = formatter.date(from: value) {
                 return date

@@ -329,7 +329,7 @@ private struct DownloadActionButton: View {
                 case .completed:
                     HStack(spacing: 5) {
                         Image(systemName: "checkmark.circle.fill")
-                        Text("已导入")
+                        Text("已下载")
                     }
                     .font(.subheadline)
                     .foregroundColor(.green)
@@ -337,7 +337,15 @@ private struct DownloadActionButton: View {
                     .padding(.vertical, 8)
 
                 case .failed:
-                    actionButton(title: "重试", background: .red, action: startDownload)
+                    VStack(alignment: .leading, spacing: 5) {
+                        actionButton(title: "重试", background: .red, action: startDownload)
+                        if let message = item.errorDescription, !message.isEmpty {
+                            Text(message)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
 
                 case .cancelled, .paused:
                     actionButton(title: "获取", background: .accentColor, action: startDownload)

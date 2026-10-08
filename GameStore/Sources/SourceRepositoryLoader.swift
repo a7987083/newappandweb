@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 final class SourceRepositoryLoader {
     static let shared = SourceRepositoryLoader()
@@ -363,6 +364,236 @@ final class SourceRepositoryLoader {
             return false
         }
         return text.contains("<!doctype html") || text.contains("<html")
+    }
+}
+
+final class SourceUnlockService {
+    static let shared = SourceUnlockService()
+
+    private init() {}
+
+    func hasGrant(sourceURL: URL, appIdentifier: String?, appName: String, udid: String) -> Bool {
+        guard !udid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return UserDefaults.standard.bool(
+            forKey: grantKey(
+                sourceURL: sourceURL,
+                appIdentifier: appIdentifier,
+                appName: appName,
+                udid: udid
+            )
+        )
+    }
+
+    func unlock(
+        sourceURL: URL,
+        unlockURL: URL,
+        appIdentifier: String?,
+        appName: String,
+        udid: String,
+        code: String,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        let cleanUDID = udid.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !cleanUDID.isEmpty else {
+            completion(.failure(UnlockError.missingUDID))
+            return
+        }
+        guard !cleanCode.isEmpty else {
+            completion(.failure(UnlockError.emptyCode))
+            return
+        }
+
+        guard let activationURL = replacingQueryItems(
+            in: unlockURL,
+            replacements: [
+                URLQueryItem(name: "udid", value: cleanUDID),
+                URLQueryItem(name: "code", value: cleanCode)
+            ]
+        ) else {
+            completion(.failure(UnlockError.invalidEndpoint))
+            return
+        }
+
+        URLSession.shared.dataTask(with: activationURL) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+
+            if let http = response as? HTTPURLResponse,
+               !(200...299).contains(http.statusCode) {
+                completion(.failure(UnlockError.http(http.statusCode)))
+                return
+            }
+
+            guard let data = data,
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                completion(.failure(UnlockError.invalidResponse))
+                return
+            }
+
+            let message = (object["msg"] as? String)
+                ?? (object["message"] as? String)
+                ?? ""
+
+            guard message == "ok，解锁成功" else {
+                completion(.failure(UnlockError.server(
+                    message.isEmpty ? "解锁服务器没有返回有效数据" : message
+                )))
+                return
+            }
+
+            self.verifyGrant(udid: cleanUDID) { verifyResult in
+                switch verifyResult {
+                case .success:
+                    UserDefaults.standard.set(
+                        true,
+                        forKey: self.grantKey(
+                            sourceURL: sourceURL,
+                            appIdentifier: appIdentifier,
+                            appName: appName,
+                            udid: cleanUDID
+                        )
+                    )
+                    completion(.success(()))
+
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        }.resume()
+    }
+
+    private func verifyGrant(
+        udid: String,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        guard let endpoint = URL(string: "https://app.zonoeios.xyz/index/index/apiface"),
+              let url = replacingQueryItems(
+                in: endpoint,
+                replacements: [URLQueryItem(name: "udid", value: udid)]
+              ) else {
+            completion(.failure(UnlockError.invalidEndpoint))
+            return
+        }
+
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+
+            if let http = response as? HTTPURLResponse,
+               !(200...299).contains(http.statusCode) {
+                completion(.failure(UnlockError.http(http.statusCode)))
+                return
+            }
+
+            guard let data = data,
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                completion(.failure(UnlockError.invalidResponse))
+                return
+            }
+
+            let code = Self.intValue(object["code"])
+            let message = (object["msg"] as? String) ?? ""
+            let expire = Self.doubleValue(object["expire"])
+
+            guard code == 1,
+                  message == "ok",
+                  let expire = expire,
+                  expire > Date().timeIntervalSince1970 else {
+                let reason: String
+                if let expire = expire, expire <= Date().timeIntervalSince1970 {
+                    reason = "解锁授权已过期"
+                } else {
+                    reason = message.isEmpty ? "解锁状态校验失败" : message
+                }
+                completion(.failure(UnlockError.server(reason)))
+                return
+            }
+
+            completion(.success(()))
+        }.resume()
+    }
+
+    private func grantKey(
+        sourceURL: URL,
+        appIdentifier: String?,
+        appName: String,
+        udid: String
+    ) -> String {
+        let identity: String
+        if let appIdentifier = appIdentifier, !appIdentifier.isEmpty {
+            identity = "id:\(appIdentifier)"
+        } else {
+            identity = "name:\(appName)"
+        }
+
+        let normalizedSource = sourceURL.absoluteString
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let raw = "\(normalizedSource)\n\(udid)\n\(identity)"
+        let digest = SHA256.hash(data: Data(raw.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return "zonoe.sourceUnlock.\(digest)"
+    }
+
+    private func replacingQueryItems(
+        in url: URL,
+        replacements: [URLQueryItem]
+    ) -> URL? {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+
+        let names = Set(replacements.map { $0.name.lowercased() })
+        var items = (components.queryItems ?? []).filter {
+            !names.contains($0.name.lowercased())
+        }
+        items.append(contentsOf: replacements)
+        components.queryItems = items
+        return components.url
+    }
+
+    private static func intValue(_ value: Any?) -> Int? {
+        if let value = value as? NSNumber { return value.intValue }
+        if let value = value as? String { return Int(value) }
+        return nil
+    }
+
+    private static func doubleValue(_ value: Any?) -> TimeInterval? {
+        if let value = value as? NSNumber { return value.doubleValue }
+        if let value = value as? String { return TimeInterval(value) }
+        return nil
+    }
+
+    enum UnlockError: LocalizedError {
+        case missingUDID
+        case emptyCode
+        case invalidEndpoint
+        case invalidResponse
+        case http(Int)
+        case server(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .missingUDID:
+                return "请先获取本机 UDID"
+            case .emptyCode:
+                return "请输入解锁码"
+            case .invalidEndpoint:
+                return "软件源解锁地址无效"
+            case .invalidResponse:
+                return "解锁服务器返回了无效数据"
+            case .http(let code):
+                return "解锁服务器返回 HTTP \(code)"
+            case .server(let message):
+                return message
+            }
+        }
     }
 }
 

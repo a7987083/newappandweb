@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UIKit
+import SafariServices
 
 final class UDIDService: ObservableObject {
     static let shared = UDIDService()
@@ -20,7 +21,34 @@ final class UDIDService: ObservableObject {
 
     func requestProfileConfiguration() {
         guard let url = URL(string: "https://new.iosgame.vip/device/udid/config/") else { return }
-        UIApplication.shared.open(url, options: [:], completionHandler: nil)
+
+        DispatchQueue.main.async {
+            guard let presenter = Self.topViewController() else { return }
+
+            let safari = SFSafariViewController(url: url)
+            safari.modalPresentationStyle = .pageSheet
+            presenter.present(safari, animated: true)
+        }
+    }
+
+    private static func topViewController() -> UIViewController? {
+        let root = UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.rootViewController
+            ?? UIApplication.shared.windows.first?.rootViewController
+
+        var current = root
+        while let presented = current?.presentedViewController {
+            current = presented
+        }
+
+        if let navigation = current as? UINavigationController {
+            return navigation.visibleViewController ?? navigation
+        }
+
+        if let tab = current as? UITabBarController {
+            return tab.selectedViewController ?? tab
+        }
+
+        return current
     }
 
     private func consumeCallback(_ url: URL) {

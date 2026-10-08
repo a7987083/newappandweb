@@ -93,6 +93,21 @@ final class SourceRepositoryLoader {
             ?? sourceURL.absoluteString
         let iconURL = firstURL(root, keys: ["iconURL", "icon", "sourceicon", "sourceIcon"])
 
+        let legacy = root["legacy"] as? [String: Any]
+        let payURL = firstURL(root, keys: ["payURL", "payUrl", "pay_url"])
+            ?? legacy.flatMap { firstURL($0, keys: ["pay", "payURL", "url_pay"]) }
+        let unlockURL = firstURL(root, keys: ["unlockURL", "unlockUrl", "unlock_url"])
+            ?? legacy.flatMap { firstURL($0, keys: ["url", "unlock", "unlockURL"]) }
+        let legacyKey = legacy.flatMap {
+            firstString($0, keys: ["key", "legacyKey"])
+        }
+
+        let access = SourceAccessMetadata(
+            payURL: payURL,
+            unlockURL: unlockURL,
+            legacyKey: legacyKey
+        )
+
         let apps = rawApps.compactMap { app in
             decodeApp(app, sourceURL: sourceURL)
         }
@@ -102,6 +117,7 @@ final class SourceRepositoryLoader {
             identifier: identifier,
             name: sourceName,
             iconURL: iconURL,
+            access: access,
             apps: apps
         )
     }
@@ -220,7 +236,11 @@ final class SourceRepositoryLoader {
                 "developerName", "developer", "author", "sellerName", "seller", "package_name"
             ]),
             minimumOSVersion: minimumOSVersion,
-            updatedAt: updatedAt
+            updatedAt: updatedAt,
+            access: SourceAppAccessMetadata(
+                isNeedLock: firstBool(app, keys: ["isNeedlock", "isNeedLock", "lock"]),
+                appType: firstInt(app, keys: ["appType"])
+            )
         )
     }
 
@@ -245,6 +265,35 @@ final class SourceRepositoryLoader {
                 if !trimmed.isEmpty { return trimmed }
             } else if let number = value as? NSNumber {
                 return number.stringValue
+            }
+        }
+        return nil
+    }
+
+    private static func firstBool(_ dictionary: [String: Any], keys: [String]) -> Bool? {
+        for key in keys {
+            guard let value = dictionary[key], !(value is NSNull) else { continue }
+
+            if let bool = value as? Bool { return bool }
+            if let number = value as? NSNumber { return number.intValue != 0 }
+            if let string = value as? String {
+                switch string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+                case "1", "true", "yes": return true
+                case "0", "false", "no": return false
+                default: continue
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func firstInt(_ dictionary: [String: Any], keys: [String]) -> Int? {
+        for key in keys {
+            guard let value = dictionary[key], !(value is NSNull) else { continue }
+            if let number = value as? NSNumber { return number.intValue }
+            if let string = value as? String,
+               let number = Int(string.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return number
             }
         }
         return nil

@@ -179,7 +179,7 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
     }
 
     private func consumeCallback(_ url: URL) {
-        guard url.scheme?.lowercased() == "gamestore",
+        guard url.scheme?.lowercased() == "zonoe",
               url.host?.lowercased() == "udid-complete" else {
             return
         }

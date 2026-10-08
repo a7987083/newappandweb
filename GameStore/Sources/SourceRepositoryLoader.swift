@@ -152,39 +152,88 @@ final class SourceRepositoryLoader {
             "bundleIdentifier", "identifier", "bundle_id", "bundleID", "packageName", "package_name", "id"
         ]) ?? stableFallbackIdentifier(name: name, sourceURL: sourceURL)
 
+        let currentVersion = firstVersionDictionary(in: app)
+
+        let version = currentVersion.flatMap {
+            firstString($0, keys: ["version", "versionCode", "versionName"])
+        } ?? firstString(app, keys: [
+            "version", "versionCode", "versionName", "current_version", "app_version"
+        ])
+
+        let size = currentVersion.flatMap {
+            firstInt64($0, keys: ["size", "fileSize", "file_size"])
+        } ?? firstInt64(app, keys: [
+            "size", "fileSize", "file_size"
+        ])
+
+        let downloadURL = currentVersion.flatMap {
+            firstURL($0, keys: [
+                "downloadURL", "downloadUrl", "download_url", "url", "ipa", "ipaURL",
+                "alist_url", "store_url"
+            ])
+        } ?? firstURL(app, keys: [
+            "downloadURL", "downloadUrl", "download_url", "url", "ipa", "ipaURL",
+            "alist_url", "store_url"
+        ])
+
+        let releaseNotes = currentVersion.flatMap {
+            firstString($0, keys: [
+                "localizedDescription", "versionDescription", "releaseNotes",
+                "release_notes", "whatsNew", "description"
+            ])
+        } ?? firstString(app, keys: [
+            "versionDescription", "releaseNotes", "release_notes", "whatsNew"
+        ])
+
+        let summary = firstString(app, keys: [
+            "localizedDescription", "description", "desc", "summary", "mod_description"
+        ]) ?? releaseNotes
+
+        let minimumOSVersion = currentVersion.flatMap {
+            firstString($0, keys: [
+                "minOSVersion", "minimumOSVersion", "min_iOS", "support"
+            ])
+        } ?? firstString(app, keys: [
+            "minimumOSVersion", "minOSVersion", "min_iOS", "support"
+        ])
+
+        let updatedAt = currentVersion.flatMap {
+            firstDate($0, keys: [
+                "date", "versionDate", "updatedAt", "updated_at"
+            ])
+        } ?? firstDate(app, keys: [
+            "versionDate", "updatedAt", "updated_at", "date", "mod_update_time"
+        ])
+
         return SourceApp(
             identifier: identifier,
             name: name,
-            version: firstString(app, keys: [
-                "version", "versionCode", "versionName", "current_version", "app_version"
-            ]),
-            size: firstInt64(app, keys: [
-                "size", "fileSize", "file_size"
-            ]),
+            version: version,
+            size: size,
             iconURL: firstURL(app, keys: [
                 "iconURL", "icon", "iconUrl", "icon_url", "artworkURL", "artworkUrl"
             ]),
-            downloadURL: firstURL(app, keys: [
-                "downloadURL", "downloadUrl", "download_url", "url", "ipa", "ipaURL",
-                "alist_url", "store_url"
-            ]),
-            summary: firstString(app, keys: [
-                "localizedDescription", "description", "desc", "summary",
-                "mod_description", "versionDescription", "releaseNotes"
-            ]),
-            releaseNotes: firstString(app, keys: [
-                "versionDescription", "releaseNotes", "release_notes", "whatsNew"
-            ]),
+            downloadURL: downloadURL,
+            summary: summary,
+            releaseNotes: releaseNotes,
             developer: firstString(app, keys: [
-                "developer", "author", "sellerName", "seller", "package_name"
+                "developerName", "developer", "author", "sellerName", "seller", "package_name"
             ]),
-            minimumOSVersion: firstString(app, keys: [
-                "minimumOSVersion", "minOSVersion", "min_iOS", "support"
-            ]),
-            updatedAt: firstDate(app, keys: [
-                "versionDate", "updatedAt", "updated_at", "date", "mod_update_time"
-            ])
+            minimumOSVersion: minimumOSVersion,
+            updatedAt: updatedAt
         )
+    }
+
+    private static func firstVersionDictionary(in app: [String: Any]) -> [String: Any]? {
+        if let versions = app["versions"] as? [[String: Any]], let first = versions.first {
+            return first
+        }
+
+        if let versions = app["versions"] as? [Any] {
+            return versions.compactMap { $0 as? [String: Any] }.first
+        }
+
+        return nil
     }
 
     private static func firstString(_ dictionary: [String: Any], keys: [String]) -> String? {

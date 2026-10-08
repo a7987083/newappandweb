@@ -150,7 +150,6 @@ private struct AboutView: View {
                         Text(item.value)
                             .font(.system(.footnote, design: .monospaced))
                             .foregroundColor(.primary)
-                            .textSelection(.enabled)
 
                         HStack(alignment: .top, spacing: 12) {
                             Text(item.note)
@@ -161,8 +160,11 @@ private struct AboutView: View {
                                 UIPasteboard.general.string = item.value
                                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                             }) {
-                                Label("复制", systemImage: "doc.on.doc")
-                                    .font(.caption)
+                                HStack(spacing: 4) {
+                                    Image(systemName: "doc.on.doc")
+                                    Text("复制")
+                                }
+                                .font(.caption)
                             }
                             .buttonStyle(BorderlessButtonStyle())
                         }

@@ -28,12 +28,7 @@ final class UDIDLocalServer {
     func start() throws {
         guard !isRunning else { return }
 
-#if compiler(>=6.0)
-        let socketType = Int32(SOCK_STREAM.rawValue)
-#else
-        let socketType = SOCK_STREAM
-#endif
-        let fd = Darwin.socket(AF_INET, socketType, 0)
+        let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { throw ServerError.socketCreationFailed }
 
         var reuse: Int32 = 1

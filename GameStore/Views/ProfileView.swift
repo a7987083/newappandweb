@@ -102,22 +102,22 @@ private struct AboutView: View {
     private let schemes: [(title: String, value: String, note: String)] = [
         (
             "App 内打开网页",
-            "gamestore://web?url=https%3A%2F%2Fexample.com",
-            "在 GameStore 内使用 Safari View 打开 HTTP/HTTPS 网页。"
+            "zonoe://web?url=https%3A%2F%2Fexample.com",
+            "在 zonoe 内使用 Safari View 打开 HTTP/HTTPS 网页。"
         ),
         (
             "下载 IPA",
-            "gamestore://download/https%3A%2F%2Fexample.com%2Fapp.ipa",
-            "把 HTTP/HTTPS IPA 地址加入 GameStore 下载队列。"
+            "zonoe://download/https%3A%2F%2Fexample.com%2Fapp.ipa",
+            "把 HTTP/HTTPS IPA 地址加入 zonoe 下载队列。"
         ),
         (
             "导入 / 安装 IPA",
-            "gamestore://install/https%3A%2F%2Fexample.com%2Fapp.ipa",
+            "zonoe://install/https%3A%2F%2Fexample.com%2Fapp.ipa",
             "把 HTTP/HTTPS IPA 地址加入现有下载/导入入口。"
         ),
         (
             "UDID Provider",
-            "gamestore://udid?callback=example%3A%2F%2Fcallback",
+            "zonoe://udid?callback=example%3A%2F%2Fcallback",
             "返回已保存的 UDID；未认证时先完成设备认证，再回调请求方。"
         )
     ]
@@ -130,7 +130,7 @@ private struct AboutView: View {
                         .font(.system(size: 34))
                         .foregroundColor(.accentColor)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("GameStore")
+                        Text("zonoe")
                             .font(.headline)
                         Text("URL Scheme")
                             .font(.caption)

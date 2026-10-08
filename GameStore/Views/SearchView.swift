@@ -14,26 +14,18 @@ struct SearchView: View {
 
                 if store.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     searchPrompt
-                } else if store.filteredApps.isEmpty {
+                } else if store.searchResults.isEmpty {
                     emptyResults
                 } else {
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            ForEach(Array(store.filteredApps.enumerated()), id: \.element.id) { index, app in
-                                NavigationLink(destination: AppDetailView(app: app)) {
-                                    AppRowView(app: app)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-
-                                if index != store.filteredApps.count - 1 {
-                                    Divider().padding(.leading, 86)
-                                }
+                    List {
+                        ForEach(store.searchResults) { app in
+                            NavigationLink(destination: AppDetailView(app: app)) {
+                                AppRowView(app: app)
                             }
+                            .buttonStyle(PlainButtonStyle())
                         }
-                        .background(Color(UIColor.secondarySystemGroupedBackground))
-                        .cornerRadius(14)
-                        .padding(16)
                     }
+                    .listStyle(PlainListStyle())
                 }
             }
             .background(Color(UIColor.systemGroupedBackground).edgesIgnoringSafeArea(.all))
@@ -75,7 +67,7 @@ struct SearchView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 44))
                 .foregroundColor(.secondary)
-            Text("搜索 GameStore")
+            Text("搜索 zonoe")
                 .font(.headline)
             Text("游戏、应用、开发者")
                 .font(.footnote)

@@ -165,6 +165,7 @@ struct AppRowView: View {
 }
 
 struct AppDetailView: View {
+    @EnvironmentObject private var store: AppStoreViewModel
     let app: AppItem
 
     private static func displayUpdateTime(_ rawValue: String?) -> String {
@@ -198,14 +199,10 @@ struct AppDetailView: View {
                             .font(.subheadline)
                             .foregroundColor(.secondary)
 
-                        Text("获取")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 22)
-                            .padding(.vertical, 8)
-                            .background(Color.accentColor)
-                            .clipShape(Capsule())
+                        DownloadActionButton(
+                            app: app,
+                            downloadCenter: store.downloadCenter
+                        )
                     }
 
                     Spacer()
@@ -233,6 +230,85 @@ struct AppDetailView: View {
         }
         .background(Color(UIColor.systemGroupedBackground).edgesIgnoringSafeArea(.all))
         .navigationBarTitle(app.name)
+    }
+}
+
+private struct DownloadActionButton: View {
+    let app: AppItem
+    @ObservedObject var downloadCenter: DownloadCenter
+
+    private var item: DownloadCenter.Item? {
+        guard let url = app.downloadURL else { return nil }
+        return downloadCenter.item(for: url)
+    }
+
+    var body: some View {
+        Group {
+            if let item = item {
+                switch item.state {
+                case .queued, .downloading:
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                        Text("\(Int(item.progress * 100))%")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+
+                case .completed:
+                    Label("已导入", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+
+                case .failed:
+                    Button(action: startDownload) {
+                        Text("重试")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 8)
+                            .background(Color.red)
+                            .clipShape(Capsule())
+                    }
+
+                case .cancelled, .paused:
+                    Button(action: startDownload) {
+                        Text("获取")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 8)
+                            .background(Color.accentColor)
+                            .clipShape(Capsule())
+                    }
+                }
+            } else {
+                Button(action: startDownload) {
+                    Text(app.downloadURL == nil ? "无下载地址" : "获取")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 8)
+                        .background(app.downloadURL == nil ? Color.secondary : Color.accentColor)
+                        .clipShape(Capsule())
+                }
+                .disabled(app.downloadURL == nil)
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func startDownload() {
+        guard let url = app.downloadURL else { return }
+        downloadCenter.enqueue(url)
     }
 }
 

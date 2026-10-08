@@ -5,7 +5,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>zh-Hans</string>
     <key>CFBundleDisplayName</key>
-    <string>GameStore</string>
+    <string>zonoe</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -24,9 +24,9 @@
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>com.textdsa.GameStore.udid</string>
+            <string>com.zonoe.udid</string>
             <key>CFBundleURLSchemes</key>
-            <array><string>gamestore</string></array>
+            <array><string>zonoe</string></array>
         </dict>
     </array>
     <key>UILaunchScreen</key>

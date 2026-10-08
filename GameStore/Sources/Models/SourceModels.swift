@@ -12,9 +12,11 @@ struct SourceApp: Equatable {
     let identifier: String
     let name: String
     let version: String?
+    let size: Int64?
     let iconURL: URL?
     let downloadURL: URL?
     let summary: String?
+    let releaseNotes: String?
     let developer: String?
     let minimumOSVersion: String?
     let updatedAt: Date?

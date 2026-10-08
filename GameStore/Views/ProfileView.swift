@@ -188,10 +188,37 @@ private struct AboutView: View {
     }
 }
 
-private struct SourcesView: View {
+private final class SoftwareSourceStore: ObservableObject {
+    static let shared = SoftwareSourceStore()
     private static let storageKey = "zonoe.sources"
 
-    @State private var sources: [String] = UserDefaults.standard.stringArray(forKey: storageKey) ?? []
+    @Published private(set) var sources: [String]
+
+    private init() {
+        sources = UserDefaults.standard.stringArray(forKey: Self.storageKey) ?? []
+    }
+
+    func add(_ value: String) {
+        var updated = sources
+        updated.append(value)
+        UserDefaults.standard.set(updated, forKey: Self.storageKey)
+        sources = updated
+    }
+
+    func remove(at offsets: IndexSet) {
+        var updated = sources
+        updated.remove(atOffsets: offsets)
+        UserDefaults.standard.set(updated, forKey: Self.storageKey)
+        sources = updated
+    }
+}
+
+private struct SourcesView: View {
+    @ObservedObject private var sourceStore = SoftwareSourceStore.shared
+
+    private var sources: [String] {
+        sourceStore.sources
+    }
 
     var body: some View {
         List {
@@ -278,17 +305,11 @@ private struct SourcesView: View {
             return
         }
 
-        sources.append(normalized)
-        persistSources()
+        sourceStore.add(normalized)
     }
 
     private func deleteSources(at offsets: IndexSet) {
-        sources.remove(atOffsets: offsets)
-        persistSources()
-    }
-
-    private func persistSources() {
-        UserDefaults.standard.set(sources, forKey: Self.storageKey)
+        sourceStore.remove(at: offsets)
     }
 
     private func sourceDisplayName(_ value: String) -> String {

@@ -17,6 +17,7 @@
 		CC893E0A2BEC2140C9DC4C48 /* SigningModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE5E269F8DB38CC172D0633D /* SigningModels.swift */; };
 		A17DE75B44120741CF22397D /* UDIDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23512DC7C6E4A1B407524CB6 /* UDIDService.swift */; };
 		20F3199E687E78DC28C17C9B /* DownloadCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C7B6C50B8DB55809E70C1A6 /* DownloadCenter.swift */; };
+		AABBCCDDEEFF001122334455 /* IPAInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABBCCDDEEFF001122334456 /* IPAInspector.swift */; };
 		7F2B8AD34949855293397653 /* AppSigningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A2B19A5F9D360CE0B83E05E /* AppSigningService.swift */; };
 		44B4852B131CDF2616DF1E75 /* OTAInstallService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02E35CD70AC65FE97C8641DF /* OTAInstallService.swift */; };
 		2EA2861795073CA3403D25FC /* AppStoreViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B16B85BE8CE3610553969D /* AppStoreViewModel.swift */; };
@@ -40,6 +41,7 @@
 		CE5E269F8DB38CC172D0633D /* SigningModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Models/SigningModels.swift; sourceTree = "<group>"; };
 		23512DC7C6E4A1B407524CB6 /* UDIDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/UDIDService.swift; sourceTree = "<group>"; };
 		5C7B6C50B8DB55809E70C1A6 /* DownloadCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/DownloadCenter.swift; sourceTree = "<group>"; };
+		AABBCCDDEEFF001122334456 /* IPAInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/IPAInspector.swift; sourceTree = "<group>"; };
 		2A2B19A5F9D360CE0B83E05E /* AppSigningService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/AppSigningService.swift; sourceTree = "<group>"; };
 		02E35CD70AC65FE97C8641DF /* OTAInstallService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/OTAInstallService.swift; sourceTree = "<group>"; };
 		12B16B85BE8CE3610553969D /* AppStoreViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/ViewModels/AppStoreViewModel.swift; sourceTree = "<group>"; };
@@ -69,6 +71,7 @@
 				B1A2C3D4E5F6012345678902 /* UDIDLocalServer.swift */,
 				B1A2C3D4E5F6012345678904 /* UDIDRequest.mobileconfig */,
 				5C7B6C50B8DB55809E70C1A6 /* DownloadCenter.swift */,
+				AABBCCDDEEFF001122334456 /* IPAInspector.swift */,
 				2A2B19A5F9D360CE0B83E05E /* AppSigningService.swift */,
 				02E35CD70AC65FE97C8641DF /* OTAInstallService.swift */,
 				12B16B85BE8CE3610553969D /* AppStoreViewModel.swift */,
@@ -109,6 +112,7 @@
 				A17DE75B44120741CF22397D /* UDIDService.swift in Sources */,
 				B1A2C3D4E5F6012345678901 /* UDIDLocalServer.swift in Sources */,
 				20F3199E687E78DC28C17C9B /* DownloadCenter.swift in Sources */,
+				AABBCCDDEEFF001122334455 /* IPAInspector.swift in Sources */,
 				7F2B8AD34949855293397653 /* AppSigningService.swift in Sources */,
 				44B4852B131CDF2616DF1E75 /* OTAInstallService.swift in Sources */,
 				2EA2861795073CA3403D25FC /* AppStoreViewModel.swift in Sources */,
@@ -122,10 +126,10 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		7CE519D056490CF8DF53594E /* Debug project */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 13.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0;}; name = Debug; };
-		9D9364763342BF01A3896013 /* Release project */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 13.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0;}; name = Release; };
-		2FB108080883212427588C5D /* Debug target */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = GameStore/Resources/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 13.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.GameStore.maicha.rebuild; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";}; name = Debug; };
-		44CDB7E7D5BE6E34D69C1005 /* Release target */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = GameStore/Resources/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 13.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.GameStore.maicha.rebuild; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";}; name = Release; };
+		7CE519D056490CF8DF53594E /* Debug project */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 13.0; SDKROOT = iphoneos; OTHER_LDFLAGS = "$(inherited) -lz"; SWIFT_VERSION = 5.0;}; name = Debug; };
+		9D9364763342BF01A3896013 /* Release project */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 13.0; SDKROOT = iphoneos; OTHER_LDFLAGS = "$(inherited) -lz"; SWIFT_VERSION = 5.0;}; name = Release; };
+		2FB108080883212427588C5D /* Debug target */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = GameStore/Resources/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 13.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.GameStore.maicha.rebuild; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_EMIT_LOC_STRINGS = YES; OTHER_LDFLAGS = "$(inherited) -lz"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";}; name = Debug; };
+		44CDB7E7D5BE6E34D69C1005 /* Release target */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = GameStore/Resources/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 13.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.GameStore.maicha.rebuild; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_EMIT_LOC_STRINGS = YES; OTHER_LDFLAGS = "$(inherited) -lz"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";}; name = Release; };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */

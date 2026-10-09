@@ -234,7 +234,7 @@ extension SoftwareSourceStore {
                     .replacingOccurrences(of: "\\/", with: "/")
                     .replacingOccurrences(of: "\\:", with: ":")
                 let allowed = CharacterSet(charactersIn:
-                    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%")
                 guard !trimmed.isEmpty,
                       let url = URL(string: trimmed, relativeTo: baseURL)?.absoluteURL,'()*+,;=%")
                 guard !trimmed.isEmpty,

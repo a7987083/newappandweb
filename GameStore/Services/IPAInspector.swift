@@ -107,7 +107,7 @@ enum IPAInspector {
                 if method == 0 {
                     raw = compressed
                 } else if method == 8 {
-                    raw = try inflate(compressed, expectedLength: unpacked)
+                    raw = try decodeDeflate(compressed, expectedLength: unpacked)
                 } else {
                     throw IPAInspectionError.unsupportedCompression
                 }
@@ -136,7 +136,7 @@ enum IPAInspector {
                              version: version, size: size, sha256: digest)
     }
 
-    private static func inflate(_ input: Data, expectedLength: Int) throws -> Data {
+    private static func decodeDeflate(_ input: Data, expectedLength: Int) throws -> Data {
         guard expectedLength >= 0, expectedLength <= 2_097_152 else {
             throw IPAInspectionError.oversizedEntry
         }
@@ -154,7 +154,7 @@ enum IPAInspector {
                     return Z_STREAM_ERROR
                 }
                 defer { inflateEnd(&stream) }
-                let result = zlib_inflate(&stream, Z_FINISH)
+                let result = inflate(&stream, Z_FINISH)
                 return result == Z_STREAM_END && Int(stream.total_out) == expectedLength
                     ? Z_OK : Z_DATA_ERROR
             }

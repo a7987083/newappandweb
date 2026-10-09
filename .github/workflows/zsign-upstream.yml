@@ -52,5 +52,7 @@ jobs:
         if: always()
         with:
           name: zsign-package-diagnostic
-          path: |\n            zsign-package.json\n            zsign-device-build.log
+          path: |
+            zsign-package.json
+            zsign-device-build.log
           if-no-files-found: ignore

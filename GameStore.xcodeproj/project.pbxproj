@@ -80,7 +80,7 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		0E8A3AD980ECB70BF17C4729 /* GameStore */ = {isa = PBXNativeTarget; buildConfigurationList = EE6AFDB9AA085457081E34CD; buildPhases = (209B772E630D0AB850E4DF67, CAE6B993D1286674150732AC, C3CD36430B8D6470B6AEE3FE, C0DEFACE0000000000000011); buildRules = (); dependencies = (); packageProductDependencies = (A12BC34DE56FA78BC90DE124 /* ZsignSwift */, B134AC980000000000000002 /* ZIPFoundation */,); name = GameStore; productName = GameStore; productReference = 9A25D6B406A7F21575D4B312; productType = "com.apple.product-type.application"; };
+		0E8A3AD980ECB70BF17C4729 /* GameStore */ = {isa = PBXNativeTarget; buildConfigurationList = EE6AFDB9AA085457081E34CD; buildPhases = (209B772E630D0AB850E4DF67, CAE6B993D1286674150732AC, C3CD36430B8D6470B6AEE3FE); buildRules = (); dependencies = (); packageProductDependencies = (A12BC34DE56FA78BC90DE124 /* ZsignSwift */, B134AC980000000000000002 /* ZIPFoundation */,); name = GameStore; productName = GameStore; productReference = 9A25D6B406A7F21575D4B312; productType = "com.apple.product-type.application"; };
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -92,10 +92,6 @@
 				B1A2C3D4E5F6012345678903 /* UDIDRequest.mobileconfig in Resources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		C0DEFACE0000000000000011 /* Embed OpenSSL framework */ = {isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = (); inputPaths = (); name = "Embed OpenSSL framework"; outputPaths = ("$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/OpenSSL.framework/OpenSSL",); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "set -eu\nSRC=\"$BUILT_PRODUCTS_DIR/PackageFrameworks/OpenSSL.framework\"\nDEST=\"$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH\"\nif [ ! -f \"$SRC/OpenSSL\" ]; then echo \"error: Required OpenSSL.framework absent from PackageFrameworks: $SRC\" >&2; exit 1; fi\nmkdir -p \"$DEST\"\nrm -rf \"$DEST/OpenSSL.framework\"\ncp -R \"$SRC\" \"$DEST/OpenSSL.framework\"\n"; };
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		209B772E630D0AB850E4DF67 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (

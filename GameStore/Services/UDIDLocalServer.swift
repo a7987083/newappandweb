@@ -20,14 +20,18 @@ final class UDIDLocalServer {
     private let profileData: Data
     private let token: String
     private let receive: (String) -> Void
+    private let bridgeRead: (String) -> String?
+    private let bridgeAck: (String) -> Bool
     private let queue = DispatchQueue(label: "zonoe.udid.profile.listener", qos: .userInitiated)
     private let state = NSLock()
     private var listener: Int32 = -1
 
-    init(profileData: Data, sessionToken: String, onUDID: @escaping (String) -> Void) {
+    init(profileData: Data, sessionToken: String, onUDID: @escaping (String) -> Void, bridgeRead: @escaping (String) -> String? = { _ in nil }, bridgeAck: @escaping (String) -> Bool = { _ in false }) {
         self.profileData = profileData
         self.token = sessionToken
         self.receive = onUDID
+        self.bridgeRead = bridgeRead
+        self.bridgeAck = bridgeAck
     }
 
     deinit { stop() }
@@ -94,6 +98,29 @@ final class UDIDLocalServer {
             reply(fd, "400 Bad Request", [:], Data())
             return
         }
+        // The Result Store shares the fixed loopback listener with Profile Service.
+        // GET remains retry-safe until an explicit POST ACK from the requesting app.
+        let prefix = "/bridge/result/"
+        let ackPrefix = "/bridge/ack/"
+        if request.method == "GET", request.path.hasPrefix(prefix) {
+            let nonce = String(request.path.dropFirst(prefix.count))
+            guard Self.validNonce(nonce), let value = bridgeRead(nonce),
+                  let body = try? JSONSerialization.data(withJSONObject: ["nonce": nonce, "udid": value]) else {
+                reply(fd, "404 Not Found", ["Cache-Control": "no-store"], Data())
+                return
+            }
+            reply(fd, "200 OK", ["Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"], body)
+            return
+        }
+        if request.method == "POST", request.path.hasPrefix(ackPrefix) {
+            let nonce = String(request.path.dropFirst(ackPrefix.count))
+            guard Self.validNonce(nonce), bridgeAck(nonce) else {
+                reply(fd, "404 Not Found", ["Cache-Control": "no-store"], Data())
+                return
+            }
+            reply(fd, "200 OK", ["Cache-Control": "no-store"], Data())
+            return
+        }
         if request.method == "GET" && request.path == "/profile.mobileconfig" {
             reply(fd, "200 OK", [
                 "Content-Type": "application/x-apple-aspen-config",
@@ -126,6 +153,14 @@ final class UDIDLocalServer {
             return
         }
         reply(fd, "301 Moved Permanently", ["Location": location, "Cache-Control": "no-store"], Data())
+    }
+
+    static func validNonce(_ value: String) -> Bool {
+        guard (16...128).contains(value.utf8.count) else { return false }
+        return value.utf8.allSatisfy {
+            (48...57).contains($0) || (65...90).contains($0) ||
+            (97...122).contains($0) || $0 == 45 || $0 == 95
+        }
     }
 
     private struct Request {

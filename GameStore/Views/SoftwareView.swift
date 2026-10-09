@@ -53,13 +53,13 @@ struct SoftwareView: View {
                     }
                 }
             }
-            .listStyle(InsetGroupedListStyle())
+            .listStyle(GroupedListStyle())
             .navigationBarTitle("精品软件")
             .navigationBarItems(trailing: Button(action: { sources.refreshCatalog() }) {
                 Image(systemName: "arrow.clockwise")
             }.disabled(sources.isCatalogLoading))
             .overlay(Group {
-                if sources.isCatalogLoading { ProgressView("正在解析软件源") }
+                if sources.isCatalogLoading { Text("正在解析软件源…").font(.footnote).padding(12).background(Color(UIColor.secondarySystemBackground)).cornerRadius(12) }
             })
             .onAppear { if sources.catalogApps.isEmpty { sources.refreshCatalog() } }
         }
@@ -134,7 +134,7 @@ struct SourceAppDetailView: View {
                 Text("来源: " + (URL(string: app.sourceURL)?.host ?? app.sourceURL))
             }
         }
-        .listStyle(InsetGroupedListStyle())
-        .navigationBarTitle(app.name, displayMode: .inline)
+        .listStyle(GroupedListStyle())
+        .navigationBarTitle(app.name)
     }
 }

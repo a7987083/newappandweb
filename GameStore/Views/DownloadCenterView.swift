@@ -5,59 +5,106 @@ struct DownloadCenterView: View {
 
     var body: some View {
         NavigationView {
-            Group {
-                if store.downloadCenter.items.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "arrow.down.circle")
-                            .font(.system(size: 48))
-                            .foregroundColor(.secondary)
-                        Text("暂无下载任务")
+            DownloadCenterContent(downloadCenter: store.downloadCenter)
+                .navigationBarTitle("下载管理")
+        }
+    }
+}
+
+private struct DownloadCenterContent: View {
+    @ObservedObject var downloadCenter: DownloadCenter
+    @State private var deleteError: String?
+
+    var body: some View {
+        Group {
+            if downloadCenter.items.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary)
+                    Text("暂无下载任务")
+                        .font(.headline)
+                    Text("在应用详情页点击“获取”后，下载任务将显示在这里")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+            } else {
+                List(downloadCenter.items) { item in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(displayName(for: item))
                             .font(.headline)
-                        Text("在应用详情页点击“获取”后，下载任务将显示在这里")
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                    }
-                } else {
-                    List(store.downloadCenter.items) { item in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(item.sourceURL.lastPathComponent)
+                            .lineLimit(1)
 
-                            GeometryReader { proxy in
-                                ZStack(alignment: .leading) {
-                                    Rectangle()
-                                        .fill(Color.secondary.opacity(0.2))
-                                    Rectangle()
-                                        .fill(Color.accentColor)
-                                        .frame(
-                                            width: proxy.size.width
-                                                * CGFloat(max(0, min(1, item.progress)))
-                                        )
-                                }
-                            }
-                            .frame(height: 4)
-
-                            Text(statusText(for: item))
-                                .font(.caption)
-                                .foregroundColor(item.state == .failed ? .red : .secondary)
-
-                            if let localURL = item.localURL, item.state == .completed {
-                                Text(localURL.lastPathComponent)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
+                        GeometryReader { proxy in
+                            ZStack(alignment: .leading) {
+                                Rectangle()
+                                    .fill(Color.secondary.opacity(0.2))
+                                Rectangle()
+                                    .fill(Color.accentColor)
+                                    .frame(
+                                        width: proxy.size.width
+                                            * CGFloat(max(0, min(1, item.progress)))
+                                    )
                             }
                         }
-                        .padding(.vertical, 4)
+                        .frame(height: 4)
+
+                        Text(statusText(for: item))
+                            .font(.caption)
+                            .foregroundColor(item.state == .failed ? .red : .secondary)
+
+                        if item.state == .completed {
+                            HStack(spacing: 10) {
+                                Button(action: {}) {
+                                    Text("签名")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                }
+                                .disabled(true)
+
+                                Button(action: {
+                                    delete(item)
+                                }) {
+                                    Text("删除")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.red)
+                                }
+                            }
+                            .buttonStyle(BorderlessButtonStyle())
+                        }
                     }
+                    .padding(.vertical, 5)
                 }
             }
-            .navigationBarTitle("下载管理")
-            .onAppear {
-                store.downloadCenter.reloadDownloadedItems()
-            }
         }
+        .onAppear {
+            downloadCenter.reloadDownloadedItems()
+        }
+        .alert(isPresented: Binding(
+            get: { deleteError != nil },
+            set: { if !$0 { deleteError = nil } }
+        )) {
+            Alert(
+                title: Text("删除失败"),
+                message: Text(deleteError ?? ""),
+                dismissButton: .default(Text("确定"))
+            )
+        }
+    }
+
+    private func delete(_ item: DownloadCenter.Item) {
+        do {
+            try downloadCenter.deleteDownloadedItem(item)
+        } catch {
+            deleteError = error.localizedDescription
+        }
+    }
+
+    private func displayName(for item: DownloadCenter.Item) -> String {
+        item.localURL?.lastPathComponent ?? item.sourceURL.lastPathComponent
     }
 
     private func statusText(for item: DownloadCenter.Item) -> String {

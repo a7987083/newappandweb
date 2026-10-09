@@ -241,25 +241,6 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
         }
     }
 
-    private static func topViewController() -> UIViewController? {
-        let root = UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.rootViewController
-            ?? UIApplication.shared.windows.first?.rootViewController
-
-        var current = root
-        while let presented = current?.presentedViewController {
-            current = presented
-        }
-
-        if let navigation = current as? UINavigationController {
-            return navigation.visibleViewController ?? navigation
-        }
-
-        if let tab = current as? UITabBarController {
-            return tab.selectedViewController ?? tab
-        }
-
-        return current
-    }
 
     private enum LocalError: Error {
         case missingProfile

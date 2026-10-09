@@ -107,26 +107,58 @@ struct SourceAppDetailView: View {
     @EnvironmentObject private var appStore: AppStoreViewModel
 
     var body: some View {
+        SourceAppDetailContent(app: app, downloadCenter: appStore.downloadCenter)
+    }
+}
+
+private struct SourceAppDetailContent: View {
+    let app: SourceCatalogApp
+    @ObservedObject var downloadCenter: DownloadCenter
+
+    private var downloadItem: DownloadCenter.Item? {
+        guard let url = app.downloadURL else { return nil }
+        return downloadCenter.item(for: url)
+    }
+
+    private var displayedDate: String? {
+        guard let date = app.updatedAt else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+
+    var body: some View {
         List {
             Section {
                 HStack(spacing: 14) {
                     SourceAppIcon(url: app.iconURL)
                     VStack(alignment: .leading, spacing: 5) {
                         Text(app.name).font(.headline)
-                        if !app.version.isEmpty { Text("版本 " + app.version).font(.caption) }
-                        if !app.developer.isEmpty { Text(app.developer).font(.caption).foregroundColor(.secondary) }
+                        if !app.developer.isEmpty {
+                            Text(app.developer).font(.caption).foregroundColor(.secondary)
+                        }
+                        downloadControl
                     }
                 }
-                if let url = app.downloadURL, ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
-                    Button("下载 IPA") { appStore.downloadCenter.enqueue(url) }
-                } else {
-                    Text("此软件未提供有效的下载地址").font(.footnote).foregroundColor(.secondary)
-                }
+            }
+            Section {
+                HStack {
+                    metadataCell("版本", app.version)
+                    Spacer(minLength: 4)
+                    if let bytes = app.sizeBytes, bytes > 0 {
+                        metadataCell("大小", ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
+                        Spacer(minLength: 4)
+                    }
+                    if let date = displayedDate {
+                        metadataCell("更新时间", date)
+                    }
+                }.padding(.vertical, 6)
             }
             if !app.description.isEmpty {
-                Section(header: Text("软件说明")) {
-                    Text(app.description)
-                }
+                Section(header: Text("简介")) { Text(app.description) }
+            }
+            if !app.releaseNotes.isEmpty {
+                Section(header: Text("更新说明")) { Text(app.releaseNotes) }
             }
             Section(header: Text("信息")) {
                 if !app.bundleIdentifier.isEmpty { Text("Bundle ID: " + app.bundleIdentifier) }
@@ -136,5 +168,52 @@ struct SourceAppDetailView: View {
         }
         .listStyle(GroupedListStyle())
         .navigationBarTitle(app.name)
+    }
+
+    private func metadataCell(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label).font(.caption).foregroundColor(.secondary)
+            Text(value.isEmpty ? "—" : value).font(.subheadline)
+        }
+    }
+
+    @ViewBuilder private var downloadControl: some View {
+        if let url = app.downloadURL, ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+            if let item = downloadItem {
+                switch item.state {
+                case .queued:
+                    Text("等待下载").font(.caption).foregroundColor(.secondary)
+                case .downloading:
+                    HStack(spacing: 6) {
+                        DownloadProgressBar(progress: item.progress)
+                        Text(String(Int(max(0, min(1, item.progress)) * 100)) + "%")
+                            .font(.subheadline).foregroundColor(.secondary)
+                    }
+                case .paused:
+                    Button("继续下载") { downloadCenter.resume(item) }
+                case .completed:
+                    Label("已下载", systemImage: "checkmark.circle.fill").foregroundColor(.green)
+                case .failed, .cancelled:
+                    Button("重新获取") { downloadCenter.enqueue(url) }
+                }
+            } else {
+                Button("获取") { downloadCenter.enqueue(url) }
+            }
+        } else {
+            Text("此软件未提供有效的下载地址").font(.caption).foregroundColor(.secondary)
+        }
+    }
+}
+
+private struct DownloadProgressBar: View {
+    let progress: Double
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.gray.opacity(0.2))
+                Capsule().fill(Color.accentColor)
+                    .frame(width: geometry.size.width * CGFloat(max(0, min(1, progress))))
+            }
+        }.frame(width: 54, height: 5)
     }
 }

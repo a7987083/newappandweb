@@ -1,10 +1,12 @@
 import Foundation
 import Combine
 
+/// Single owner of source snapshots and their derived App list.
+/// All state transitions happen on main; background loader results carry an epoch.
 final class SoftwareSourceStore: ObservableObject {
     static let shared = SoftwareSourceStore()
-
     private static let storageKey = "zonoe.sources"
+    static let sourceUnlocked = Notification.Name("zonoe.sourceUnlocked")
 
     @Published private(set) var sources: [String]
     @Published private(set) var repositories: [SourceRepository] = []
@@ -13,181 +15,132 @@ final class SoftwareSourceStore: ObservableObject {
     @Published private(set) var errorMessage: String?
 
     private let loader: SourceRepositoryLoader
-    private var loadGeneration = 0
-    private var appBuildGeneration = 0
+    private var snapshots: [String: SourceRepository] = [:]
+    private var sourceEpochs: [String: Int] = [:]
+    private var pending = Set<String>()
+    private var observer: NSObjectProtocol?
 
     init(loader: SourceRepositoryLoader = .shared) {
         self.loader = loader
-        self.sources = UserDefaults.standard.stringArray(forKey: Self.storageKey) ?? []
+        sources = UserDefaults.standard.stringArray(forKey: Self.storageKey) ?? []
+        observer = NotificationCenter.default.addObserver(
+            forName: Self.sourceUnlocked, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let url = notification.object as? URL else { return }
+            self?.reload(sourceURL: url)
+        }
         reloadAll()
     }
 
-    func add(
-        _ url: URL,
-        completion: @escaping (Result<SourceRepository, Error>) -> Void
-    ) {
-        let normalized = url.absoluteString
-        guard !sources.contains(normalized) else {
+    deinit {
+        if let observer = observer { NotificationCenter.default.removeObserver(observer) }
+    }
+
+    func add(_ url: URL, completion: @escaping (Result<SourceRepository, Error>) -> Void) {
+        let key = url.absoluteString
+        guard !sources.contains(key) else {
             completion(.failure(SoftwareSourceStoreError.duplicate))
             return
         }
+        fetch(url, requireRegistered: false) { [weak self] result in
+            guard let self = self else { return }
+            if case .success(let repository) = result, !self.sources.contains(key) {
+                self.sources.append(key)
+                UserDefaults.standard.set(self.sources, forKey: Self.storageKey)
+                self.snapshots[key] = repository
+                self.publishSnapshots()
+            }
+            completion(result)
+        }
+    }
 
+    func remove(at offsets: IndexSet) {
+        let removed = offsets.compactMap { sources.indices.contains($0) ? sources[$0] : nil }
+        sources.remove(atOffsets: offsets)
+        UserDefaults.standard.set(sources, forKey: Self.storageKey)
+        for key in removed {
+            sourceEpochs[key, default: 0] &+= 1
+            snapshots.removeValue(forKey: key)
+            pending.remove(key)
+        }
+        isLoading = !pending.isEmpty
+        errorMessage = nil
+        publishSnapshots()
+    }
+
+    func reloadAll() {
+        for key in sources {
+            guard let url = URL(string: key) else { continue }
+            fetch(url, requireRegistered: true, completion: nil)
+        }
+        if sources.isEmpty {
+            snapshots.removeAll()
+            pending.removeAll()
+            isLoading = false
+            errorMessage = nil
+            publishSnapshots()
+        }
+    }
+
+    /// A successful unlock only refreshes the originating source.
+    func reload(sourceURL: URL) {
+        guard sources.contains(sourceURL.absoluteString) else { return }
+        fetch(sourceURL, requireRegistered: true, completion: nil)
+    }
+
+    private func fetch(
+        _ url: URL,
+        requireRegistered: Bool,
+        completion: ((Result<SourceRepository, Error>) -> Void)?
+    ) {
+        let key = url.absoluteString
+        sourceEpochs[key, default: 0] &+= 1
+        let epoch = sourceEpochs[key]!
+        pending.insert(key)
         isLoading = true
         errorMessage = nil
 
         loader.fetch(from: url) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                self.isLoading = false
+                guard self.sourceEpochs[key] == epoch else { return }
+                self.pending.remove(key)
+                self.isLoading = !self.pending.isEmpty
+                if requireRegistered && !self.sources.contains(key) { return }
 
                 switch result {
                 case .success(let repository):
-                    self.loadGeneration &+= 1
-
-                    var updatedSources = self.sources
-                    updatedSources.append(normalized)
-                    self.sources = updatedSources
-                    UserDefaults.standard.set(updatedSources, forKey: Self.storageKey)
-
-                    let updatedRepositories = Self.orderedRepositories(
-                        self.repositories + [repository],
-                        sourceOrder: updatedSources
-                    )
-                    self.repositories = updatedRepositories
-                    self.rebuildApps(from: updatedRepositories)
-                    self.errorMessage = nil
-                    completion(.success(repository))
-
+                    if requireRegistered {
+                        self.snapshots[key] = repository
+                        self.publishSnapshots()
+                    }
                 case .failure(let error):
+                    // Retain the last successful snapshot; never replace it with an empty one.
                     self.errorMessage = error.localizedDescription
-                    completion(.failure(error))
                 }
+                completion?(result)
             }
         }
     }
 
-    func remove(at offsets: IndexSet) {
-        loadGeneration &+= 1
-
-        let removedURLs = offsets.compactMap { index in
-            sources.indices.contains(index) ? sources[index] : nil
-        }
-
-        var updated = sources
-        updated.remove(atOffsets: offsets)
-        sources = updated
-        UserDefaults.standard.set(updated, forKey: Self.storageKey)
-
-        let remaining = repositories.filter {
-            !removedURLs.contains($0.sourceURL.absoluteString)
-        }
-        repositories = Self.orderedRepositories(
-            remaining,
-            sourceOrder: updated
-        )
-        rebuildApps(from: repositories)
-        isLoading = false
-        errorMessage = nil
-    }
-
-    func reloadAll() {
-        let urls = sources.compactMap(URL.init(string:))
-        loadGeneration &+= 1
-        let generation = loadGeneration
-
-        guard !urls.isEmpty else {
-            repositories = []
-            apps = []
-            isLoading = false
-            errorMessage = nil
-            return
-        }
-
-        isLoading = true
-        errorMessage = nil
-
-        let group = DispatchGroup()
-        let lock = NSLock()
-        var loaded = Array<SourceRepository?>(repeating: nil, count: urls.count)
-        var firstError: Error?
-
-        for (index, url) in urls.enumerated() {
-            group.enter()
-            loader.fetch(from: url) { result in
-                lock.lock()
-                switch result {
-                case .success(let repository):
-                    loaded[index] = repository
-                case .failure(let error):
-                    if firstError == nil { firstError = error }
-                }
-                lock.unlock()
-                group.leave()
+    private func publishSnapshots() {
+        repositories = sources.compactMap { snapshots[$0] }
+        var seen = Set<String>()
+        var mapped: [AppItem] = []
+        for repository in repositories {
+            for app in repository.apps {
+                let identity = repository.sourceURL.absoluteString + "\n" + app.identifier.lowercased()
+                guard seen.insert(identity).inserted else { continue }
+                mapped.append(Self.makeAppItem(from: app, repository: repository))
             }
         }
-
-        group.notify(queue: .main) { [weak self] in
-            guard let self = self, generation == self.loadGeneration else { return }
-
-            let orderedRepositories = loaded.compactMap { $0 }
-            self.repositories = orderedRepositories
-            self.rebuildApps(from: orderedRepositories)
-            self.isLoading = false
-            self.errorMessage = firstError?.localizedDescription
-        }
+        mapped.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        apps = mapped
     }
-
-    private func rebuildApps(from repositories: [SourceRepository]) {
-        appBuildGeneration &+= 1
-        let generation = appBuildGeneration
-        let snapshot = repositories
-
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            var seen = Set<String>()
-            var mapped: [AppItem] = []
-            mapped.reserveCapacity(snapshot.reduce(0) { $0 + $1.apps.count })
-
-            for repository in snapshot {
-                for sourceApp in repository.apps {
-                    let identity = sourceApp.identifier.lowercased()
-                    guard seen.insert(identity).inserted else { continue }
-                    mapped.append(Self.makeAppItem(from: sourceApp, repository: repository))
-                }
-            }
-
-            mapped.sort {
-                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-            }
-
-            DispatchQueue.main.async {
-                guard let self = self,
-                      generation == self.appBuildGeneration else {
-                    return
-                }
-                self.apps = mapped
-            }
-        }
-    }
-
-    private static func orderedRepositories(
-        _ repositories: [SourceRepository],
-        sourceOrder: [String]
-    ) -> [SourceRepository] {
-        let byURL = Dictionary(
-            repositories.map { ($0.sourceURL.absoluteString, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-
-        return sourceOrder.compactMap { byURL[$0] }
-    }
-
-    private static let sourceDateFormatter: ISO8601DateFormatter = {
-        ISO8601DateFormatter()
-    }()
 
     private static func makeAppItem(from app: SourceApp, repository: SourceRepository) -> AppItem {
         AppItem(
-            appID: stableIntegerID(app.identifier),
+            appID: stableIntegerID(repository.sourceURL.absoluteString + "\n" + app.identifier.lowercased()),
             appName: app.name,
             modDescription: app.summary ?? app.releaseNotes,
             icon: app.iconURL?.absoluteString,
@@ -196,7 +149,7 @@ final class SoftwareSourceStore: ObservableObject {
             packageName: app.identifier,
             currentVersion: app.version,
             appVersion: app.version,
-            modUpdateTime: app.updatedAt.map { sourceDateFormatter.string(from: $0) },
+            modUpdateTime: app.updatedAt.map { ISO8601DateFormatter().string(from: $0) },
             fileSize: app.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) },
             screenshots: [],
             alistURL: app.downloadURL?.absoluteString,
@@ -212,21 +165,12 @@ final class SoftwareSourceStore: ObservableObject {
 
     private static func stableIntegerID(_ value: String) -> Int {
         var hash: UInt64 = 1469598103934665603
-        for byte in value.utf8 {
-            hash ^= UInt64(byte)
-            hash &*= 1099511628211
-        }
+        for byte in value.utf8 { hash = (hash ^ UInt64(byte)) &* 1099511628211 }
         return Int(hash & 0x7fff_ffff)
     }
 }
 
 enum SoftwareSourceStoreError: LocalizedError {
     case duplicate
-
-    var errorDescription: String? {
-        switch self {
-        case .duplicate:
-            return "该软件源已经添加。"
-        }
-    }
+    var errorDescription: String? { "该软件源已经添加。" }
 }

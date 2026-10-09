@@ -1,20 +1,36 @@
 import SwiftUI
 
-/// Software-source search is removed until a new catalog is implemented.
 struct SearchView: View {
+    @ObservedObject private var sources = SoftwareSourceStore.shared
+    @State private var query = ""
+
+    private var matches: [SourceCatalogApp] {
+        guard !query.isEmpty else { return [] }
+        return sources.catalogApps.filter {
+            $0.name.localizedCaseInsensitiveContains(query) ||
+            $0.bundleIdentifier.localizedCaseInsensitiveContains(query) ||
+            $0.category.localizedCaseInsensitiveContains(query)
+        }
+    }
+
     var body: some View {
         NavigationView {
-            VStack(spacing: 12) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 38))
-                    .foregroundColor(.secondary)
-                Text("暂无可搜索的软件")
-                    .font(.headline)
-                Text("当前仅保留添加软件源功能。")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
+            List {
+                Section {
+                    TextField("搜索软件、Bundle ID 或分类", text: $query)
+                        .autocapitalization(.none)
+                }
+                Section(header: Text("搜索结果 · \(matches.count)")) {
+                    ForEach(matches) { app in
+                        NavigationLink(destination: SourceAppDetailView(app: app)) {
+                            SourceAppRow(app: app)
+                        }
+                    }
+                }
             }
+            .listStyle(InsetGroupedListStyle())
             .navigationBarTitle("搜索")
+            .onAppear { if sources.catalogApps.isEmpty { sources.refreshCatalog() } }
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }

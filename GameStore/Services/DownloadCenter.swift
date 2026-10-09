@@ -20,6 +20,9 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
     @Published private(set) var completedItems: [Item] = []
     @Published private(set) var terminalItems: [Item] = []
 
+    private var resumeDataByURL: [URL: Data] = [:]
+    private var pausingTaskIDs = Set<Int>()
+
     var items: [Item] {
         activeItems + completedItems + terminalItems
     }
@@ -58,6 +61,8 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         }
 
         terminalItems.removeAll { $0.sourceURL == url }
+        // A manual retry starts a fresh transfer, not stale resume bytes.
+        resumeDataByURL.removeValue(forKey: url)
 
         let task = session.downloadTask(with: url)
         let item = Item(
@@ -73,6 +78,52 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         updateActiveItem(taskIdentifier: task.taskIdentifier) {
             $0.state = .downloading
         }
+        task.resume()
+    }
+
+    func pause(_ item: Item) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.pause(item) }
+            return
+        }
+        guard item.state == .downloading, let identifier = item.taskIdentifier,
+              !pausingTaskIDs.contains(identifier) else { return }
+        pausingTaskIDs.insert(identifier)
+        session.getAllTasks { [weak self] tasks in
+            guard let self = self else { return }
+            guard let download = tasks.first(where: { $0.taskIdentifier == identifier })
+                as? URLSessionDownloadTask else {
+                DispatchQueue.main.async {
+                    self.pausingTaskIDs.remove(identifier)
+                }
+                return
+            }
+            download.cancel(byProducingResumeData: { data in
+                DispatchQueue.main.async {
+                    self.pausingTaskIDs.remove(identifier)
+                    if let data = data { self.resumeDataByURL[item.sourceURL] = data }
+                    self.updateActiveItem(taskIdentifier: identifier) {
+                        $0.state = data == nil ? .cancelled : .paused
+                        $0.taskIdentifier = nil
+                    }
+                }
+            })
+        }
+    }
+
+    func resume(_ item: Item) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.resume(item) }
+            return
+        }
+        guard item.state == .paused,
+              let index = activeItems.firstIndex(where: { $0.id == item.id }),
+              let data = resumeDataByURL.removeValue(forKey: item.sourceURL) else {
+            return
+        }
+        let task = session.downloadTask(withResumeData: data)
+        activeItems[index].taskIdentifier = task.taskIdentifier
+        activeItems[index].state = .downloading
         task.resume()
     }
 
@@ -265,6 +316,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         guard let error = error else { return }
 
         DispatchQueue.main.async {
+            if self.pausingTaskIDs.contains(task.taskIdentifier) { return }
             let state: State = (error as NSError).code == NSURLErrorCancelled
                 ? .cancelled
                 : .failed

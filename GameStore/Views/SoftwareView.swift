@@ -7,45 +7,75 @@ struct SoftwareView: View {
 
     var body: some View {
         NavigationView {
-            Group {
-                if store.isLoading && store.apps.isEmpty {
-                    loadingPlaceholder
-                } else if store.apps.isEmpty {
-                    emptyPlaceholder
-                } else {
-                    List {
-                        if !store.featuredApps.isEmpty {
-                            Section(header: Text("热门推荐")) {
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 14) {
-                                        ForEach(store.featuredApps) { app in
-                                            NavigationLink(destination: AppDetailView(app: app)) {
-                                                FeaturedCardView(app: app)
+            ZStack {
+                Group {
+                    if store.isLoading && store.apps.isEmpty {
+                        loadingPlaceholder
+                    } else if store.apps.isEmpty {
+                        emptyPlaceholder
+                    } else {
+                        List {
+                            if !store.featuredApps.isEmpty {
+                                Section(header: Text("热门推荐")) {
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 14) {
+                                            ForEach(store.featuredApps) { app in
+                                                NavigationLink(destination: AppDetailView(app: app)) {
+                                                    FeaturedCardView(app: app)
+                                                }
+                                                .buttonStyle(PlainButtonStyle())
                                             }
-                                            .buttonStyle(PlainButtonStyle())
                                         }
+                                        .padding(.vertical, 6)
                                     }
-                                    .padding(.vertical, 6)
                                 }
                             }
-                        }
 
-                        Section(header: Text("全部软件")) {
-                            ForEach(store.apps) { app in
-                                NavigationLink(destination: AppDetailView(app: app)) {
-                                    AppRowView(app: app)
+                            Section(header: Text("全部软件")) {
+                                ForEach(store.apps) { app in
+                                    NavigationLink(destination: AppDetailView(app: app)) {
+                                        AppRowView(app: app)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
-                                .buttonStyle(PlainButtonStyle())
                             }
                         }
+                        .listStyle(GroupedListStyle())
                     }
-                    .listStyle(GroupedListStyle())
+                }
+
+                if store.isLoading && !store.apps.isEmpty {
+                    Color.black.opacity(0.12)
+                        .edgesIgnoringSafeArea(.all)
+
+                    VStack(spacing: 12) {
+                        ActivityIndicator()
+                            .frame(width: 30, height: 30)
+                        Text("正在刷新软件源")
+                            .font(.headline)
+                        Text("正在重新请求并解析已添加的软件源…")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 22)
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .cornerRadius(18)
+                    .shadow(radius: 8)
                 }
             }
             .navigationBarTitle("精品软件")
-            .navigationBarItems(trailing: Button(action: store.reload) {
-                Image(systemName: "arrow.clockwise")
-            })
+            .navigationBarItems(trailing:
+                Button(action: store.reload) {
+                    if store.isLoading {
+                        ActivityIndicator()
+                            .frame(width: 20, height: 20)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .disabled(store.isLoading)
+            )
             .onAppear {
                 if store.apps.isEmpty {
                     store.reload()

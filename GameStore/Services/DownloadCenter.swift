@@ -101,10 +101,19 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             download.cancel(byProducingResumeData: { data in
                 DispatchQueue.main.async {
                     self.pausingTaskIDs.remove(identifier)
-                    if let data = data { self.resumeDataByURL[item.sourceURL] = data }
-                    self.updateActiveItem(taskIdentifier: identifier) {
-                        $0.state = data == nil ? .cancelled : .paused
-                        $0.taskIdentifier = nil
+                    if let data = data {
+                        self.resumeDataByURL[item.sourceURL] = data
+                        self.updateActiveItem(taskIdentifier: identifier) {
+                            $0.state = .paused
+                            $0.taskIdentifier = nil
+                        }
+                    } else {
+                        self.finishActiveItem(
+                            taskIdentifier: identifier,
+                            state: .cancelled,
+                            localURL: nil,
+                            errorDescription: nil
+                        )
                     }
                 }
             })

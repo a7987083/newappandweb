@@ -225,8 +225,7 @@ struct AppDetailView: View {
                         DownloadActionButton(
                             app: currentApp,
                             downloadCenter: store.downloadCenter,
-                            udidService: store.udidService,
-                            onUnlocked: store.reload
+                            udidService: store.udidService
                         )
                     }
 
@@ -262,7 +261,6 @@ private struct DownloadActionButton: View {
     let app: AppItem
     @ObservedObject var downloadCenter: DownloadCenter
     @ObservedObject var udidService: UDIDService
-    let onUnlocked: () -> Void
 
     @State private var showUnlockCode = false
     @State private var unlockCode = ""
@@ -425,7 +423,6 @@ private struct DownloadActionButton: View {
                     self.showUnlockCode = false
                     self.unlockCode = ""
                     self.unlockError = nil
-                    self.onUnlocked()
 
                 case .failure(let error):
                     self.unlockError = error.localizedDescription

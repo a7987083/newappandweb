@@ -51,6 +51,10 @@ struct ProfileView: View {
                         ProfileRow(icon: "tray.full", title: "软件源", subtitle: "添加和管理软件源")
                     }
 
+                    NavigationLink(destination: SigningSettingsView()) {
+                        ProfileRow(icon: "signature", title: "签名设置", subtitle: "配置签名与打包行为")
+                    }
+
                 }
 
                 Section {

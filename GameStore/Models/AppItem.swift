@@ -224,17 +224,3 @@ struct AppItem: Identifiable, Codable, Hashable {
         return URL(string: value)
     }
 }
-
-struct AppListResponse: Codable {
-    let data: [AppItem]
-    let currentPage: Int
-    let totalPages: Int
-
-    var apps: [AppItem] { data }
-
-    enum CodingKeys: String, CodingKey {
-        case data
-        case currentPage = "current_page"
-        case totalPages = "total_pages"
-    }
-}

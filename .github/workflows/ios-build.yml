@@ -20,10 +20,12 @@ jobs:
           git -C upstream-ksign checkout 03a3a9c86897d79f9faf8106037b9971841d56a0
           git -C upstream-ksign submodule update --init --recursive
           test "$(git -C upstream-ksign/Zsign rev-parse HEAD)" = "6ffe703df73ef9069adacdbb19d571f11a69a801"
+          curl -fLsS --retry 3 -o /tmp/zonoe-provision.patch https://raw.githubusercontent.com/a7987083/UnitXP_SP3-Moonstone/v3.0.0-alphaone13/HFASign/patches/0017-Fix-Zsign-removeProvision-semantics.patch
+          git -C upstream-ksign/Zsign apply --check /tmp/zonoe-provision.patch
+          git -C upstream-ksign/Zsign apply /tmp/zonoe-provision.patch
           mkdir -p Vendor
           cp -R upstream-ksign/Zsign Vendor/Zsign
-          curl -fLsS --retry 3 -o /tmp/zonoe-provision.patch https://raw.githubusercontent.com/a7987083/UnitXP_SP3-Moonstone/v3.0.0-alphaone13/HFASign/patches/0017-Fix-Zsign-removeProvision-semantics.patch
-          git -C Vendor/Zsign apply /tmp/zonoe-provision.patch
+          test -f Vendor/Zsign/Package.swift
 
 
       - name: Select Xcode 15.4
@@ -108,10 +110,12 @@ jobs:
           git -C upstream-ksign checkout 03a3a9c86897d79f9faf8106037b9971841d56a0
           git -C upstream-ksign submodule update --init --recursive
           test "$(git -C upstream-ksign/Zsign rev-parse HEAD)" = "6ffe703df73ef9069adacdbb19d571f11a69a801"
+          curl -fLsS --retry 3 -o /tmp/zonoe-provision.patch https://raw.githubusercontent.com/a7987083/UnitXP_SP3-Moonstone/v3.0.0-alphaone13/HFASign/patches/0017-Fix-Zsign-removeProvision-semantics.patch
+          git -C upstream-ksign/Zsign apply --check /tmp/zonoe-provision.patch
+          git -C upstream-ksign/Zsign apply /tmp/zonoe-provision.patch
           mkdir -p Vendor
           cp -R upstream-ksign/Zsign Vendor/Zsign
-          curl -fLsS --retry 3 -o /tmp/zonoe-provision.patch https://raw.githubusercontent.com/a7987083/UnitXP_SP3-Moonstone/v3.0.0-alphaone13/HFASign/patches/0017-Fix-Zsign-removeProvision-semantics.patch
-          git -C Vendor/Zsign apply /tmp/zonoe-provision.patch
+          test -f Vendor/Zsign/Package.swift
 
 
       - name: Select Xcode 26.6

@@ -37,9 +37,20 @@ jobs:
           set -euo pipefail
           cd upstream-ksign/Zsign
           swift package dump-package > "$GITHUB_WORKSPACE/zsign-package.json"
+      - name: Compile ZsignSwift for iOS device
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          xcodebuild \
+            -project upstream-ksign/Zsign/.swiftpm/xcode/package.xcworkspace \
+            -scheme ZsignSwift \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tee zsign-device-build.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: zsign-package-diagnostic
-          path: zsign-package.json
+          path: |\n            zsign-package.json\n            zsign-device-build.log
           if-no-files-found: ignore

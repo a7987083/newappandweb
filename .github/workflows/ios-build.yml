@@ -57,18 +57,18 @@ jobs:
           cp -R "$APP_PATH" ipa/Payload/GameStore.app
           (
             cd ipa
-            /usr/bin/zip -qry ../GameStore-v0.2.4-dev-unsigned.ipa Payload
+            /usr/bin/zip -qry ../GameStore-v0.2.5-dev-unsigned.ipa Payload
           )
-          /usr/bin/unzip -l GameStore-v0.2.4-dev-unsigned.ipa | tee ipa-contents.log
-          test -s GameStore-v0.2.4-dev-unsigned.ipa
-          /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP_PATH/Info.plist" | grep -Fx "0.2.4"
-          /usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$APP_PATH/Info.plist" | grep -Fx "5"
+          /usr/bin/unzip -l GameStore-v0.2.5-dev-unsigned.ipa | tee ipa-contents.log
+          test -s GameStore-v0.2.5-dev-unsigned.ipa
+          /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP_PATH/Info.plist" | grep -Fx "0.2.5"
+          /usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$APP_PATH/Info.plist" | grep -Fx "6"
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: GameStore-v0.2.4-dev-unsigned-ipa
-          path: GameStore-v0.2.4-dev-unsigned.ipa
+          name: GameStore-v0.2.5-dev-unsigned-ipa
+          path: GameStore-v0.2.5-dev-unsigned.ipa
           if-no-files-found: error
 
       - name: Upload legacy build logs

@@ -1,18 +1,47 @@
 import SwiftUI
 
-/// Software-source search is removed until a new catalog is implemented.
 struct SearchView: View {
+    @ObservedObject private var sourceStore = SoftwareSourceStore.shared
+    @EnvironmentObject private var store: AppStoreViewModel
+    @State private var query = ""
+
+    private var results: [RepositoryApp] {
+        let keyword = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if keyword.isEmpty { return sourceStore.allApps }
+        return sourceStore.allApps.filter {
+            $0.name.localizedCaseInsensitiveContains(keyword) ||
+            $0.bundleID.localizedCaseInsensitiveContains(keyword)
+        }
+    }
+
     var body: some View {
         NavigationView {
-            VStack(spacing: 12) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 38))
-                    .foregroundColor(.secondary)
-                Text("暂无可搜索的软件")
-                    .font(.headline)
-                Text("当前仅保留添加软件源功能。")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                    TextField("搜索名称或 Bundle ID", text: $query)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                }
+                .padding(12)
+                .background(Color(UIColor.secondarySystemBackground))
+                .cornerRadius(10)
+                .padding()
+                List {
+                    ForEach(results) { app in
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(app.name).font(.headline)
+                                Text(app.bundleID).font(.caption).foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            if let url = app.downloadURL {
+                                Button("获取") { self.store.downloadCenter.enqueue(url) }
+                                    .buttonStyle(BorderlessButtonStyle())
+                            }
+                        }
+                    }
+                }
             }
             .navigationBarTitle("搜索")
         }

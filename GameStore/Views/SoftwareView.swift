@@ -568,44 +568,56 @@ final class RemoteImageLoader: ObservableObject {
     @Published var image: UIImage?
 
     private static let cache = NSCache<NSURL, UIImage>()
+    // Accessed on main only. One network request fans out to all visible views.
+    private static var pending: [URL: [(UIImage?) -> Void]] = [:]
 
     private let url: URL?
-    private var task: URLSessionDataTask?
+    private var loading = false
 
     init(url: URL?) {
         self.url = url
     }
 
     func load() {
-        guard image == nil, task == nil, let url = url else { return }
+        guard let url = url, image == nil, !loading else { return }
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in self?.load() }
+            return
+        }
 
         if let cached = Self.cache.object(forKey: url as NSURL) {
             image = cached
             return
         }
 
-        task = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let self = self else { return }
+        loading = true
+        let completion: (UIImage?) -> Void = { [weak self] result in
+            self?.loading = false
+            self?.image = result
+        }
 
-            guard let data = data, let image = UIImage(data: data) else {
-                DispatchQueue.main.async {
-                    self.task = nil
-                }
-                return
-            }
+        if Self.pending[url] != nil {
+            Self.pending[url]?.append(completion)
+            return
+        }
+        Self.pending[url] = [completion]
 
-            Self.cache.setObject(image, forKey: url as NSURL)
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            let validResponse = (response as? HTTPURLResponse).map {
+                (200...299).contains($0.statusCode)
+            } ?? false
+            let decoded = (error == nil && validResponse)
+                ? data.flatMap(UIImage.init(data:))
+                : nil
 
             DispatchQueue.main.async {
-                self.image = image
-                self.task = nil
+                if let decoded = decoded {
+                    Self.cache.setObject(decoded, forKey: url as NSURL)
+                }
+                let callbacks = Self.pending.removeValue(forKey: url) ?? []
+                callbacks.forEach { $0(decoded) }
             }
-        }
-        task?.resume()
-    }
-
-    deinit {
-        task?.cancel()
+        }.resume()
     }
 }
 

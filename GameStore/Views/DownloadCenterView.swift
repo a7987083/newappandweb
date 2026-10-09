@@ -8,6 +8,7 @@ struct DownloadCenterView: View {
             DownloadCenterContent(downloadCenter: store.downloadCenter)
                 .navigationBarTitle("下载管理")
         }
+        .navigationViewStyle(StackNavigationViewStyle())
     }
 }
 

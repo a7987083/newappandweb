@@ -39,7 +39,7 @@ enum IPAInspector {
     static func inspect(_ file: URL) throws -> IPAInspection {
         let values = try file.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
         guard values.isRegularFile == true, let byteCount = values.fileSize,
-              byteCount >= 22, byteCount <= UInt32.max else {
+              byteCount >= 22, byteCount <= Int(UInt32.max) else {
             throw IPAInspectionError.invalidArchive
         }
         let data = try Data(contentsOf: file, options: .mappedIfSafe)

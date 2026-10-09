@@ -10,6 +10,9 @@ final class SoftwareSourceStore: ObservableObject {
 
     @Published private(set) var sources: [String]
     @Published private(set) var isLoading = false
+    @Published fileprivate(set) var catalogApps: [SourceCatalogApp] = []
+    @Published fileprivate(set) var isCatalogLoading = false
+    @Published fileprivate(set) var catalogError: String?
     @Published private(set) var sourceNames: [String: String]
 
     private var registeredIdentities: [String: String] = [:]
@@ -31,6 +34,7 @@ final class SoftwareSourceStore: ObservableObject {
         UserDefaults.standard.set(sources, forKey: Self.storageKey)
         UserDefaults.standard.set(registeredIdentities, forKey: Self.identitiesKey)
         UserDefaults.standard.set(sourceNames, forKey: Self.namesKey)
+        catalogApps.removeAll { $0.sourceURL == value }
     }
 
     func add(_ url: URL, completion: @escaping (Result<Void, Error>) -> Void) {
@@ -116,6 +120,7 @@ final class SoftwareSourceStore: ObservableObject {
                 UserDefaults.standard.set(self.sources, forKey: Self.storageKey)
                 UserDefaults.standard.set(self.registeredIdentities, forKey: Self.identitiesKey)
                 UserDefaults.standard.set(self.sourceNames, forKey: Self.namesKey)
+                self.refreshCatalog()
                 completion(.success(()))
             }
         }
@@ -130,6 +135,122 @@ private enum RegistrationError: LocalizedError {
         case .duplicate: return "该软件源已经添加。"
         case .badResponse: return "软件源网络响应无效。"
         case .unsupported: return "该地址未返回有效的软件源仓库数据。"
+        }
+    }
+}
+
+
+struct SourceCatalogApp: Identifiable {
+    let id: String
+    let sourceURL: String
+    let name: String
+    let bundleIdentifier: String
+    let version: String
+    let category: String
+    let description: String
+    let iconURL: URL?
+    let downloadURL: URL?
+    let developer: String
+}
+
+extension SoftwareSourceStore {
+    // Decode and publish complete catalogs, not just registration metadata.
+    func refreshCatalog() {
+        let registered = sources
+        guard !registered.isEmpty else {
+            catalogApps = []
+            catalogError = nil
+            return
+        }
+        isCatalogLoading = true
+        catalogError = nil
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var collected = [SourceCatalogApp]()
+        var failures = [String]()
+        for source in registered {
+            guard let originalURL = URL(string: source) else { continue }
+            group.enter()
+            var components = URLComponents(url: originalURL, resolvingAgainstBaseURL: false)
+            let udid = UDIDService.shared.udid?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !udid.isEmpty {
+                var items = components?.queryItems ?? []
+                items.removeAll { $0.name.caseInsensitiveCompare("udid") == .orderedSame }
+                items.append(URLQueryItem(name: "udid", value: udid))
+                components?.queryItems = items
+            }
+            var request = URLRequest(url: components?.url ?? originalURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 40)
+            request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+            session.dataTask(with: request) { data, response, error in
+                defer { group.leave() }
+                guard error == nil, let response = response as? HTTPURLResponse,
+                      (200...299).contains(response.statusCode), let data = data else {
+                    lock.lock(); failures.append(source); lock.unlock()
+                    return
+                }
+                let decodeGroup = DispatchSemaphore(value: 0)
+                QNQSourcePayloadDecoder.decode(data) { result in
+                    defer { decodeGroup.signal() }
+                    do {
+                        let decoded = try result.get()
+                        let entries = try Self.parseCatalog(decoded, source: source, baseURL: originalURL)
+                        lock.lock(); collected.append(contentsOf: entries); lock.unlock()
+                    } catch {
+                        lock.lock(); failures.append(source + ": " + error.localizedDescription); lock.unlock()
+                    }
+                }
+                // Legacy decoding may perform async key retrieval; never wait on main.
+                decodeGroup.wait()
+            }.resume()
+        }
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            // Ignore responses from a previous refresh when registration changed.
+            self.catalogApps = collected.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            self.catalogError = failures.isEmpty ? nil : "\(failures.count) 个软件源加载失败，可下拉刷新重试"
+            self.isCatalogLoading = false
+        }
+    }
+
+    private static func parseCatalog(_ data: Data, source: String, baseURL: URL) throws -> [SourceCatalogApp] {
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
+        let root = (json["repository"] as? [String: Any]) ?? (json["repo"] as? [String: Any]) ?? json
+        let entries = (root["apps"] as? [[String: Any]]) ?? (root["applications"] as? [[String: Any]]) ?? []
+        return entries.enumerated().compactMap { index, app in
+            func value(_ keys: [String]) -> String {
+                for key in keys {
+                    if let s = app[key] as? String, !s.isEmpty { return s }
+                    if let n = app[key] as? NSNumber { return n.stringValue }
+                }
+                return ""
+            }
+            func resolvedURL(_ raw: String) -> URL? {
+                guard !raw.isEmpty else { return nil }
+                // URLComponents preserves Chinese, spaces and existing %-escapes.
+                return URL(string: raw, relativeTo: baseURL)?.absoluteURL
+            }
+            let name = value(["name", "title", "appName"])
+            guard !name.isEmpty else { return nil }
+            let bundle = value(["bundleIdentifier", "bundleID", "bundleId", "identifier"])
+            let download = value(["downloadURL", "downloadUrl", "download", "url", "ipa"])
+            let versions = app["versions"] as? [[String: Any]]
+            let latest = versions?.first
+            let version = value(["version", "versionName", "shortVersion"])
+            let versionURL = (latest?["downloadURL"] as? String) ?? (latest?["downloadUrl"] as? String) ?? ""
+            let versionString = (latest?["version"] as? String) ?? ""
+            let icon = value(["iconURL", "icon", "iconUrl"])
+            return SourceCatalogApp(
+                id: source + "#" + (bundle.isEmpty ? String(index) : bundle),
+                sourceURL: source,
+                name: name,
+                bundleIdentifier: bundle,
+                version: version.isEmpty ? versionString : version,
+                category: value(["category", "categoryName"]),
+                description: value(["localizedDescription", "description", "subtitle"]),
+                iconURL: resolvedURL(icon),
+                downloadURL: resolvedURL(download.isEmpty ? versionURL : download),
+                developer: value(["developerName", "developer", "author"])
+            )
         }
     }
 }

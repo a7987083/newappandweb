@@ -1,6 +1,6 @@
 import Foundation
-import Security
 import ZsignSwift
+import Zsign
 import ZIPFoundation
 
 protocol AppSigning {
@@ -14,8 +14,7 @@ protocol AppSigning {
 enum SigningServiceError: LocalizedError {
     case missingCertificateFile
     case missingProvisionFile
-    case certificateInvalid(OSStatus)
-    case certificateIdentityMissing
+    case certificatePasswordRejected
     case provisionInvalid
     case malformedPayload
     case nativeSigningFailed(String)
@@ -145,18 +144,11 @@ final class AppSigningService: AppSigning {
               (values.fileSize ?? 0) > 0 else {
             throw SigningServiceError.missingProvisionFile
         }
-        var decoded: CFArray?
-        let status = SecPKCS12Import(
-            p12 as CFData,
-            [kSecImportExportPassphrase as String: password] as CFDictionary,
-            &decoded
-        )
-        guard status == errSecSuccess else {
-            throw SigningServiceError.certificateInvalid(status)
-        }
-        guard let identities = decoded as? [[String: Any]],
-              identities.contains(where: { $0[kSecImportItemIdentity as String] != nil }) else {
-            throw SigningServiceError.certificateIdentityMissing
+        // Revalidate using the same native OpenSSL path as certificate import.
+        password_check_fix_WHAT_THE_FUCK(provisionURL.path)
+        defer { password_check_fix_WHAT_THE_FUCK_free(provisionURL.path) }
+        guard p12_password_check(p12URL.path, password) else {
+            throw SigningServiceError.certificatePasswordRejected
         }
         // Provision CMS, entitlement consistency and Mach-O signatures are
         // validated by the native signing pipeline when integrated.

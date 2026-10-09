@@ -171,7 +171,7 @@ private struct AboutView: View {
             }
 
             Section {
-                Text("Version 0.2-dev")
+                Text("Version " + (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知"))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

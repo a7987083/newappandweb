@@ -14,6 +14,7 @@ struct DownloadCenterView: View {
 
 private struct DownloadCenterContent: View {
     @ObservedObject var downloadCenter: DownloadCenter
+    @State private var signingIPA: URL?
     @State private var deleteError: String?
     @State private var inspectionMessages: [String: String] = [:]
     @State private var inspectingPaths = Set<String>()
@@ -92,10 +93,9 @@ private struct DownloadCenterContent: View {
                                     title: "签名",
                                     foreground: .white,
                                     background: .accentColor,
-                                    action: {}
+                                    action: { signingIPA = item.localURL }
                                 )
-                                .disabled(true)
-                                .opacity(0.55)
+                                .disabled(item.localURL == nil)
 
                                 Spacer(minLength: 20)
 
@@ -115,6 +115,11 @@ private struct DownloadCenterContent: View {
         }
         .onAppear {
             downloadCenter.reloadDownloadedItems()
+        }
+        .sheet(isPresented: Binding(get: { signingIPA != nil }, set: { if !$0 { signingIPA = nil } })) {
+            if let ipa = signingIPA {
+                SigningExecutionView(ipaURL: ipa)
+            }
         }
         .alert(isPresented: Binding(
             get: { deleteError != nil },

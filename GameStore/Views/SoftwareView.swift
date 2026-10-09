@@ -139,9 +139,11 @@ private struct SourceAppDetailContent: View {
                         if !app.developer.isEmpty {
                             Text(app.developer).font(.caption).foregroundColor(.secondary)
                         }
-                        downloadControl
                     }
-                    Spacer(minLength: 0)
+                    Spacer(minLength: 8)
+                    downloadControl
+                        .frame(minWidth: 92, alignment: .trailing)
+                        .padding(.top, 25)
                 }
                 .padding(.top, 18)
                 .padding(.bottom, 20)
@@ -217,17 +219,20 @@ private struct SourceAppDetailContent: View {
                             .font(.subheadline).foregroundColor(.secondary)
                     }
                 case .paused:
-                    Button("继续下载") { downloadCenter.resume(item) }
+                    Button("继续") { downloadCenter.resume(item) }
+                        .modifier(SourceGetPillStyle())
                 case .completed:
                     HStack(spacing: 5) {
                         Image(systemName: "checkmark.circle.fill")
                         Text("已下载")
                     }.foregroundColor(.green)
                 case .failed, .cancelled:
-                    Button("重新获取") { downloadCenter.enqueue(url) }
+                    Button("重试") { downloadCenter.enqueue(url) }
+                        .modifier(SourceGetPillStyle())
                 }
             } else {
                 Button("获取") { downloadCenter.enqueue(url) }
+                    .modifier(SourceGetPillStyle())
             }
         } else {
             Text("此软件未提供有效的下载地址").font(.caption).foregroundColor(.secondary)
@@ -255,5 +260,18 @@ private struct CompactDetailTitle: ViewModifier {
         } else {
             content.navigationBarTitle("软件详情")
         }
+    }
+}
+
+private struct SourceGetPillStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 22)
+            .frame(height: 32)
+            .background(Color(red: 0.16, green: 0.46, blue: 0.91))
+            .clipShape(Capsule())
+            .buttonStyle(PlainButtonStyle())
     }
 }

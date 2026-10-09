@@ -108,9 +108,9 @@ private struct AboutView: View {
             "把 HTTP/HTTPS IPA 地址加入 zonoe 下载队列。"
         ),
         (
-            "导入 / 安装 IPA",
+            "下载 IPA（install 兼容入口）",
             "zonoe://install/https%3A%2F%2Fexample.com%2Fapp.ipa",
-            "把 HTTP/HTTPS IPA 地址加入现有下载/导入入口。"
+            "当前行为与 download 相同：把 HTTP/HTTPS IPA 地址加入下载队列。"
         ),
         (
             "UDID Provider",

@@ -7,13 +7,9 @@
 
 /* Begin PBXBuildFile section */
 		A1B2C3D4E5F60718293A4007 /* SoftwareSourceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4008 /* SoftwareSourceStore.swift */; };
-		A1B2C3D4E5F60718293A4005 /* QNQSourcePayloadDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4006 /* QNQSourcePayloadDecoder.swift */; };
-		A1B2C3D4E5F60718293A4001 /* SourceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4002 /* SourceModels.swift */; };
-		A1B2C3D4E5F60718293A4003 /* SourceRepositoryLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4004 /* SourceRepositoryLoader.swift */; };
 		B1A2C3D4E5F6012345678901 /* UDIDLocalServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A2C3D4E5F6012345678902 /* UDIDLocalServer.swift */; };
 		B1A2C3D4E5F6012345678903 /* UDIDRequest.mobileconfig in Resources */ = {isa = PBXBuildFile; fileRef = B1A2C3D4E5F6012345678904 /* UDIDRequest.mobileconfig */; };
 		57E7BF5F348BD682C2F48632 /* GameStoreApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D68E78F467EB94B3056A42B4 /* GameStoreApp.swift */; };
-		2EA3F14B18AF484F728245C1 /* AppItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA5E1CB9915A276672B141F /* AppItem.swift */; };
 		CC893E0A2BEC2140C9DC4C48 /* SigningModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE5E269F8DB38CC172D0633D /* SigningModels.swift */; };
 		A17DE75B44120741CF22397D /* UDIDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23512DC7C6E4A1B407524CB6 /* UDIDService.swift */; };
 		20F3199E687E78DC28C17C9B /* DownloadCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C7B6C50B8DB55809E70C1A6 /* DownloadCenter.swift */; };
@@ -27,17 +23,15 @@
 		12EE47EFC339155E2326F092 /* DownloadCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6755EBD5030562F38C83E91E /* DownloadCenterView.swift */; };
 		DC93A05AD2436991EDB45E4D /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9204A5E96E252FF4D82B817B /* ProfileView.swift */; };
 		E1F2A3B4C5D60718293A5001 /* SigningSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60718293A5002 /* SigningSettingsView.swift */; };
+		C1A2B3C4D5E60718293A4011 /* RepositoryParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A2B3C4D5E60718293A4012 /* RepositoryParser.swift */; };
+		A1B2C3D4E5F60718293A4005 /* QNQSourcePayloadDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4006 /* QNQSourcePayloadDecoder.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		A1B2C3D4E5F60718293A4008 /* SoftwareSourceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/SoftwareSourceStore.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60718293A4006 /* QNQSourcePayloadDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/QNQSourcePayloadDecoder.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60718293A4002 /* SourceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/Models/SourceModels.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60718293A4004 /* SourceRepositoryLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/SourceRepositoryLoader.swift; sourceTree = "<group>"; };
 		B1A2C3D4E5F6012345678902 /* UDIDLocalServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/UDIDLocalServer.swift; sourceTree = "<group>"; };
 		B1A2C3D4E5F6012345678904 /* UDIDRequest.mobileconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = GameStore/Resources/UDIDRequest.mobileconfig; sourceTree = "<group>"; };
 		D68E78F467EB94B3056A42B4 /* GameStoreApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/App/GameStoreApp.swift; sourceTree = "<group>"; };
-		9CA5E1CB9915A276672B141F /* AppItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Models/AppItem.swift; sourceTree = "<group>"; };
 		CE5E269F8DB38CC172D0633D /* SigningModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Models/SigningModels.swift; sourceTree = "<group>"; };
 		23512DC7C6E4A1B407524CB6 /* UDIDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/UDIDService.swift; sourceTree = "<group>"; };
 		5C7B6C50B8DB55809E70C1A6 /* DownloadCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/DownloadCenter.swift; sourceTree = "<group>"; };
@@ -52,6 +46,8 @@
 		9204A5E96E252FF4D82B817B /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/ProfileView.swift; sourceTree = "<group>"; };
 		E1F2A3B4C5D60718293A5002 /* SigningSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/SigningSettingsView.swift; sourceTree = "<group>"; };
 		9A25D6B406A7F21575D4B312 /* GameStore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GameStore.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C1A2B3C4D5E60718293A4012 /* RepositoryParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/RepositoryParser.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4006 /* QNQSourcePayloadDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/QNQSourcePayloadDecoder.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -61,12 +57,10 @@
 /* Begin PBXGroup section */
 		0AD3550F5EBC1D28DCB0C9C3 = {isa = PBXGroup; children = (
 				D68E78F467EB94B3056A42B4 /* GameStoreApp.swift */,
-				9CA5E1CB9915A276672B141F /* AppItem.swift */,
 				CE5E269F8DB38CC172D0633D /* SigningModels.swift */,
-				A1B2C3D4E5F60718293A4002 /* SourceModels.swift */,
-				A1B2C3D4E5F60718293A4004 /* SourceRepositoryLoader.swift */,
-				A1B2C3D4E5F60718293A4006 /* QNQSourcePayloadDecoder.swift */,
 				A1B2C3D4E5F60718293A4008 /* SoftwareSourceStore.swift */,
+				C1A2B3C4D5E60718293A4012 /* RepositoryParser.swift */,
+				A1B2C3D4E5F60718293A4006 /* QNQSourcePayloadDecoder.swift */,
 				23512DC7C6E4A1B407524CB6 /* UDIDService.swift */,
 				B1A2C3D4E5F6012345678902 /* UDIDLocalServer.swift */,
 				B1A2C3D4E5F6012345678904 /* UDIDRequest.mobileconfig */,
@@ -103,12 +97,10 @@
 /* Begin PBXSourcesBuildPhase section */
 		209B772E630D0AB850E4DF67 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
 				57E7BF5F348BD682C2F48632 /* GameStoreApp.swift in Sources */,
-				2EA3F14B18AF484F728245C1 /* AppItem.swift in Sources */,
 				CC893E0A2BEC2140C9DC4C48 /* SigningModels.swift in Sources */,
-				A1B2C3D4E5F60718293A4001 /* SourceModels.swift in Sources */,
-				A1B2C3D4E5F60718293A4003 /* SourceRepositoryLoader.swift in Sources */,
-				A1B2C3D4E5F60718293A4005 /* QNQSourcePayloadDecoder.swift in Sources */,
 				A1B2C3D4E5F60718293A4007 /* SoftwareSourceStore.swift in Sources */,
+				C1A2B3C4D5E60718293A4011 /* RepositoryParser.swift in Sources */,
+				A1B2C3D4E5F60718293A4005 /* QNQSourcePayloadDecoder.swift in Sources */,
 				A17DE75B44120741CF22397D /* UDIDService.swift in Sources */,
 				B1A2C3D4E5F6012345678901 /* UDIDLocalServer.swift in Sources */,
 				20F3199E687E78DC28C17C9B /* DownloadCenter.swift in Sources */,

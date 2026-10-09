@@ -1,286 +1,265 @@
 import Foundation
 import Darwin
 
+/// A single Profile Service transaction on loopback, bound to a fresh session.
+/// No persisted server state; the coordinator owns its lifetime.
 final class UDIDLocalServer {
-    enum ServerError: Error {
-        case socketCreationFailed
-        case bindFailed
-        case listenFailed
-    }
-
     static let port: UInt16 = 14302
 
-    private let queue = DispatchQueue(label: "com.GameStore.udid.local-server")
-    private var socketFD: Int32 = -1
-    private var isRunning = false
+    enum ServerError: LocalizedError {
+        case socket, occupied, listen
+        var errorDescription: String? {
+            switch self {
+            case .socket: return "本机 UDID 服务无法创建套接字"
+            case .occupied: return "14302 端口已被占用。请关闭其他正在提供 UDID 服务的应用后重试"
+            case .listen: return "本机 UDID 服务无法启动监听"
+            }
+        }
+    }
+
     private let profileData: Data
-    private let sessionToken: String
-    private let onUDID: (String) -> Void
+    private let token: String
+    private let receive: (String) -> Void
+    private let bridgeRead: (String) -> String?
+    private let bridgeAck: (String) -> Bool
+    private let queue = DispatchQueue(label: "zonoe.udid.profile.listener", qos: .userInitiated)
+    private let state = NSLock()
+    private var listener: Int32 = -1
 
-    init(profileData: Data, sessionToken: String, onUDID: @escaping (String) -> Void) {
+    init(profileData: Data, sessionToken: String, onUDID: @escaping (String) -> Void, bridgeRead: @escaping (String) -> String? = { _ in nil }, bridgeAck: @escaping (String) -> Bool = { _ in false }) {
         self.profileData = profileData
-        self.sessionToken = sessionToken
-        self.onUDID = onUDID
+        self.token = sessionToken
+        self.receive = onUDID
+        self.bridgeRead = bridgeRead
+        self.bridgeAck = bridgeAck
     }
 
-    deinit {
-        stop()
-    }
+    deinit { stop() }
 
     func start() throws {
-        guard !isRunning else { return }
-
         let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
-        guard fd >= 0 else { throw ServerError.socketCreationFailed }
-
+        guard fd >= 0 else { throw ServerError.socket }
         var reuse: Int32 = 1
-        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
-
+        _ = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
         var address = sockaddr_in()
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         address.sin_family = sa_family_t(AF_INET)
         address.sin_port = Self.port.bigEndian
         address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
-
-        let bindResult = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+        let bound = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
-
-        guard bindResult == 0 else {
-            Darwin.close(fd)
-            throw ServerError.bindFailed
-        }
-
-        guard Darwin.listen(fd, 8) == 0 else {
-            Darwin.close(fd)
-            throw ServerError.listenFailed
-        }
-
-        socketFD = fd
-        isRunning = true
-
-        queue.async { [weak self] in
-            self?.acceptLoop()
-        }
+        guard bound == 0 else { Darwin.close(fd); throw ServerError.occupied }
+        guard Darwin.listen(fd, 8) == 0 else { Darwin.close(fd); throw ServerError.listen }
+        state.lock()
+        listener = fd
+        state.unlock()
+        queue.async { [weak self] in self?.serve(fd) }
     }
 
     func stop() {
-        guard isRunning else { return }
-        isRunning = false
-
-        let fd = socketFD
-        socketFD = -1
+        state.lock()
+        let fd = listener
+        listener = -1
+        state.unlock()
         if fd >= 0 {
-            Darwin.shutdown(fd, SHUT_RDWR)
-            Darwin.close(fd)
+            _ = Darwin.shutdown(fd, SHUT_RDWR)
+            _ = Darwin.close(fd)
         }
     }
 
-    private func acceptLoop() {
-        while isRunning {
-            var clientAddress = sockaddr_storage()
-            var clientLength = socklen_t(MemoryLayout<sockaddr_storage>.size)
-            let clientFD = withUnsafeMutablePointer(to: &clientAddress) { pointer in
-                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                    Darwin.accept(socketFD, $0, &clientLength)
+    private func serve(_ fd: Int32) {
+        while true {
+            state.lock()
+            let active = listener == fd
+            state.unlock()
+            guard active else { return }
+            var address = sockaddr_storage()
+            var length = socklen_t(MemoryLayout<sockaddr_storage>.size)
+            let client = withUnsafeMutablePointer(to: &address) {
+                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    Darwin.accept(fd, $0, &length)
                 }
             }
-
-            guard clientFD >= 0 else {
-                if isRunning { continue }
-                break
-            }
-
+            if client < 0 { return }
             var timeout = timeval(tv_sec: 10, tv_usec: 0)
-            setsockopt(clientFD, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
-            setsockopt(clientFD, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
-            handleClient(clientFD)
-            Darwin.shutdown(clientFD, SHUT_RDWR)
-            Darwin.close(clientFD)
+            _ = setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+            _ = setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+            handle(client)
+            _ = Darwin.shutdown(client, SHUT_RDWR)
+            _ = Darwin.close(client)
         }
     }
 
-    private func handleClient(_ clientFD: Int32) {
-        guard let request = readRequest(from: clientFD) else {
-            send(status: "400 Bad Request", headers: [:], body: Data(), to: clientFD)
+    private func handle(_ fd: Int32) {
+        guard let request = read(fd) else {
+            reply(fd, "400 Bad Request", [:], Data())
             return
         }
-
-        if request.method == "GET", request.path == "/profile.mobileconfig" {
-            send(
-                status: "200 OK",
-                headers: [
-                    "Content-Type": "application/x-apple-aspen-config",
-                    "Cache-Control": "no-store"
-                ],
-                body: profileData,
-                to: clientFD
-            )
+        // The Result Store shares the fixed loopback listener with Profile Service.
+        // GET remains retry-safe until an explicit POST ACK from the requesting app.
+        let prefix = "/bridge/result/"
+        let ackPrefix = "/bridge/ack/"
+        if request.method == "GET", request.path.hasPrefix(prefix) {
+            let nonce = String(request.path.dropFirst(prefix.count))
+            guard Self.validNonce(nonce), let value = bridgeRead(nonce),
+                  let body = try? JSONSerialization.data(withJSONObject: ["nonce": nonce, "udid": value]) else {
+                reply(fd, "404 Not Found", ["Cache-Control": "no-store"], Data())
+                return
+            }
+            reply(fd, "200 OK", ["Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"], body)
             return
         }
-
-        if request.method == "POST", request.path == "/udid" {
-            guard request.queryToken == sessionToken else {
-                send(status: "403 Forbidden", headers: [:], body: Data(), to: clientFD)
+        if request.method == "POST", request.path.hasPrefix(ackPrefix) {
+            let nonce = String(request.path.dropFirst(ackPrefix.count))
+            guard Self.validNonce(nonce), bridgeAck(nonce) else {
+                reply(fd, "404 Not Found", ["Cache-Control": "no-store"], Data())
                 return
             }
-            guard let udid = extractUDID(from: request.body), !udid.isEmpty else {
-                send(status: "400 Bad Request", headers: [:], body: Data(), to: clientFD)
-                return
-            }
-
-            DispatchQueue.main.async { [onUDID] in
-                onUDID(udid)
-            }
-
-            var callback = URLComponents()
-            callback.scheme = "zonoe"
-            callback.host = "udid-complete"
-            callback.queryItems = [
-                URLQueryItem(name: "udid", value: udid),
-                URLQueryItem(name: "session", value: sessionToken)
-            ]
-
-            guard let location = callback.url?.absoluteString else {
-                send(status: "500 Internal Server Error", headers: [:], body: Data(), to: clientFD)
-                return
-            }
-
-            send(
-                status: "301 Moved Permanently",
-                headers: ["Location": location],
-                body: Data(),
-                to: clientFD
-            )
+            reply(fd, "200 OK", ["Cache-Control": "no-store"], Data())
             return
         }
-
-        send(status: "404 Not Found", headers: [:], body: Data(), to: clientFD)
+        if request.method == "GET" && request.path == "/profile.mobileconfig" {
+            reply(fd, "200 OK", [
+                "Content-Type": "application/x-apple-aspen-config",
+                "Cache-Control": "no-store"
+            ], profileData)
+            return
+        }
+        guard request.method == "POST" && request.path == "/udid" else {
+            reply(fd, "404 Not Found", [:], Data())
+            return
+        }
+        guard request.session == token else {
+            reply(fd, "403 Forbidden", [:], Data())
+            return
+        }
+        guard let udid = Self.parseUDID(request.body) else {
+            reply(fd, "400 Bad Request", [:], Data())
+            return
+        }
+        DispatchQueue.main.async { [receive] in receive(udid) }
+        var callback = URLComponents()
+        callback.scheme = "zonoe"
+        callback.host = "udid-complete"
+        callback.queryItems = [
+            URLQueryItem(name: "udid", value: udid),
+            URLQueryItem(name: "session", value: token)
+        ]
+        guard let location = callback.url?.absoluteString else {
+            reply(fd, "500 Internal Server Error", [:], Data())
+            return
+        }
+        reply(fd, "301 Moved Permanently", ["Location": location, "Cache-Control": "no-store"], Data())
     }
 
-    private struct HTTPRequest {
+    static func validNonce(_ value: String) -> Bool {
+        guard (16...128).contains(value.utf8.count) else { return false }
+        return value.utf8.allSatisfy {
+            (48...57).contains($0) || (65...90).contains($0) ||
+            (97...122).contains($0) || $0 == 45 || $0 == 95
+        }
+    }
+
+    private struct Request {
         let method: String
         let path: String
+        let session: String?
         let body: Data
-        let queryToken: String?
     }
 
-    private func readRequest(from fd: Int32) -> HTTPRequest? {
-        let maxBodySize = 2 * 1024 * 1024
-        var data = Data()
-        var expectedTotalLength: Int?
-        var buffer = [UInt8](repeating: 0, count: 8192)
+    private func read(_ fd: Int32) -> Request? {
+        let maxHeader = 32 * 1024
+        let maxBody = 1024 * 1024
+        let separator = Data("\r\n\r\n".utf8)
+        var accumulated = Data()
+        var expected: Int?
+        var bytes = [UInt8](repeating: 0, count: 8192)
 
-        while data.count <= maxBodySize + 64 * 1024 {
-            let count = Darwin.recv(fd, &buffer, buffer.count, 0)
-            guard count > 0 else { break }
-            data.append(buffer, count: count)
-
-            if expectedTotalLength == nil,
-               let headerRange = data.range(of: Data("\r\n\r\n".utf8)) {
-                let headerData = data[..<headerRange.lowerBound]
-                guard let headerText = String(data: headerData, encoding: .utf8) else { return nil }
-                let contentLength = headerText
-                    .components(separatedBy: "\r\n")
+        while accumulated.count <= maxHeader + maxBody {
+            let count = bytes.withUnsafeMutableBytes { buffer in
+                Darwin.recv(fd, buffer.baseAddress, buffer.count, 0)
+            }
+            guard count > 0 else { return nil }
+            accumulated.append(contentsOf: bytes.prefix(count))
+            if expected == nil, let range = accumulated.range(of: separator) {
+                guard range.lowerBound <= maxHeader,
+                      let headers = String(data: accumulated[..<range.lowerBound], encoding: .utf8)
+                else { return nil }
+                let lengthValue = headers.components(separatedBy: "\r\n")
                     .first(where: { $0.lowercased().hasPrefix("content-length:") })
-                    .flatMap { Int($0.split(separator: ":", maxSplits: 1).last?.trimmingCharacters(in: .whitespaces) ?? "") } ?? 0
-
-                guard contentLength <= maxBodySize else { return nil }
-                expectedTotalLength = headerRange.upperBound + contentLength
+                    .flatMap { $0.split(separator: ":", maxSplits: 1).last }
+                    .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) } ?? 0
+                guard lengthValue >= 0 && lengthValue <= maxBody else { return nil }
+                expected = range.upperBound + lengthValue
             }
-
-            if let expected = expectedTotalLength, data.count >= expected {
-                break
-            }
+            if let expected = expected, accumulated.count >= expected { break }
+            if expected == nil && accumulated.count > maxHeader { return nil }
         }
-
-        guard let headerRange = data.range(of: Data("\r\n\r\n".utf8)),
-              let headerText = String(data: data[..<headerRange.lowerBound], encoding: .utf8) else {
-            return nil
-        }
-
-        let lines = headerText.components(separatedBy: "\r\n")
-        guard let requestLine = lines.first else { return nil }
-        let parts = requestLine.split(separator: " ")
+        guard let range = accumulated.range(of: separator),
+              let headers = String(data: accumulated[..<range.lowerBound], encoding: .utf8),
+              let line = headers.components(separatedBy: "\r\n").first else { return nil }
+        let parts = line.split(separator: " ")
         guard parts.count >= 2 else { return nil }
-
-        let method = String(parts[0]).uppercased()
-        let rawPath = String(parts[1])
-        let path = rawPath.split(separator: "?", maxSplits: 1).first.map(String.init) ?? rawPath
-
-        let contentLength = lines
+        let route = String(parts[1])
+        let comps = URLComponents(string: "http://127.0.0.1" + route)
+        let lengthValue = headers.components(separatedBy: "\r\n")
             .first(where: { $0.lowercased().hasPrefix("content-length:") })
-            .flatMap { Int($0.split(separator: ":", maxSplits: 1).last?.trimmingCharacters(in: .whitespaces) ?? "") } ?? 0
-
-        let bodyStart = headerRange.upperBound
-        guard data.count >= bodyStart + contentLength else { return nil }
-        let body = data.subdata(in: bodyStart..<(bodyStart + contentLength))
-
-        let queryToken = URLComponents(string: "http://localhost" + rawPath)?
-            .queryItems?.first(where: { $0.name == "session" })?.value
-        return HTTPRequest(method: method, path: path, body: body, queryToken: queryToken)
+            .flatMap { $0.split(separator: ":", maxSplits: 1).last }
+            .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) } ?? 0
+        guard lengthValue >= 0, lengthValue <= maxBody,
+              accumulated.count >= range.upperBound + lengthValue else { return nil }
+        return Request(
+            method: String(parts[0]).uppercased(),
+            path: comps?.path ?? "",
+            session: comps?.queryItems?.first(where: { $0.name == "session" })?.value,
+            body: accumulated.subdata(in: range.upperBound..<(range.upperBound + lengthValue))
+        )
     }
 
-    private func send(status: String, headers: [String: String], body: Data, to fd: Int32) {
-        var allHeaders = headers
-        allHeaders["Content-Length"] = String(body.count)
-        allHeaders["Connection"] = "close"
-
-        var text = "HTTP/1.1 \(status)\r\n"
-        for (name, value) in allHeaders {
-            text += "\(name): \(value)\r\n"
-        }
-        text += "\r\n"
-
-        var response = Data(text.utf8)
-        response.append(body)
-
-        response.withUnsafeBytes { rawBuffer in
-            guard let base = rawBuffer.baseAddress else { return }
-            var sent = 0
-            while sent < response.count {
-                let result = Darwin.send(fd, base.advanced(by: sent), response.count - sent, 0)
-                if result <= 0 { break }
-                sent += result
+    private func reply(_ fd: Int32, _ status: String, _ headers: [String: String], _ body: Data) {
+        var text = "HTTP/1.1 \(status)\r\nContent-Length: \(body.count)\r\nConnection: close\r\n"
+        for (key, value) in headers { text += "\(key): \(value)\r\n" }
+        var data = Data((text + "\r\n").utf8)
+        data.append(body)
+        data.withUnsafeBytes { buffer in
+            guard let base = buffer.baseAddress else { return }
+            var offset = 0
+            while offset < buffer.count {
+                let n = Darwin.send(fd, base.advanced(by: offset), buffer.count - offset, 0)
+                if n <= 0 { return }
+                offset += n
             }
         }
     }
 
-    private func extractUDID(from input: Data) -> String? {
-        let plistData: Data
-
-        if let start = input.range(of: Data("<?xml".utf8)),
-           let end = input.range(of: Data("</plist>".utf8), options: [], in: start.lowerBound..<input.endIndex) {
-            plistData = input.subdata(in: start.lowerBound..<end.upperBound)
+    private static func parseUDID(_ data: Data) -> String? {
+        let body: Data
+        if let start = data.range(of: Data("<?xml".utf8)),
+           let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex) {
+            body = data.subdata(in: start.lowerBound..<end.upperBound)
         } else {
-            plistData = input
+            body = data
         }
-
-        guard let plist = try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil) else {
-            return nil
-        }
-
-        return findUDID(in: plist)
+        guard let plist = try? PropertyListSerialization.propertyList(from: body, options: [], format: nil) else { return nil }
+        return searchUDID(plist)
     }
 
-    private func findUDID(in value: Any) -> String? {
-        if let dictionary = value as? [String: Any] {
-            for (key, child) in dictionary {
-                if key.caseInsensitiveCompare("UDID") == .orderedSame,
-                   let string = child as? String,
-                   !string.isEmpty {
-                    return string
-                }
-                if let nested = findUDID(in: child) { return nested }
-            }
-        } else if let array = value as? [Any] {
-            for child in array {
-                if let nested = findUDID(in: child) { return nested }
+    private static func searchUDID(_ value: Any) -> String? {
+        if let dict = value as? [String: Any] {
+            if let entry = dict.first(where: { $0.key.lowercased() == "udid" })?.value as? String,
+               !entry.isEmpty { return entry }
+            for child in dict.values {
+                if let found = searchUDID(child) { return found }
             }
         }
-
+        if let list = value as? [Any] {
+            for child in list {
+                if let found = searchUDID(child) { return found }
+            }
+        }
         return nil
     }
 }

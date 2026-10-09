@@ -1,232 +1,174 @@
 import Foundation
 import Combine
 
+/// Registration-only source manager. Validation must succeed before persistence.
 final class SoftwareSourceStore: ObservableObject {
     static let shared = SoftwareSourceStore()
-
     private static let storageKey = "zonoe.sources"
+    private static let identitiesKey = "zonoe.sourceIdentities"
+    private static let namesKey = "zonoe.sourceNames"
+    private static let catalogKey = "zonoe.sourceCatalog.v1"
 
     @Published private(set) var sources: [String]
-    @Published private(set) var repositories: [SourceRepository] = []
-    @Published private(set) var apps: [AppItem] = []
     @Published private(set) var isLoading = false
-    @Published private(set) var errorMessage: String?
+    @Published private(set) var sourceNames: [String: String]
+    @Published private(set) var catalogs: [String: [RepositoryApp]] = [:]
+    @Published private(set) var errors: [String: String] = [:]
 
-    private let loader: SourceRepositoryLoader
-    private var loadGeneration = 0
-    private var appBuildGeneration = 0
+    private var registeredIdentities: [String: String] = [:]
+    private var pendingURLs = Set<String>()
+    private let session: URLSession
 
-    init(loader: SourceRepositoryLoader = .shared) {
-        self.loader = loader
-        self.sources = UserDefaults.standard.stringArray(forKey: Self.storageKey) ?? []
-        reloadAll()
+    init(session: URLSession = .shared) {
+        self.session = session
+        sources = UserDefaults.standard.stringArray(forKey: Self.storageKey) ?? []
+        registeredIdentities = UserDefaults.standard.dictionary(forKey: Self.identitiesKey) as? [String: String] ?? [:]
+        sourceNames = UserDefaults.standard.dictionary(forKey: Self.namesKey) as? [String: String] ?? [:]
+        if let stored = UserDefaults.standard.data(forKey: Self.catalogKey),
+           let decoded = try? JSONDecoder().decode([String: [RepositoryApp]].self, from: stored) {
+            catalogs = decoded.filter { sources.contains($0.key) }
+        }
     }
 
-    func add(
-        _ url: URL,
-        completion: @escaping (Result<SourceRepository, Error>) -> Void
+    func remove(_ value: String) {
+        guard let index = sources.firstIndex(of: value) else { return }
+        sources.remove(at: index)
+        registeredIdentities.removeValue(forKey: value)
+        sourceNames.removeValue(forKey: value)
+        catalogs.removeValue(forKey: value)
+        errors.removeValue(forKey: value)
+        saveCatalog()
+        UserDefaults.standard.set(sources, forKey: Self.storageKey)
+        UserDefaults.standard.set(registeredIdentities, forKey: Self.identitiesKey)
+        UserDefaults.standard.set(sourceNames, forKey: Self.namesKey)
+    }
+
+    var allApps: [RepositoryApp] {
+        sources.flatMap { catalogs[$0] ?? [] }
+    }
+
+    private func saveCatalog() {
+        if let data = try? JSONEncoder().encode(catalogs) {
+            UserDefaults.standard.set(data, forKey: Self.catalogKey)
+        }
+    }
+
+    func refreshAll() {
+        for raw in sources {
+            guard let url = URL(string: raw) else { continue }
+            load(url) { _ in }
+        }
+    }
+
+    func load(_ url: URL, completion: @escaping (Result<Void, Error>) -> Void) {
+        fetch(url, registering: false, completion: completion)
+    }
+
+    func add(_ url: URL, completion: @escaping (Result<Void, Error>) -> Void) {
+        fetch(url, registering: true, completion: completion)
+    }
+
+    private func fetch(_ url: URL, registering: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let scheme = url.scheme?.lowercased(),
+              (scheme == "http" || scheme == "https"),
+              let host = url.host, !host.isEmpty else {
+            completion(.failure(RegistrationError.invalidURL))
+            return
+        }
+
+        let key = url.absoluteString
+        guard (!registering || !sources.contains(key)), !pendingURLs.contains(key) else {
+            completion(.failure(RegistrationError.duplicate))
+            return
+        }
+        pendingURLs.insert(key)
+        isLoading = true
+
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let currentUDID = UDIDService.shared.udid?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !currentUDID.isEmpty {
+            var items = components?.queryItems ?? []
+            items.removeAll { $0.name.caseInsensitiveCompare("udid") == .orderedSame }
+            items.append(URLQueryItem(name: "udid", value: currentUDID))
+            components?.queryItems = items
+        }
+
+        var request = URLRequest(url: components?.url ?? url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        session.dataTask(with: request) { [weak self] data, response, error in
+            if let error = error { self?.finish(key, result: .failure(error), registering: registering, completion: completion); return }
+            guard let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode),
+                  let data = data, !data.isEmpty else {
+                self?.finish(key, result: .failure(RegistrationError.badResponse), registering: registering, completion: completion)
+                return
+            }
+            QNQSourcePayloadDecoder.decode(data) { result in
+                do {
+                    let decoded = try result.get()
+                    let parsed = try RepositoryParser.parse(decoded, sourceURL: url)
+                    self?.finish(key, result: .success(parsed), registering: registering, completion: completion)
+                } catch {
+                    self?.finish(key, result: .failure(error), registering: registering, completion: completion)
+                }
+            }
+        }.resume()
+    }
+
+    private func finish(
+        _ url: String,
+        result: Result<ParsedRepository, Error>,
+        registering: Bool,
+        completion: @escaping (Result<Void, Error>) -> Void
     ) {
-        let normalized = url.absoluteString
-        guard !sources.contains(normalized) else {
-            completion(.failure(SoftwareSourceStoreError.duplicate))
-            return
-        }
-
-        isLoading = true
-        errorMessage = nil
-
-        loader.fetch(from: url) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                self.isLoading = false
-
-                switch result {
-                case .success(let repository):
-                    self.loadGeneration &+= 1
-
-                    var updatedSources = self.sources
-                    updatedSources.append(normalized)
-                    self.sources = updatedSources
-                    UserDefaults.standard.set(updatedSources, forKey: Self.storageKey)
-
-                    let updatedRepositories = Self.orderedRepositories(
-                        self.repositories + [repository],
-                        sourceOrder: updatedSources
-                    )
-                    self.repositories = updatedRepositories
-                    self.rebuildApps(from: updatedRepositories)
-                    self.errorMessage = nil
-                    completion(.success(repository))
-
-                case .failure(let error):
-                    self.errorMessage = error.localizedDescription
-                    completion(.failure(error))
-                }
-            }
-        }
-    }
-
-    func remove(at offsets: IndexSet) {
-        loadGeneration &+= 1
-
-        let removedURLs = offsets.compactMap { index in
-            sources.indices.contains(index) ? sources[index] : nil
-        }
-
-        var updated = sources
-        updated.remove(atOffsets: offsets)
-        sources = updated
-        UserDefaults.standard.set(updated, forKey: Self.storageKey)
-
-        let remaining = repositories.filter {
-            !removedURLs.contains($0.sourceURL.absoluteString)
-        }
-        repositories = Self.orderedRepositories(
-            remaining,
-            sourceOrder: updated
-        )
-        rebuildApps(from: repositories)
-        isLoading = false
-        errorMessage = nil
-    }
-
-    func reloadAll() {
-        let urls = sources.compactMap(URL.init(string:))
-        loadGeneration &+= 1
-        let generation = loadGeneration
-
-        guard !urls.isEmpty else {
-            repositories = []
-            apps = []
-            isLoading = false
-            errorMessage = nil
-            return
-        }
-
-        isLoading = true
-        errorMessage = nil
-
-        let group = DispatchGroup()
-        let lock = NSLock()
-        var loaded = Array<SourceRepository?>(repeating: nil, count: urls.count)
-        var firstError: Error?
-
-        for (index, url) in urls.enumerated() {
-            group.enter()
-            loader.fetch(from: url) { result in
-                lock.lock()
-                switch result {
-                case .success(let repository):
-                    loaded[index] = repository
-                case .failure(let error):
-                    if firstError == nil { firstError = error }
-                }
-                lock.unlock()
-                group.leave()
-            }
-        }
-
-        group.notify(queue: .main) { [weak self] in
-            guard let self = self, generation == self.loadGeneration else { return }
-
-            let orderedRepositories = loaded.compactMap { $0 }
-            self.repositories = orderedRepositories
-            self.rebuildApps(from: orderedRepositories)
-            self.isLoading = false
-            self.errorMessage = firstError?.localizedDescription
-        }
-    }
-
-    private func rebuildApps(from repositories: [SourceRepository]) {
-        appBuildGeneration &+= 1
-        let generation = appBuildGeneration
-        let snapshot = repositories
-
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            var seen = Set<String>()
-            var mapped: [AppItem] = []
-            mapped.reserveCapacity(snapshot.reduce(0) { $0 + $1.apps.count })
-
-            for repository in snapshot {
-                for sourceApp in repository.apps {
-                    let identity = sourceApp.identifier.lowercased()
-                    guard seen.insert(identity).inserted else { continue }
-                    mapped.append(Self.makeAppItem(from: sourceApp, repository: repository))
-                }
-            }
-
-            mapped.sort {
-                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-            }
-
-            DispatchQueue.main.async {
-                guard let self = self,
-                      generation == self.appBuildGeneration else {
+        DispatchQueue.main.async {
+            self.pendingURLs.remove(url)
+            self.isLoading = !self.pendingURLs.isEmpty
+            switch result {
+            case .failure(let error):
+                self.errors[url] = error.localizedDescription
+                completion(.failure(error))
+            case .success(let parsed):
+                self.errors.removeValue(forKey: url)
+                if !registering {
+                    guard self.sources.contains(url) else { completion(.failure(RegistrationError.invalidURL)); return }
+                    self.sourceNames[url] = parsed.name
+                    self.catalogs[url] = parsed.apps
+                    self.saveCatalog()
+                    UserDefaults.standard.set(self.sourceNames, forKey: Self.namesKey)
+                    completion(.success(()))
                     return
                 }
-                self.apps = mapped
+                let identity = parsed.identity
+                let name = parsed.name
+                guard !self.sources.contains(url),
+                      !self.registeredIdentities.contains(where: { $0.value == identity && $0.key != url }) else {
+                    completion(.failure(RegistrationError.duplicate))
+                    return
+                }
+                self.sources.append(url)
+                self.registeredIdentities[url] = identity
+                self.sourceNames[url] = name
+                self.catalogs[url] = parsed.apps
+                self.saveCatalog()
+                UserDefaults.standard.set(self.sources, forKey: Self.storageKey)
+                UserDefaults.standard.set(self.registeredIdentities, forKey: Self.identitiesKey)
+                UserDefaults.standard.set(self.sourceNames, forKey: Self.namesKey)
+                completion(.success(()))
             }
         }
-    }
-
-    private static func orderedRepositories(
-        _ repositories: [SourceRepository],
-        sourceOrder: [String]
-    ) -> [SourceRepository] {
-        let byURL = Dictionary(
-            repositories.map { ($0.sourceURL.absoluteString, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-
-        return sourceOrder.compactMap { byURL[$0] }
-    }
-
-    private static let sourceDateFormatter: ISO8601DateFormatter = {
-        ISO8601DateFormatter()
-    }()
-
-    private static func makeAppItem(from app: SourceApp, repository: SourceRepository) -> AppItem {
-        AppItem(
-            appID: stableIntegerID(app.identifier),
-            appName: app.name,
-            modDescription: app.summary ?? app.releaseNotes,
-            icon: app.iconURL?.absoluteString,
-            storeURL: app.downloadURL?.absoluteString,
-            appStoreURL: nil,
-            packageName: app.identifier,
-            currentVersion: app.version,
-            appVersion: app.version,
-            modUpdateTime: app.updatedAt.map { sourceDateFormatter.string(from: $0) },
-            fileSize: app.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) },
-            screenshots: [],
-            alistURL: app.downloadURL?.absoluteString,
-            isPermanentVIPOnly: false,
-            isHot: false,
-            sourceURL: repository.sourceURL.absoluteString,
-            sourcePayURL: repository.access.payURL?.absoluteString,
-            sourceUnlockURL: repository.access.unlockURL?.absoluteString,
-            sourceNeedsUnlock: app.access.isNeedLock,
-            sourceAppType: app.access.appType
-        )
-    }
-
-    private static func stableIntegerID(_ value: String) -> Int {
-        var hash: UInt64 = 1469598103934665603
-        for byte in value.utf8 {
-            hash ^= UInt64(byte)
-            hash &*= 1099511628211
-        }
-        return Int(hash & 0x7fff_ffff)
     }
 }
 
-enum SoftwareSourceStoreError: LocalizedError {
-    case duplicate
-
+private enum RegistrationError: LocalizedError {
+    case invalidURL, duplicate, badResponse, unsupported
     var errorDescription: String? {
         switch self {
-        case .duplicate:
-            return "该软件源已经添加。"
+        case .invalidURL: return "请输入有效的 HTTP 或 HTTPS 软件源地址。"
+        case .duplicate: return "该软件源已经添加。"
+        case .badResponse: return "软件源网络响应无效。"
+        case .unsupported: return "该地址未返回有效的软件源仓库数据。"
         }
     }
 }

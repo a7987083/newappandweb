@@ -48,7 +48,7 @@ struct ProfileView: View {
                     }
 
                     NavigationLink(destination: SourcesView()) {
-                        ProfileRow(icon: "tray.full", title: "软件源", subtitle: "添加和管理软件源")
+                        ProfileRow(icon: "tray.full", title: "软件源", subtitle: "添加软件源")
                     }
 
                     NavigationLink(destination: SigningSettingsView()) {
@@ -190,46 +190,30 @@ private struct SourcesView: View {
 
     var body: some View {
         ZStack {
-            List {
-                if sources.isEmpty {
-                    Section {
-                        VStack(spacing: 10) {
-                            Image(systemName: "tray")
-                                .font(.system(size: 34))
-                                .foregroundColor(.secondary)
-                            Text("暂无软件源")
-                                .font(.headline)
-                            Text("点击右上角 + 添加 HTTP/HTTPS 软件源地址")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 24)
-                    }
-                } else {
-                    Section(header: Text("已添加")) {
-                        ForEach(sources, id: \.self) { value in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(sourceDisplayName(value))
-                                    .font(.headline)
-                                Text(value)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(2)
-                            }
-                            .padding(.vertical, 4)
-                        }
-                        .onDelete(perform: deleteSources)
-                    }
+            if sources.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "tray")
+                        .font(.system(size: 34))
+                        .foregroundColor(.secondary)
+                    Text("暂无软件源")
+                        .font(.headline)
+                    Text("点击右上角 + 添加 HTTP/HTTPS 软件源地址")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
                 }
+                .padding(24)
+            } else {
+                SourceSwipeTable(
+                    urls: sources,
+                    names: sourceStore.sourceNames,
+                    onCopy: { UIPasteboard.general.string = $0 },
+                    onDelete: { self.sourceStore.remove($0) }
+                )
             }
-            .listStyle(GroupedListStyle())
-
             if sourceStore.isLoading {
                 Color.black.opacity(0.18)
                     .edgesIgnoringSafeArea(.all)
-
                 VStack(spacing: 12) {
                     SourceActivityIndicator()
                         .frame(width: 30, height: 30)
@@ -261,21 +245,18 @@ private struct SourcesView: View {
             message: "请输入 HTTP 或 HTTPS 软件源地址",
             preferredStyle: .alert
         )
-
         alert.addTextField { field in
             field.placeholder = "https://example.com/repo.json"
             field.keyboardType = .URL
             field.autocapitalizationType = .none
             field.autocorrectionType = .no
             field.clearButtonMode = .whileEditing
+            field.returnKeyType = .done
         }
-
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
-        alert.addAction(UIAlertAction(title: "添加", style: .default) { _ in
-            let value = alert.textFields?.first?.text ?? ""
-            addSource(value)
+        alert.addAction(UIAlertAction(title: "添加", style: .default) { [weak alert] _ in
+            self.addSource(alert?.textFields?.first?.text ?? "")
         })
-
         guard let presenter = UIApplication.shared.gameStoreTopViewController() else { return }
         presenter.present(alert, animated: true)
     }
@@ -305,12 +286,8 @@ private struct SourcesView: View {
         }
     }
 
-    private func deleteSources(at offsets: IndexSet) {
-        sourceStore.remove(at: offsets)
-    }
-
     private func sourceDisplayName(_ value: String) -> String {
-        URL(string: value)?.host ?? "软件源"
+        sourceStore.sourceNames[value] ?? URL(string: value)?.host ?? "软件源"
     }
 
     private func showError(_ message: String) {
@@ -322,6 +299,7 @@ private struct SourcesView: View {
 
 }
 
+
 private struct SourceActivityIndicator: UIViewRepresentable {
     func makeUIView(context: Context) -> UIActivityIndicatorView {
         let view = UIActivityIndicatorView(style: .medium)
@@ -332,3 +310,67 @@ private struct SourceActivityIndicator: UIViewRepresentable {
     func updateUIView(_ uiView: UIActivityIndicatorView, context: Context) {}
 }
 
+private struct SourceSwipeTable: UIViewRepresentable {
+    let urls: [String]
+    let names: [String: String]
+    let onCopy: (String) -> Void
+    let onDelete: (String) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIView(context: Context) -> UITableView {
+        let table = UITableView(frame: .zero, style: .grouped)
+        table.dataSource = context.coordinator
+        table.delegate = context.coordinator
+        table.rowHeight = UITableView.automaticDimension
+        table.estimatedRowHeight = 76
+        return table
+    }
+
+    func updateUIView(_ view: UITableView, context: Context) {
+        context.coordinator.parent = self
+        view.reloadData()
+    }
+
+    final class Coordinator: NSObject, UITableViewDataSource, UITableViewDelegate {
+        var parent: SourceSwipeTable
+        init(_ parent: SourceSwipeTable) { self.parent = parent }
+
+        func numberOfSections(in tableView: UITableView) -> Int { 1 }
+        func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? { "已添加" }
+        func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+            parent.urls.count
+        }
+
+        func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "source")
+                ?? UITableViewCell(style: .subtitle, reuseIdentifier: "source")
+            let url = parent.urls[indexPath.row]
+            cell.textLabel?.text = parent.names[url] ?? URL(string: url)?.host ?? "软件源"
+            cell.textLabel?.font = UIFont.preferredFont(forTextStyle: .headline)
+            cell.detailTextLabel?.text = url
+            cell.detailTextLabel?.font = UIFont.preferredFont(forTextStyle: .caption1)
+            cell.detailTextLabel?.textColor = .secondaryLabel
+            cell.detailTextLabel?.numberOfLines = 2
+            cell.selectionStyle = .none
+            return cell
+        }
+
+        func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+            guard parent.urls.indices.contains(indexPath.row) else { return nil }
+            let url = parent.urls[indexPath.row]
+            let copy = UIContextualAction(style: .normal, title: "复制") { [weak self] _, _, finish in
+                self?.parent.onCopy(url)
+                finish(true)
+            }
+            copy.backgroundColor = .systemBlue
+            let delete = UIContextualAction(style: .destructive, title: "删除") { [weak self] _, _, finish in
+                self?.parent.onDelete(url)
+                finish(true)
+            }
+            let actions = UISwipeActionsConfiguration(actions: [delete, copy])
+            actions.performsFirstActionWithFullSwipe = false
+            return actions
+        }
+    }
+}

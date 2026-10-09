@@ -23,12 +23,67 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
     private var resumeDataByURL: [URL: Data] = [:]
     private var pausingTaskIDs = Set<Int>()
 
+    // Resume data is persisted to Application Support, not UserDefaults.
+    private struct PausedRecord: Codable {
+        let sourceURL: URL
+        let progress: Double
+        let resumeData: Data
+    }
+
+    private static var pauseArchiveURL: URL {
+        let base = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask
+        ).first!
+        return base.appendingPathComponent("download-pauses.json")
+    }
+
+    private func savePausedRecords() {
+        let records: [PausedRecord] = activeItems.compactMap { item in
+            guard item.state == .paused,
+                  let data = resumeDataByURL[item.sourceURL] else { return nil }
+            return PausedRecord(
+                sourceURL: item.sourceURL, progress: item.progress, resumeData: data
+            )
+        }
+        do {
+            let destination = Self.pauseArchiveURL
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+            try JSONEncoder().encode(records).write(to: destination, options: .atomic)
+        } catch {
+            // Save failure must not abort the download state transition.
+            NSLog("DownloadCenter: could not persist pause data: %@", String(describing: error))
+        }
+    }
+
+    private func restorePausedRecords() {
+        guard let data = try? Data(contentsOf: Self.pauseArchiveURL),
+              let records = try? JSONDecoder().decode([PausedRecord].self, from: data)
+        else { return }
+
+        for record in records {
+            guard !activeItems.contains(where: { $0.sourceURL == record.sourceURL }) else {
+                continue
+            }
+            resumeDataByURL[record.sourceURL] = record.resumeData
+            activeItems.append(Item(
+                id: UUID(), sourceURL: record.sourceURL,
+                progress: record.progress, state: .paused,
+                localURL: nil, errorDescription: nil, taskIdentifier: nil
+            ))
+        }
+    }
+
     var items: [Item] {
         activeItems + completedItems + terminalItems
     }
 
     override init() {
         super.init()
+        restorePausedRecords()
         reloadDownloadedItems()
     }
 
@@ -63,6 +118,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         terminalItems.removeAll { $0.sourceURL == url }
         // A manual retry starts a fresh transfer, not stale resume bytes.
         resumeDataByURL.removeValue(forKey: url)
+        savePausedRecords()
 
         let task = session.downloadTask(with: url)
         let item = Item(
@@ -107,6 +163,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                             $0.state = .paused
                             $0.taskIdentifier = nil
                         }
+                        self.savePausedRecords()
                     } else {
                         self.finishActiveItem(
                             taskIdentifier: identifier,
@@ -133,6 +190,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         let task = session.downloadTask(withResumeData: data)
         activeItems[index].taskIdentifier = task.taskIdentifier
         activeItems[index].state = .downloading
+        savePausedRecords()
         task.resume()
     }
 

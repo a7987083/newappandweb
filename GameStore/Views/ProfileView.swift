@@ -225,32 +225,13 @@ private struct SourcesView: View {
             }
             .listStyle(GroupedListStyle())
 
-            if sourceStore.isLoading {
-                Color.black.opacity(0.18)
-                    .edgesIgnoringSafeArea(.all)
 
-                VStack(spacing: 12) {
-                    SourceActivityIndicator()
-                        .frame(width: 30, height: 30)
-                    Text("正在添加软件源")
-                        .font(.headline)
-                    Text("正在保存软件源…")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 22)
-                .background(Color(UIColor.secondarySystemBackground))
-                .cornerRadius(18)
-                .shadow(radius: 8)
-            }
         }
         .navigationBarTitle("软件源")
         .navigationBarItems(trailing:
             Button(action: presentAddSourceAlert) {
                 Image(systemName: "plus")
             }
-            .disabled(sourceStore.isLoading)
         )
     }
 
@@ -315,15 +296,5 @@ private struct SourcesView: View {
         presenter.present(alert, animated: true)
     }
 
-}
-
-private struct SourceActivityIndicator: UIViewRepresentable {
-    func makeUIView(context: Context) -> UIActivityIndicatorView {
-        let view = UIActivityIndicatorView(style: .medium)
-        view.startAnimating()
-        return view
-    }
-
-    func updateUIView(_ uiView: UIActivityIndicatorView, context: Context) {}
 }
 

@@ -214,7 +214,9 @@ extension SoftwareSourceStore {
 
     private static func parseCatalog(_ data: Data, source: String, baseURL: URL) throws -> [SourceCatalogApp] {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
-        let root = (json["repository"] as? [String: Any]) ?? (json["repo"] as? [String: Any]) ?? json
+        let normalized = ZonoeSourceURLNormalizer.normalizeURLs(json)
+        guard let normalizedJSON = normalized as? [String: Any] else { return [] }
+        let root = (normalizedJSON["repository"] as? [String: Any]) ?? (normalizedJSON["repo"] as? [String: Any]) ?? normalizedJSON
         let entries = (root["apps"] as? [[String: Any]]) ?? (root["applications"] as? [[String: Any]]) ?? []
         return entries.enumerated().compactMap { index, app in
             func value(_ dictionary: [String: Any], _ keys: [String]) -> String {
@@ -226,20 +228,8 @@ extension SoftwareSourceStore {
                 return ""
             }
             func resolvedURL(_ raw: String) -> URL? {
-                // Source payloads may contain raw Chinese characters, spaces or
-                // backslash-escaped schemes (e.g. http\\://). Normalize before URL parsing.
-                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                    .replacingOccurrences(of: "\\\\/", with: "/")
-                    .replacingOccurrences(of: "\\\\:", with: ":")
-                    .replacingOccurrences(of: "\\/", with: "/")
-                    .replacingOccurrences(of: "\\:", with: ":")
-                let allowed = CharacterSet(charactersIn:
-                    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%")
-                guard !trimmed.isEmpty,
-                      let url = URL(string: trimmed, relativeTo: baseURL)?.absoluteURL,'()*+,;=%")
-                guard !trimmed.isEmpty,
-                      let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: allowed),
-                      let url = URL(string: encoded, relativeTo: baseURL)?.absoluteURL,
+                guard let normalized = ZonoeSourceURLNormalizer.tolerantURLString(raw),
+                      let url = URL(string: normalized, relativeTo: baseURL)?.absoluteURL,
                       let scheme = url.scheme?.lowercased(),
                       (scheme == "http" || scheme == "https"),
                       url.host != nil else { return nil }
@@ -278,5 +268,112 @@ extension SoftwareSourceStore {
                 developer: value(app, ["developerName", "developer", "author", "sellerName"])
             )
         }
+    }
+}
+
+ 
+// Ported from zonoe v3.0.0 SourceRepositoryLoader URL normalization pipeline.
+private enum ZonoeSourceURLNormalizer {
+    static func normalizeURLs(_ value: Any, key: String? = nil, path: String = "") -> Any {
+        if let dictionary = value as? [String: Any] {
+            return dictionary.reduce(into: [String: Any]()) { result, pair in
+                let childPath = path.isEmpty ? pair.key : "\(path).\(pair.key)"
+                result[pair.key] = normalizeURLs(pair.value, key: pair.key, path: childPath)
+            }
+        }
+        if let array = value as? [Any] {
+            let normalized = array.enumerated().map {
+                normalizeURLs($0.element, key: key, path: "\(path)[\($0.offset)]")
+            }
+            return isURLKey(key) ? normalized.filter { !($0 is NSNull) } : normalized
+        }
+        guard let string = value as? String, isURLKey(key) else { return value }
+        return tolerantURLString(string) ?? NSNull() as Any
+    }
+
+    private static func isURLKey(_ key: String?) -> Bool {
+        key?.range(of: "url", options: [.caseInsensitive, .diacriticInsensitive]) != nil
+    }
+
+    static func tolerantURLString(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let components = URLComponents(string: trimmed),
+           let scheme = components.scheme, !scheme.isEmpty,
+           let url = components.url {
+            return url.absoluteString
+        }
+        guard let repaired = repairURLString(trimmed),
+              let components = URLComponents(string: repaired),
+              let scheme = components.scheme, !scheme.isEmpty,
+              let url = components.url else { return nil }
+        return url.absoluteString
+    }
+
+    private static func repairURLString(_ raw: String) -> String? {
+        guard let colon = raw.firstIndex(of: ":") else { return nil }
+        let scheme = String(raw[..<colon])
+        guard scheme.range(of: "^[A-Za-z][A-Za-z0-9+.-]*$", options: .regularExpression) != nil else { return nil }
+        var remainder = String(raw[raw.index(after: colon)...])
+        var fragment: String?
+        if let hash = remainder.firstIndex(of: "#") {
+            fragment = String(remainder[remainder.index(after: hash)...])
+            remainder = String(remainder[..<hash])
+        }
+        var query: String?
+        if let question = remainder.firstIndex(of: "?") {
+            query = String(remainder[remainder.index(after: question)...])
+            remainder = String(remainder[..<question])
+        }
+        var repaired = scheme + ":"
+        if remainder.hasPrefix("//") {
+            let hierarchical = String(remainder.dropFirst(2))
+            let slash = hierarchical.firstIndex(of: "/")
+            let authority = slash.map { String(hierarchical[..<$0]) } ?? hierarchical
+            let path = slash.map { String(hierarchical[$0...]) } ?? ""
+            guard !authority.isEmpty else { return nil }
+            repaired += "//" + percentEncode(authority, allowed: authorityAllowed)
+            repaired += percentEncode(path, allowed: pathAllowed)
+        } else {
+            repaired += percentEncode(remainder, allowed: pathAllowed)
+        }
+        if let query = query { repaired += "?" + percentEncode(query, allowed: queryAllowed) }
+        if let fragment = fragment { repaired += "#" + percentEncode(fragment, allowed: fragmentAllowed) }
+        return repaired
+    }
+
+    private static var authorityAllowed: CharacterSet {
+        CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$&'()*+,;=:@[]")
+    }
+    private static var pathAllowed: CharacterSet {
+        CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$&'()*+,;=:@/")
+    }
+    private static var queryAllowed: CharacterSet {
+        CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$&'()*+,;=:@/?")
+    }
+    private static var fragmentAllowed: CharacterSet { queryAllowed }
+    private static func percentEncode(_ value: String, allowed: CharacterSet) -> String {
+        var result = ""
+        var index = value.startIndex
+        while index < value.endIndex {
+            if value[index] == "%" {
+                let first = value.index(after: index)
+                if first < value.endIndex {
+                    let second = value.index(after: first)
+                    if second < value.endIndex,
+                       "0123456789abcdefABCDEF".contains(value[first]),
+                       "0123456789abcdefABCDEF".contains(value[second]) {
+                        result.append(contentsOf: value[index...second])
+                        index = value.index(after: second)
+                        continue
+                    }
+                }
+            }
+            let next = value.index(after: index)
+            let token = String(value[index..<next])
+            result += token.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+            index = next
+        }
+        return result
     }
 }

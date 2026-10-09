@@ -400,11 +400,39 @@ final class SourceUnlockService {
     static let shared = SourceUnlockService()
 
     private init() {}
+
+    // A successful server verification is a source-scoped session acknowledgement.
+    // It is never used to create a download URL or bypass server checks.
+    private let grantLock = NSLock()
+    private var verifiedSessions = Set<String>()
+
+    private func sessionKey(sourceURL: URL, udid: String) -> String {
+        sourceURL.absoluteString + "\n" + udid.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func recordVerification(sourceURL: URL, udid: String) {
+        grantLock.lock()
+        verifiedSessions.insert(sessionKey(sourceURL: sourceURL, udid: udid))
+        grantLock.unlock()
+    }
+
+    private func hasVerifiedSession(sourceURL: URL, udid: String) -> Bool {
+        grantLock.lock()
+        defer { grantLock.unlock() }
+        return verifiedSessions.contains(sessionKey(sourceURL: sourceURL, udid: udid))
+    }
+
     func accessState(for app: AppItem, udid: String?) -> SourceAccessState {
         // The source response, fetched with the current UDID, is authoritative.
         // A successful activation never manufactures an entitlement or URL.
         if let url = app.downloadURL { return .available(url) }
         if app.sourceNeedsUnlock == false { return .unavailable }
+        if let source = app.sourceURL.flatMap(URL.init(string:)),
+           let udid = udid, !udid.isEmpty,
+           hasVerifiedSession(sourceURL: source, udid: udid) {
+            // Authorized session, but this app's URL was absent from the source.
+            return .unavailable
+        }
         return .locked
     }
 
@@ -471,6 +499,7 @@ final class SourceUnlockService {
 
             self.verifyGrant(udid: cleanUDID) { result in
                 if case .success = result {
+                    self.recordVerification(sourceURL: sourceURL, udid: cleanUDID)
                     NotificationCenter.default.post(
                         name: SoftwareSourceStore.sourceUnlocked,
                         object: sourceURL

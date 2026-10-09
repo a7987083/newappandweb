@@ -78,11 +78,8 @@ final class GameStoreAppDelegate: UIResponder, UIApplicationDelegate {
     private func presentInAppWeb(_ url: URL) {
         DispatchQueue.main.async {
             let controller = SFSafariViewController(url: url)
-            var top = self.window?.rootViewController
-            while let presented = top?.presentedViewController {
-                top = presented
-            }
-            top?.present(controller, animated: true)
+            UIApplication.shared.gameStoreTopViewController()?
+                .present(controller, animated: true)
         }
     }
 }

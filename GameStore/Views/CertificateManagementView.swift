@@ -1,5 +1,5 @@
 import SwiftUI
-import UniformTypeIdentifiers
+import UIKit
 
 struct CertificateManagementView: View {
     @ObservedObject private var store = CertificateStore.shared
@@ -65,25 +65,14 @@ struct CertificateManagementView: View {
             }
         }
         .navigationBarTitle("证书管理", displayMode: .inline)
-        .fileImporter(isPresented: $pickingP12, allowedContentTypes: [.data]) { result in
-            switch result {
-            case .success(let url):
-                guard url.pathExtension.lowercased() == "p12" else {
-                    errorMessage = "请选择 .p12 文件"; return
-                }
-                // Copy while the security-scoped URL is accessible: picker URLs may expire.
-                do { p12URL = try stage(url) } catch { errorMessage = error.localizedDescription }
-            case .failure(let error): errorMessage = error.localizedDescription
+        .sheet(isPresented: $pickingP12) {
+            CertificateDocumentPicker { result in
+                handlePicked(result, expectedExtension: "p12") { p12URL = $0 }
             }
         }
-        .fileImporter(isPresented: $pickingProvision, allowedContentTypes: [.data]) { result in
-            switch result {
-            case .success(let url):
-                guard url.pathExtension.lowercased() == "mobileprovision" else {
-                    errorMessage = "请选择 .mobileprovision 文件"; return
-                }
-                do { provisionURL = try stage(url) } catch { errorMessage = error.localizedDescription }
-            case .failure(let error): errorMessage = error.localizedDescription
+        .sheet(isPresented: $pickingProvision) {
+            CertificateDocumentPicker { result in
+                handlePicked(result, expectedExtension: "mobileprovision") { provisionURL = $0 }
             }
         }
         .alert(isPresented: Binding(get: { errorMessage != nil || successMessage != nil },
@@ -101,5 +90,43 @@ struct CertificateManagementView: View {
             .appendingPathComponent(UUID().uuidString + "-" + url.lastPathComponent)
         try FileManager.default.copyItem(at: url, to: staged)
         return staged
+    }
+    private func handlePicked(_ result: Result<URL, Error>, expectedExtension: String,
+                              store: (URL) -> Void) {
+        switch result {
+        case .success(let url):
+            guard url.pathExtension.lowercased() == expectedExtension else {
+                errorMessage = "请选择 ." + expectedExtension + " 文件"
+                return
+            }
+            do { store(try stage(url)) }
+            catch { errorMessage = error.localizedDescription }
+        case .failure(let error):
+            errorMessage = error.localizedDescription
+        }
+    }
+
+}
+
+private struct CertificateDocumentPicker: UIViewControllerRepresentable {
+    let completion: (Result<URL, Error>) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(completion: completion) }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let controller = UIDocumentPickerViewController(documentTypes: ["public.data"], in: .import)
+        controller.delegate = context.coordinator
+        controller.allowsMultipleSelection = false
+        return controller
+    }
+
+    func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let completion: (Result<URL, Error>) -> Void
+        init(completion: @escaping (Result<URL, Error>) -> Void) { self.completion = completion }
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            if let url = urls.first { completion(.success(url)) }
+        }
     }
 }

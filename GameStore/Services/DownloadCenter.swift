@@ -18,6 +18,64 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
 
     @Published private(set) var items: [Item] = []
 
+    override init() {
+        super.init()
+        reloadDownloadedItems()
+    }
+
+    func reloadDownloadedItems() {
+        let fileManager = FileManager.default
+        let directory = Self.downloadsDirectory(fileManager: fileManager)
+
+        do {
+            try fileManager.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+
+            let files = try fileManager.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.fileSizeKey],
+                options: [.skipsHiddenFiles]
+            )
+            .filter { $0.pathExtension.lowercased() == "ipa" }
+            .sorted {
+                let lhs = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let rhs = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return lhs > rhs
+            }
+
+            let activeItems = items.filter {
+                $0.state == .queued || $0.state == .downloading || $0.state == .paused
+            }
+            let activePaths = Set(activeItems.compactMap { $0.localURL?.standardizedFileURL.path })
+
+            let completedItems = files.compactMap { fileURL -> Item? in
+                let path = fileURL.standardizedFileURL.path
+                guard !activePaths.contains(path) else { return nil }
+                return Item(
+                    id: UUID(),
+                    sourceURL: fileURL,
+                    progress: 1,
+                    state: .completed,
+                    localURL: fileURL,
+                    errorDescription: nil,
+                    taskIdentifier: nil
+                )
+            }
+
+            DispatchQueue.main.async {
+                let transientFailures = self.items.filter {
+                    $0.state == .failed || $0.state == .cancelled
+                }
+                self.items = activeItems + completedItems + transientFailures
+            }
+        } catch {
+            // Directory restore is best-effort. Active downloads remain intact.
+        }
+    }
+
     private lazy var session: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 60
@@ -168,18 +226,17 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         items[index] = item
     }
 
+    private static func downloadsDirectory(fileManager: FileManager = .default) -> URL {
+        let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return documents.appendingPathComponent("Downloads", isDirectory: true)
+    }
+
     private static func downloadDestination(
         suggestedFilename: String?,
         sourceURL: URL?
     ) throws -> URL {
         let fileManager = FileManager.default
-        let root = try fileManager.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let directory = root.appendingPathComponent("Downloads", isDirectory: true)
+        let directory = Self.downloadsDirectory(fileManager: fileManager)
         try fileManager.createDirectory(
             at: directory,
             withIntermediateDirectories: true,

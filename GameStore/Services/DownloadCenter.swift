@@ -47,6 +47,12 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             return
         }
 
+        // All observable queue mutations and duplicate checks run on main.
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.enqueue(url) }
+            return
+        }
+
         guard !activeItems.contains(where: { $0.sourceURL == url }) else {
             return
         }
@@ -63,20 +69,11 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             errorDescription: nil,
             taskIdentifier: task.taskIdentifier
         )
-
-        let start = {
-            self.activeItems.append(item)
-            self.updateActiveItem(taskIdentifier: task.taskIdentifier) {
-                $0.state = .downloading
-            }
-            task.resume()
+        activeItems.append(item)
+        updateActiveItem(taskIdentifier: task.taskIdentifier) {
+            $0.state = .downloading
         }
-
-        if Thread.isMainThread {
-            start()
-        } else {
-            DispatchQueue.main.async(execute: start)
-        }
+        task.resume()
     }
 
     func item(for url: URL) -> Item? {
@@ -232,11 +229,9 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                 sourceURL: downloadTask.originalRequest?.url
             )
 
-            let fileManager = FileManager.default
-            if fileManager.fileExists(atPath: destination.path) {
-                try fileManager.removeItem(at: destination)
-            }
-            try fileManager.moveItem(at: location, to: destination)
+            // Never delete an existing IPA. downloadDestination already chooses
+            // a unique filename; moveItem fails safely if another writer wins.
+            try FileManager.default.moveItem(at: location, to: destination)
 
             DispatchQueue.main.async {
                 self.finishActiveItem(

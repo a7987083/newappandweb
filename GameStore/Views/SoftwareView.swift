@@ -567,6 +567,8 @@ struct RemoteAppIcon: View {
 final class RemoteImageLoader: ObservableObject {
     @Published var image: UIImage?
 
+    private static let cache = NSCache<NSURL, UIImage>()
+
     private let url: URL?
     private var task: URLSessionDataTask?
 
@@ -576,11 +578,27 @@ final class RemoteImageLoader: ObservableObject {
 
     func load() {
         guard image == nil, task == nil, let url = url else { return }
+
+        if let cached = Self.cache.object(forKey: url as NSURL) {
+            image = cached
+            return
+        }
+
         task = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let data = data, let image = UIImage(data: data) else { return }
+            guard let self = self else { return }
+
+            guard let data = data, let image = UIImage(data: data) else {
+                DispatchQueue.main.async {
+                    self.task = nil
+                }
+                return
+            }
+
+            Self.cache.setObject(image, forKey: url as NSURL)
+
             DispatchQueue.main.async {
-                self?.image = image
-                self?.task = nil
+                self.image = image
+                self.task = nil
             }
         }
         task?.resume()

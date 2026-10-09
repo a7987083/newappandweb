@@ -288,7 +288,8 @@ private enum ZonoeSourceURLNormalizer {
             return isURLKey(key) ? normalized.filter { !($0 is NSNull) } : normalized
         }
         guard let string = value as? String, isURLKey(key) else { return value }
-        return tolerantURLString(string) ?? NSNull() as Any
+        guard let urlString = tolerantURLString(string) else { return NSNull() }
+        return urlString
     }
 
     private static func isURLKey(_ key: String?) -> Bool {

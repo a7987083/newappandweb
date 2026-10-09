@@ -35,7 +35,7 @@ struct SigningExecutionView: View {
                 }
                 Section(header: Text("签名进度")) {
                     HStack {
-                        if running { ProgressView().padding(.trailing, 6) }
+                        if running { SigningActivityIndicator().frame(width: 20, height: 20).padding(.trailing, 6) }
                         Text(stageName(state))
                     }
                     if let failure = errorMessage {
@@ -120,4 +120,15 @@ private struct ActivityShareView: UIViewControllerRepresentable {
         UIActivityViewController(activityItems: items, applicationActivities: nil)
     }
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}
+
+private struct SigningActivityIndicator: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIActivityIndicatorView {
+        let view = UIActivityIndicatorView(style: .medium)
+        view.startAnimating()
+        return view
+    }
+    func updateUIView(_ uiView: UIActivityIndicatorView, context: Context) {
+        if !uiView.isAnimating { uiView.startAnimating() }
+    }
 }

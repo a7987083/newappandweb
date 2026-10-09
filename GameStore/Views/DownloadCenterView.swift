@@ -56,22 +56,24 @@ private struct DownloadCenterContent: View {
                             .foregroundColor(item.state == .failed ? .red : .secondary)
 
                         if item.state == .completed {
-                            HStack(spacing: 10) {
-                                Button(action: {}) {
-                                    Text("签名")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                }
+                            HStack {
+                                actionButton(
+                                    title: "签名",
+                                    foreground: .white,
+                                    background: .accentColor,
+                                    action: {}
+                                )
                                 .disabled(true)
+                                .opacity(0.55)
 
-                                Button(action: {
-                                    delete(item)
-                                }) {
-                                    Text("删除")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.red)
-                                }
+                                Spacer(minLength: 20)
+
+                                actionButton(
+                                    title: "删除",
+                                    foreground: .white,
+                                    background: .red,
+                                    action: { delete(item) }
+                                )
                             }
                             .buttonStyle(BorderlessButtonStyle())
                         }
@@ -92,6 +94,24 @@ private struct DownloadCenterContent: View {
                 message: Text(deleteError ?? ""),
                 dismissButton: .default(Text("确定"))
             )
+        }
+    }
+
+    private func actionButton(
+        title: String,
+        foreground: Color,
+        background: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(foreground)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 8)
+                .background(background)
+                .clipShape(Capsule())
         }
     }
 

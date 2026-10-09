@@ -400,12 +400,36 @@ final class SourceUnlockService {
     static let shared = SourceUnlockService()
 
     private init() {}
+    private let stateLock = NSLock()
+    private var verifiedSources = Set<String>()
+
+    private func grantIdentity(sourceURL: URL, udid: String) -> String {
+        sourceURL.absoluteString + "\n" + udid.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func markVerified(sourceURL: URL, udid: String) {
+        stateLock.lock()
+        verifiedSources.insert(grantIdentity(sourceURL: sourceURL, udid: udid))
+        stateLock.unlock()
+    }
+
+    private func isVerified(sourceURL: URL, udid: String) -> Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return verifiedSources.contains(grantIdentity(sourceURL: sourceURL, udid: udid))
+    }
 
     func accessState(for app: AppItem, udid: String?) -> SourceAccessState {
-        // The PHP software source is authoritative: it returns a download URL
-        // only when this UDID is entitled to the specific locked entry.
+        // The server alone supplies downloadable URLs. A verified grant controls
+        // presentation only and never manufactures a download link.
         if let url = app.downloadURL { return .available(url) }
         if app.sourceNeedsUnlock == false { return .unavailable }
+        if let sourceString = app.sourceURL,
+           let sourceURL = URL(string: sourceString),
+           let udid = udid,
+           isVerified(sourceURL: sourceURL, udid: udid) {
+            return .unavailable
+        }
         return .locked
     }
 
@@ -470,7 +494,16 @@ final class SourceUnlockService {
                 return
             }
 
-            self.verifyGrant(udid: cleanUDID, completion: completion)
+            self.verifyGrant(udid: cleanUDID) { result in
+                if case .success = result {
+                    self.markVerified(sourceURL: sourceURL, udid: cleanUDID)
+                    NotificationCenter.default.post(
+                        name: SoftwareSourceStore.sourceUnlocked,
+                        object: sourceURL
+                    )
+                }
+                completion(result)
+            }
         }.resume()
     }
 

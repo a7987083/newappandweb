@@ -58,32 +58,43 @@ jobs:
               page += 1
               if page > 30: raise RuntimeError("Artifact pagination exceeded safety limit")
 
+          # Download in parallel; write ZIP sequentially for archive integrity.
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          def download_ipa(item):
+              run = item.get("workflow_run") or {}
+              run_id = run.get("id", "unknown")
+              sha = run.get("head_sha") or "unknown"
+              archive_name = f"GameStore_run{run_id}_{sha[:10]}_artifact{item['id']}"
+              try:
+                  raw = get(item["archive_download_url"])
+                  result = []
+                  with zipfile.ZipFile(io.BytesIO(raw)) as source:
+                      for idx, filename in enumerate(
+                          [name for name in source.namelist() if name.lower().endswith(".ipa") and not name.endswith("/")], 1):
+                          payload = source.read(filename)
+                          dest = f"IPA/{archive_name}_{idx}.ipa"
+                          result.append((dest, payload, {"file": dest, "artifact_id": item["id"], "run_id": run_id,
+                                      "commit": sha, "created_utc": item["created_at"],
+                                      "original_file": filename, "bytes": len(payload),
+                                      "actions_url": f"https://github.com/{repo}/actions/runs/{run_id}"}))
+                  if not result:
+                      return [], {"artifact_id":item["id"], "run_id":run_id,"reason":"No IPA in artifact ZIP"}
+                  return result, None
+              except Exception as exc:
+                  return [], {"artifact_id": item["id"], "run_id":run_id, "reason": str(exc)}
+
           rows, errors = [], []
           with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as bundle:
-              for i, item in enumerate(sorted(artifacts, key=lambda a: a["created_at"]), 1):
-                  run = item.get("workflow_run") or {}
-                  run_id = run.get("id", "unknown")
-                  sha = run.get("head_sha") or "unknown"
-                  archive_name = f"GameStore_run{run_id}_{sha[:10]}_artifact{item['id']}"
-                  try:
-                      raw = get(item["archive_download_url"])
-                      with zipfile.ZipFile(io.BytesIO(raw)) as artifact_zip:
-                          ipa_paths = [name for name in artifact_zip.namelist() if name.lower().endswith(".ipa") and not name.endswith("/")]
-                          if not ipa_paths:
-                              errors.append({"artifact_id": item["id"], "run_id": run_id, "reason": "No IPA in artifact ZIP"})
-                              continue
-                          for idx, filename in enumerate(ipa_paths, 1):
-                              payload = artifact_zip.read(filename)
-                              dest = f"IPA/{archive_name}_{idx}.ipa"
-                              bundle.writestr(dest, payload)
-                              rows.append({"file": dest, "artifact_id": item["id"], "run_id": run_id,
-                                           "commit": sha, "created_utc": item["created_at"],
-                                           "original_file": filename, "bytes": len(payload),
-                                           "actions_url": f"https://github.com/{repo}/actions/runs/{run_id}"})
-                      print(f"{i}/{len(artifacts)}: {run_id} -> {len(ipa_paths)} IPA", flush=True)
-                  except Exception as exc:
-                      errors.append({"artifact_id": item["id"], "run_id": run_id, "reason": str(exc)})
-                      print(f"Warning: {item['id']}: {exc}", flush=True)
+              with ThreadPoolExecutor(max_workers=12) as pool:
+                  futures = {pool.submit(download_ipa, item): item for item in artifacts}
+                  for i, future in enumerate(as_completed(futures), 1):
+                      ipa_items, problem = future.result()
+                      if problem is not None: errors.append(problem)
+                      for dest, payload, row in ipa_items:
+                          bundle.writestr(dest, payload)
+                          rows.append(row)
+                      if i % 10 == 0 or i == len(artifacts):
+                          print(f"Collected {i}/{len(artifacts)} artifacts, IPAs={len(rows)}, errors={len(errors)}",flush=True)
 
               csvbuf = io.StringIO()
               writer = csv.DictWriter(csvbuf, fieldnames=["file","artifact_id","run_id","commit","created_utc","original_file","bytes","actions_url"])

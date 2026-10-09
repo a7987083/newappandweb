@@ -230,7 +230,7 @@ private struct SourcesView: View {
         .navigationBarTitle("软件源")
         .overlay(Group {
             if sourceStore.isLoading {
-                ProgressView("正在验证软件源…")
+                Text("正在验证软件源…")
                     .padding(20)
                     .background(Color(UIColor.secondarySystemBackground))
                     .cornerRadius(14)

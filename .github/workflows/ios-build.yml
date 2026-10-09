@@ -68,6 +68,8 @@ jobs:
           set -euo pipefail
           APP_PATH="DerivedDataDevice/Build/Products/Debug-iphoneos/GameStore.app"
           test -d "$APP_PATH"
+          test -s "$APP_PATH/Frameworks/OpenSSL.framework/OpenSSL"
+          otool -L "$APP_PATH/GameStore" | grep -F "@rpath/OpenSSL.framework/OpenSSL"
           rm -rf ipa
           mkdir -p ipa/Payload
           cp -R "$APP_PATH" ipa/Payload/GameStore.app

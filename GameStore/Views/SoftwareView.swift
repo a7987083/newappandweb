@@ -1,4 +1,5 @@
 import SwiftUI
+import ImageIO
 import Combine
 import UIKit
 
@@ -602,13 +603,30 @@ final class RemoteImageLoader: ObservableObject {
         }
         Self.pending[url] = [completion]
 
-        URLSession.shared.dataTask(with: url) { data, response, error in
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 20
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            let maxImageBytes = 2 * 1024 * 1024
             let validResponse = (response as? HTTPURLResponse).map {
                 (200...299).contains($0.statusCode)
+                    && ($0.expectedContentLength < 0
+                        || $0.expectedContentLength <= Int64(maxImageBytes))
             } ?? false
-            let decoded = (error == nil && validResponse)
-                ? data.flatMap(UIImage.init(data:))
-                : nil
+            let decoded: UIImage?
+            if error == nil, validResponse, let data = data,
+               data.count <= maxImageBytes,
+               let source = CGImageSourceCreateWithData(data as CFData, nil) {
+                let properties: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 256,
+                    kCGImageSourceShouldCacheImmediately: true
+                ]
+                decoded = CGImageSourceCreateThumbnailAtIndex(source, 0, properties as CFDictionary)
+                    .map(UIImage.init(cgImage:))
+            } else {
+                decoded = nil
+            }
 
             DispatchQueue.main.async {
                 if let decoded = decoded {

@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 enum SigningState: String, Codable, CaseIterable {
     case idle = "signing_status_idle"

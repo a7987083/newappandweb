@@ -6,6 +6,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B134AC980000000000000001 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = B134AC980000000000000002 /* ZIPFoundation */; };
 		A12BC34DE56FA78BC90DE123 /* ZsignSwift in Frameworks */ = {isa = PBXBuildFile; productRef = A12BC34DE56FA78BC90DE124 /* ZsignSwift */; };
 		A1B2C3D4E5F60718293A4007 /* SoftwareSourceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4008 /* SoftwareSourceStore.swift */; };
 		B1A2C3D4E5F6012345678901 /* UDIDLocalServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A2C3D4E5F6012345678902 /* UDIDLocalServer.swift */; };
@@ -50,7 +51,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		CAE6B993D1286674150732AC /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A12BC34DE56FA78BC90DE123 /* ZsignSwift in Frameworks */,); runOnlyForDeploymentPostprocessing = 0; };
+		CAE6B993D1286674150732AC /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A12BC34DE56FA78BC90DE123 /* ZsignSwift in Frameworks */, B134AC980000000000000001 /* ZIPFoundation in Frameworks */,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -79,11 +80,11 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		0E8A3AD980ECB70BF17C4729 /* GameStore */ = {isa = PBXNativeTarget; buildConfigurationList = EE6AFDB9AA085457081E34CD; buildPhases = (209B772E630D0AB850E4DF67, CAE6B993D1286674150732AC, C3CD36430B8D6470B6AEE3FE); buildRules = (); dependencies = (); packageProductDependencies = (A12BC34DE56FA78BC90DE124 /* ZsignSwift */,); name = GameStore; productName = GameStore; productReference = 9A25D6B406A7F21575D4B312; productType = "com.apple.product-type.application"; };
+		0E8A3AD980ECB70BF17C4729 /* GameStore */ = {isa = PBXNativeTarget; buildConfigurationList = EE6AFDB9AA085457081E34CD; buildPhases = (209B772E630D0AB850E4DF67, CAE6B993D1286674150732AC, C3CD36430B8D6470B6AEE3FE); buildRules = (); dependencies = (); packageProductDependencies = (A12BC34DE56FA78BC90DE124 /* ZsignSwift */, B134AC980000000000000002 /* ZIPFoundation */,); name = GameStore; productName = GameStore; productReference = 9A25D6B406A7F21575D4B312; productType = "com.apple.product-type.application"; };
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		0DFE7A6829B0B51CFDE2E847 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2600; LastUpgradeCheck = 2600; TargetAttributes = {0E8A3AD980ECB70BF17C4729 = {CreatedOnToolsVersion = 26.0;};};}; buildConfigurationList = BCB1FCD5E76270FE953AA65B; compatibilityVersion = "Xcode 14.0"; developmentRegion = zh-Hans; hasScannedForEncodings = 0; knownRegions = (Base, "zh-Hans", "zh-Hant"); mainGroup = 0AD3550F5EBC1D28DCB0C9C3; productRefGroup = C844D856FEFC392299F6D0F7; projectDirPath = ""; packageReferences = (A12BC34DE56FA78BC90DE125 /* Zsign local */,); projectRoot = ""; targets = (0E8A3AD980ECB70BF17C4729); };
+		0DFE7A6829B0B51CFDE2E847 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2600; LastUpgradeCheck = 2600; TargetAttributes = {0E8A3AD980ECB70BF17C4729 = {CreatedOnToolsVersion = 26.0;};};}; buildConfigurationList = BCB1FCD5E76270FE953AA65B; compatibilityVersion = "Xcode 14.0"; developmentRegion = zh-Hans; hasScannedForEncodings = 0; knownRegions = (Base, "zh-Hans", "zh-Hant"); mainGroup = 0AD3550F5EBC1D28DCB0C9C3; productRefGroup = C844D856FEFC392299F6D0F7; projectDirPath = ""; packageReferences = (A12BC34DE56FA78BC90DE125 /* Zsign local */, B134AC980000000000000003 /* ZIPFoundation remote */,); projectRoot = ""; targets = (0E8A3AD980ECB70BF17C4729); };
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
@@ -118,8 +119,13 @@
 		A12BC34DE56FA78BC90DE125 /* Zsign local */ = {isa = XCLocalSwiftPackageReference; relativePath = Vendor/Zsign; };
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		B134AC980000000000000003 /* ZIPFoundation remote */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/weichsel/ZIPFoundation"; requirement = {kind = exactVersion; version = 0.9.19; }; };
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		A12BC34DE56FA78BC90DE124 /* ZsignSwift */ = {isa = XCSwiftPackageProductDependency; package = A12BC34DE56FA78BC90DE125 /* Zsign local */; productName = ZsignSwift; };
+		B134AC980000000000000002 /* ZIPFoundation */ = {isa = XCSwiftPackageProductDependency; package = B134AC980000000000000003 /* ZIPFoundation remote */; productName = ZIPFoundation; };
 /* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */

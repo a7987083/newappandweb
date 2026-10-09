@@ -26,6 +26,12 @@ jobs:
           mkdir -p Vendor
           cp -R upstream-ksign/Zsign Vendor/Zsign
           test -f Vendor/Zsign/Package.swift
+          # Verify the native PKCS12 functions used by zonoe 3.0.0 are actually provided.
+          if grep -R -n -E 'p12_password_check|password_check_fix_WHAT_THE_FUCK' upstream-ksign/Zsign upstream-ksign/Ksign --include='*.c' --include='*.cpp' --include='*.h' --include='*.mm' --include='*.swift'; then
+            echo "PKCS12 native implementation reference found"
+          else
+            echo "PKCS12 native symbols not found in restored sources; native bridge requires separate implementation"
+          fi
 
 
       - name: Select Xcode 15.4
@@ -118,6 +124,12 @@ jobs:
           mkdir -p Vendor
           cp -R upstream-ksign/Zsign Vendor/Zsign
           test -f Vendor/Zsign/Package.swift
+          # Verify the native PKCS12 functions used by zonoe 3.0.0 are actually provided.
+          if grep -R -n -E 'p12_password_check|password_check_fix_WHAT_THE_FUCK' upstream-ksign/Zsign upstream-ksign/Ksign --include='*.c' --include='*.cpp' --include='*.h' --include='*.mm' --include='*.swift'; then
+            echo "PKCS12 native implementation reference found"
+          else
+            echo "PKCS12 native symbols not found in restored sources; native bridge requires separate implementation"
+          fi
 
 
       - name: Select Xcode 26.6

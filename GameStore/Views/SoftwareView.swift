@@ -192,7 +192,10 @@ private struct SourceAppDetailContent: View {
                 case .paused:
                     Button("继续下载") { downloadCenter.resume(item) }
                 case .completed:
-                    Label("已下载", systemImage: "checkmark.circle.fill").foregroundColor(.green)
+                    HStack(spacing: 5) {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("已下载")
+                    }.foregroundColor(.green)
                 case .failed, .cancelled:
                     Button("重新获取") { downloadCenter.enqueue(url) }
                 }

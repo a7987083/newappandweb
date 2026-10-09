@@ -81,7 +81,7 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
         }
 
         DispatchQueue.main.async {
-            guard let presenter = Self.topViewController() else {
+            guard let presenter = UIApplication.shared.gameStoreTopViewController() else {
                 self.endBackgroundTask()
                 return
             }
@@ -142,7 +142,7 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
             guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
             UIApplication.shared.open(url)
         })
-        guard let presenter = Self.topViewController() else { return }
+        guard let presenter = UIApplication.shared.gameStoreTopViewController() else { return }
         presenter.present(alert, animated: true)
     }
 
@@ -217,7 +217,7 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
 
     private func dismissPresentedSafariIfNeeded() {
         DispatchQueue.main.async {
-            guard let presenter = Self.topViewController() else { return }
+            guard let presenter = UIApplication.shared.gameStoreTopViewController() else { return }
             if presenter is SFSafariViewController {
                 presenter.dismiss(animated: true)
             }

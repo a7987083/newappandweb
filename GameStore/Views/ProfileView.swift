@@ -183,6 +183,8 @@ private struct AboutView: View {
 
 private struct SourcesView: View {
     @ObservedObject private var sourceStore = SoftwareSourceStore.shared
+    @State private var showAddSourceSheet = false
+    @State private var sourceInput = ""
 
     private var sources: [String] {
         sourceStore.sources
@@ -237,36 +239,38 @@ private struct SourcesView: View {
             }
         })
         .navigationBarItems(trailing:
-            Button(action: presentAddSourceAlert) {
+            Button(action: { showAddSourceSheet = true }) {
                 Image(systemName: "plus")
             }
             .disabled(sourceStore.isLoading)
         )
-    }
-
-    private func presentAddSourceAlert() {
-        let alert = UIAlertController(
-            title: "添加软件源",
-            message: "请输入 HTTP 或 HTTPS 软件源地址",
-            preferredStyle: .alert
-        )
-
-        alert.addTextField { field in
-            field.placeholder = "https://example.com/repo.json"
-            field.keyboardType = .URL
-            field.autocapitalizationType = .none
-            field.autocorrectionType = .no
-            field.clearButtonMode = .whileEditing
+        .sheet(isPresented: $showAddSourceSheet) {
+            NavigationView {
+                Form {
+                    Section(header: Text("软件源地址")) {
+                        TextField("https://example.com/repo.json", text: self.$sourceInput)
+                            .keyboardType(.URL)
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                    }
+                }
+                .navigationBarTitle("添加软件源", displayMode: .inline)
+                .navigationBarItems(
+                    leading: Button("取消") {
+                        self.showAddSourceSheet = false
+                    },
+                    trailing: Button("添加") {
+                        let value = self.sourceInput
+                        self.showAddSourceSheet = false
+                        self.sourceInput = ""
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            self.addSource(value)
+                        }
+                    }
+                    .disabled(self.sourceInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                )
+            }
         }
-
-        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
-        alert.addAction(UIAlertAction(title: "添加", style: .default) { _ in
-            let value = alert.textFields?.first?.text ?? ""
-            addSource(value)
-        })
-
-        guard let presenter = UIApplication.shared.gameStoreTopViewController() else { return }
-        presenter.present(alert, animated: true)
     }
 
     private func addSource(_ rawValue: String) {

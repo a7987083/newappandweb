@@ -90,16 +90,20 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         guard let taskIdentifier = item.taskIdentifier else { return }
 
         session.getAllTasks { tasks in
-            tasks.first(where: { $0.taskIdentifier == taskIdentifier })?.cancel()
-        }
-
-        DispatchQueue.main.async {
-            self.finishActiveItem(
-                taskIdentifier: taskIdentifier,
-                state: .cancelled,
-                localURL: nil,
-                errorDescription: nil
-            )
+            if let task = tasks.first(where: { $0.taskIdentifier == taskIdentifier }) {
+                // Let URLSession's completion decide the terminal state.
+                // A download that already completed must not become cancelled.
+                task.cancel()
+            } else {
+                DispatchQueue.main.async {
+                    self.finishActiveItem(
+                        taskIdentifier: taskIdentifier,
+                        state: .cancelled,
+                        localURL: nil,
+                        errorDescription: nil
+                    )
+                }
+            }
         }
     }
 

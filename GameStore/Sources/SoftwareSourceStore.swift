@@ -151,6 +151,9 @@ struct SourceCatalogApp: Identifiable {
     let iconURL: URL?
     let downloadURL: URL?
     let developer: String
+    let sizeBytes: Int64?
+    let updatedAt: Date?
+    let releaseNotes: String
 }
 
 extension SoftwareSourceStore {
@@ -255,6 +258,22 @@ extension SoftwareSourceStore {
             let bundle = value(app, ["bundleIdentifier", "bundleID", "bundleId", "identifier"])
             let versionString = latest.map { value($0, ["version", "versionName", "versionCode"]) } ?? ""
             let icon = value(app, ["iconURL", "icon", "iconUrl", "icon_url"])
+            let sizeString = value(app, ["size", "fileSize"])
+            let bytes = Int64(sizeString) ?? Double(sizeString).flatMap {
+                $0.isFinite && $0 >= 0 && $0 < Double(Int64.max) ? Int64($0) : nil
+            }
+            let dateString = value(app, ["versionDate", "updatedAt", "date"])
+            let date: Date? = {
+                let iso = ISO8601DateFormatter()
+                if let d = iso.date(from: dateString) { return d }
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "en_US_POSIX")
+                for format in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd", "yyyy/MM/dd"] {
+                    formatter.dateFormat = format
+                    if let d = formatter.date(from: dateString) { return d }
+                }
+                return nil
+            }()
             return SourceCatalogApp(
                 id: source + "#" + (bundle.isEmpty ? String(index) : bundle),
                 sourceURL: source,
@@ -265,7 +284,10 @@ extension SoftwareSourceStore {
                 description: value(app, ["localizedDescription", "description", "desc", "subtitle"]),
                 iconURL: resolvedURL(icon),
                 downloadURL: download,
-                developer: value(app, ["developerName", "developer", "author", "sellerName"])
+                developer: value(app, ["developerName", "developer", "author", "sellerName"]),
+                sizeBytes: bytes,
+                updatedAt: date,
+                releaseNotes: value(app, ["versionDescription", "releaseNotes"])
             )
         }
     }

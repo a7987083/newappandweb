@@ -402,43 +402,11 @@ final class SourceUnlockService {
     private init() {}
 
     func accessState(for app: AppItem, udid: String?) -> SourceAccessState {
-        if let downloadURL = app.downloadURL {
-            return .available(downloadURL)
-        }
-
-        if let needsUnlock = app.sourceNeedsUnlock {
-            if !needsUnlock {
-                return .unavailable
-            }
-
-            guard let sourceURLString = app.sourceURL,
-                  let sourceURL = URL(string: sourceURLString),
-                  let udid = udid?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !udid.isEmpty else {
-                return .locked
-            }
-
-            return hasGrant(
-                sourceURL: sourceURL,
-                appIdentifier: app.packageName,
-                appName: app.name,
-                udid: udid
-            ) ? .unavailable : .locked
-        }
-
+        // The PHP software source is authoritative: it returns a download URL
+        // only when this UDID is entitled to the specific locked entry.
+        if let url = app.downloadURL { return .available(url) }
+        if app.sourceNeedsUnlock == false { return .unavailable }
         return .locked
-    }
-
-    func hasGrant(sourceURL: URL, appIdentifier: String?, appName: String, udid: String) -> Bool {
-        guard !udid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        return UserDefaults.standard.bool(
-            forKey: grantKey(
-                sourceURL: sourceURL,
-                appIdentifier: appIdentifier,
-                appName: appName,
-                udid: udid
-            )
-        )
     }
 
     func unlock(
@@ -502,24 +470,7 @@ final class SourceUnlockService {
                 return
             }
 
-            self.verifyGrant(udid: cleanUDID) { verifyResult in
-                switch verifyResult {
-                case .success:
-                    UserDefaults.standard.set(
-                        true,
-                        forKey: self.grantKey(
-                            sourceURL: sourceURL,
-                            appIdentifier: appIdentifier,
-                            appName: appName,
-                            udid: cleanUDID
-                        )
-                    )
-                    completion(.success(()))
-
-                case .failure(let error):
-                    completion(.failure(error))
-                }
-            }
+            self.verifyGrant(udid: cleanUDID, completion: completion)
         }.resume()
     }
 
@@ -554,48 +505,18 @@ final class SourceUnlockService {
                 return
             }
 
-            let code = Self.intValue(object["code"])
+            // app-/Index.php::apiface responds with {"msg":"ok"} for a
+            // valid UDID. It does not supply code or expire.
             let message = (object["msg"] as? String) ?? ""
-            let expire = Self.doubleValue(object["expire"])
-
-            guard code == 1,
-                  message == "ok",
-                  let expire = expire,
-                  expire > Date().timeIntervalSince1970 else {
-                let reason: String
-                if let expire = expire, expire <= Date().timeIntervalSince1970 {
-                    reason = "解锁授权已过期"
-                } else {
-                    reason = message.isEmpty ? "解锁状态校验失败" : message
-                }
-                completion(.failure(UnlockError.server(reason)))
+            guard message == "ok" else {
+                completion(.failure(UnlockError.server(
+                    message.isEmpty ? "解锁状态校验失败" : message
+                )))
                 return
             }
 
             completion(.success(()))
         }.resume()
-    }
-
-    private func grantKey(
-        sourceURL: URL,
-        appIdentifier: String?,
-        appName: String,
-        udid: String
-    ) -> String {
-        let identity: String
-        if let appIdentifier = appIdentifier, !appIdentifier.isEmpty {
-            identity = "id:\(appIdentifier)"
-        } else {
-            identity = "name:\(appName)"
-        }
-
-        let normalizedSource = sourceURL.absoluteString
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let raw = "\(normalizedSource)\n\(udid)\n\(identity)"
-        let digest = SHA256.hash(data: Data(raw.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
-        return "zonoe.sourceUnlock.\(digest)"
     }
 
     private func replacingQueryItems(

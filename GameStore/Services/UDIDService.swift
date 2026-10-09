@@ -15,6 +15,7 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
     @Published private(set) var udid: String?
 
     private var localServer: UDIDLocalServer?
+    private var activeSessionToken: String?
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
 
     private override init() {
@@ -154,11 +155,22 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
             throw LocalError.missingProfile
         }
 
-        let server = UDIDLocalServer(profileData: profileData) { [weak self] udid in
+        let token = UUID().uuidString.lowercased()
+        guard let template = String(data: profileData, encoding: .utf8),
+              template.contains("http://127.0.0.1:\(UDIDLocalServer.port)/udid") else {
+            throw LocalError.missingProfile
+        }
+        let sessionURL = "http://127.0.0.1:\(UDIDLocalServer.port)/udid?session=\(token)"
+        guard let configured = template.replacingOccurrences(
+            of: "http://127.0.0.1:\(UDIDLocalServer.port)/udid",
+            with: sessionURL.replacingOccurrences(of: "&", with: "&amp;")
+        ).data(using: .utf8) else { throw LocalError.missingProfile }
+        let server = UDIDLocalServer(profileData: configured, sessionToken: token) { [weak self] udid in
             self?.saveUDID(udid)
         }
 
         try server.start()
+        activeSessionToken = token
         localServer = server
     }
 
@@ -198,7 +210,8 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
 
     private func consumeCallback(_ url: URL) {
         guard url.scheme?.lowercased() == "zonoe",
-              url.host?.lowercased() == "udid-complete" else {
+              url.host?.lowercased() == "udid-complete",
+              let expectedSession = activeSessionToken else {
             return
         }
 
@@ -207,6 +220,8 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
             $0.name.caseInsensitiveCompare("udid") == .orderedSame
         })?.value
 
+        let receivedSession = components?.queryItems?.first(where: { $0.name == "session" })?.value
+        guard receivedSession == expectedSession else { return }
         if let value = value, !value.isEmpty {
             saveUDID(value)
         }

@@ -217,39 +217,54 @@ extension SoftwareSourceStore {
         let root = (json["repository"] as? [String: Any]) ?? (json["repo"] as? [String: Any]) ?? json
         let entries = (root["apps"] as? [[String: Any]]) ?? (root["applications"] as? [[String: Any]]) ?? []
         return entries.enumerated().compactMap { index, app in
-            func value(_ keys: [String]) -> String {
+            func value(_ dictionary: [String: Any], _ keys: [String]) -> String {
                 for key in keys {
-                    if let s = app[key] as? String, !s.isEmpty { return s }
-                    if let n = app[key] as? NSNumber { return n.stringValue }
+                    if let s = dictionary[key] as? String,
+                       !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return s }
+                    if let n = dictionary[key] as? NSNumber { return n.stringValue }
                 }
                 return ""
             }
             func resolvedURL(_ raw: String) -> URL? {
-                guard !raw.isEmpty else { return nil }
-                // URLComponents preserves Chinese, spaces and existing %-escapes.
-                return URL(string: raw, relativeTo: baseURL)?.absoluteURL
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty,
+                      let url = URL(string: trimmed, relativeTo: baseURL)?.absoluteURL,
+                      let scheme = url.scheme?.lowercased(),
+                      (scheme == "http" || scheme == "https"),
+                      url.host != nil else { return nil }
+                return url
             }
-            let name = value(["name", "title", "appName"])
+            // AltStore-style repositories expose the link on the app;
+            // some source protocols expose it on each version instead.
+            let urlKeys = ["downloadURL", "downloadUrl", "download_url",
+                           "downloadLink", "download_link", "download",
+                           "ipaURL", "ipaUrl", "ipa_url", "ipa", "url"]
+            let versions = app["versions"] as? [[String: Any]] ?? []
+            let preferredVersion = value(app, ["version", "versionName", "shortVersion", "versionCode"])
+            let matchingVersion = versions.first {
+                !preferredVersion.isEmpty &&
+                value($0, ["version", "versionName", "versionCode"]) == preferredVersion
+            }
+            let latest = matchingVersion ?? versions.first
+            let nestedDownload = latest.map { value($0, urlKeys) } ?? ""
+            let topDownload = value(app, urlKeys)
+            let download = resolvedURL(nestedDownload) ?? resolvedURL(topDownload)
+            let name = value(app, ["name", "title", "appName"])
             guard !name.isEmpty else { return nil }
-            let bundle = value(["bundleIdentifier", "bundleID", "bundleId", "identifier"])
-            let download = value(["downloadURL", "downloadUrl", "download", "url", "ipa"])
-            let versions = app["versions"] as? [[String: Any]]
-            let latest = versions?.first
-            let version = value(["version", "versionName", "shortVersion"])
-            let versionURL = (latest?["downloadURL"] as? String) ?? (latest?["downloadUrl"] as? String) ?? ""
-            let versionString = (latest?["version"] as? String) ?? ""
-            let icon = value(["iconURL", "icon", "iconUrl"])
+            let bundle = value(app, ["bundleIdentifier", "bundleID", "bundleId", "identifier"])
+            let versionString = latest.map { value($0, ["version", "versionName", "versionCode"]) } ?? ""
+            let icon = value(app, ["iconURL", "icon", "iconUrl", "icon_url"])
             return SourceCatalogApp(
                 id: source + "#" + (bundle.isEmpty ? String(index) : bundle),
                 sourceURL: source,
                 name: name,
                 bundleIdentifier: bundle,
-                version: version.isEmpty ? versionString : version,
-                category: value(["category", "categoryName"]),
-                description: value(["localizedDescription", "description", "subtitle"]),
+                version: preferredVersion.isEmpty ? versionString : preferredVersion,
+                category: value(app, ["category", "categoryName", "type"]),
+                description: value(app, ["localizedDescription", "description", "desc", "subtitle"]),
                 iconURL: resolvedURL(icon),
-                downloadURL: resolvedURL(download.isEmpty ? versionURL : download),
-                developer: value(["developerName", "developer", "author"])
+                downloadURL: download,
+                developer: value(app, ["developerName", "developer", "author", "sellerName"])
             )
         }
     }

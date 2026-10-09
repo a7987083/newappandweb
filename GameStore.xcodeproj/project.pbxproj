@@ -23,6 +23,7 @@
 		12EE47EFC339155E2326F092 /* DownloadCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6755EBD5030562F38C83E91E /* DownloadCenterView.swift */; };
 		DC93A05AD2436991EDB45E4D /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9204A5E96E252FF4D82B817B /* ProfileView.swift */; };
 		E1F2A3B4C5D60718293A5001 /* SigningSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60718293A5002 /* SigningSettingsView.swift */; };
+		A1B2C3D4E5F60718293A4005 /* QNQSourcePayloadDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4006 /* QNQSourcePayloadDecoder.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +45,7 @@
 		9204A5E96E252FF4D82B817B /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/ProfileView.swift; sourceTree = "<group>"; };
 		E1F2A3B4C5D60718293A5002 /* SigningSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/SigningSettingsView.swift; sourceTree = "<group>"; };
 		9A25D6B406A7F21575D4B312 /* GameStore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GameStore.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D4E5F60718293A4006 /* QNQSourcePayloadDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/QNQSourcePayloadDecoder.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -55,6 +57,7 @@
 				D68E78F467EB94B3056A42B4 /* GameStoreApp.swift */,
 				CE5E269F8DB38CC172D0633D /* SigningModels.swift */,
 				A1B2C3D4E5F60718293A4008 /* SoftwareSourceStore.swift */,
+				A1B2C3D4E5F60718293A4006 /* QNQSourcePayloadDecoder.swift */,
 				23512DC7C6E4A1B407524CB6 /* UDIDService.swift */,
 				B1A2C3D4E5F6012345678902 /* UDIDLocalServer.swift */,
 				B1A2C3D4E5F6012345678904 /* UDIDRequest.mobileconfig */,
@@ -93,6 +96,7 @@
 				57E7BF5F348BD682C2F48632 /* GameStoreApp.swift in Sources */,
 				CC893E0A2BEC2140C9DC4C48 /* SigningModels.swift in Sources */,
 				A1B2C3D4E5F60718293A4007 /* SoftwareSourceStore.swift in Sources */,
+				A1B2C3D4E5F60718293A4005 /* QNQSourcePayloadDecoder.swift in Sources */,
 				A17DE75B44120741CF22397D /* UDIDService.swift in Sources */,
 				B1A2C3D4E5F6012345678901 /* UDIDLocalServer.swift in Sources */,
 				20F3199E687E78DC28C17C9B /* DownloadCenter.swift in Sources */,

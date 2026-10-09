@@ -226,9 +226,20 @@ extension SoftwareSourceStore {
                 return ""
             }
             func resolvedURL(_ raw: String) -> URL? {
+                // Source payloads may contain raw Chinese characters, spaces or
+                // backslash-escaped schemes (e.g. http\\://). Normalize before URL parsing.
                 let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "\\\\/", with: "/")
+                    .replacingOccurrences(of: "\\\\:", with: ":")
+                    .replacingOccurrences(of: "\\/", with: "/")
+                    .replacingOccurrences(of: "\\:", with: ":")
+                let allowed = CharacterSet(charactersIn:
+                    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty,
-                      let url = URL(string: trimmed, relativeTo: baseURL)?.absoluteURL,
+                      let url = URL(string: trimmed, relativeTo: baseURL)?.absoluteURL,'()*+,;=%")
+                guard !trimmed.isEmpty,
+                      let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: allowed),
+                      let url = URL(string: encoded, relativeTo: baseURL)?.absoluteURL,
                       let scheme = url.scheme?.lowercased(),
                       (scheme == "http" || scheme == "https"),
                       url.host != nil else { return nil }

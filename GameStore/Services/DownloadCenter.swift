@@ -22,6 +22,21 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
 
     private var resumeDataByURL: [URL: Data] = [:]
     private var pausingTaskIDs = Set<Int>()
+    private static let completedSourcesKey = "zonoe.downloadCompletedSources.v1"
+
+    private static func completedSources() -> [String: String] {
+        UserDefaults.standard.dictionary(forKey: completedSourcesKey) as? [String: String] ?? [:]
+    }
+
+    private static func updateCompletedSource(filename: String, source: URL?) {
+        var entries = completedSources()
+        if let source = source {
+            entries[filename] = source.absoluteString
+        } else {
+            entries.removeValue(forKey: filename)
+        }
+        UserDefaults.standard.set(entries, forKey: completedSourcesKey)
+    }
 
     // Resume data is persisted to Application Support, not UserDefaults.
     private struct PausedRecord: Codable {
@@ -236,6 +251,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             try fileManager.removeItem(at: localURL)
         }
 
+        Self.updateCompletedSource(filename: localURL.lastPathComponent, source: nil)
         let path = localURL.standardizedFileURL.path
         completedItems.removeAll {
             $0.localURL?.standardizedFileURL.path == path
@@ -283,9 +299,11 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                         return existing
                     }
 
+                    let original = Self.completedSources()[fileURL.lastPathComponent]
+                        .flatMap(URL.init(string:)) ?? fileURL
                     return Item(
                         id: UUID(),
-                        sourceURL: fileURL,
+                        sourceURL: original,
                         progress: 1,
                         state: .completed,
                         localURL: fileURL,
@@ -354,6 +372,11 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             // Never delete an existing IPA. downloadDestination already chooses
             // a unique filename; moveItem fails safely if another writer wins.
             try FileManager.default.moveItem(at: location, to: destination)
+            let originalSource = downloadTask.originalRequest?.url
+            Self.updateCompletedSource(
+                filename: destination.lastPathComponent,
+                source: originalSource
+            )
 
             DispatchQueue.main.async {
                 self.finishActiveItem(

@@ -1,0 +1,45 @@
+name: Zsign upstream verification
+
+on:
+  push:
+    branches:
+      - feature/v0.2.8-zsign-engine
+    paths:
+      - ".github/workflows/zsign-upstream.yml"
+      - "GameStore/Services/AppSigningService.swift"
+  workflow_dispatch:
+
+jobs:
+  verify-zsign-source:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore pinned zonoe signing upstream
+        run: |
+          set -euo pipefail
+          git clone https://github.com/Nyasami/Ksign.git upstream-ksign
+          git -C upstream-ksign checkout 03a3a9c86897d79f9faf8106037b9971841d56a0
+          git -C upstream-ksign submodule update --init --recursive Zsign
+          test "$(git -C upstream-ksign/Zsign rev-parse HEAD)" = "6ffe703df73ef9069adacdbb19d571f11a69a801"
+          test -f upstream-ksign/Zsign/Package.swift
+          grep -q "ZsignSwift" upstream-ksign/Zsign/Package.swift
+          test -f upstream-ksign/Ksign/Utilities/Handlers/ZsignHandler.swift
+          echo "Pinned zonoe Zsign dependency is available"
+      - name: Check zonoe Provision patch compatibility
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o provision.patch \
+            https://raw.githubusercontent.com/a7987083/UnitXP_SP3-Moonstone/v3.0.0-alphaone13/HFASign/patches/0017-Fix-Zsign-removeProvision-semantics.patch
+          git -C upstream-ksign/Zsign apply --check "$GITHUB_WORKSPACE/provision.patch"
+          echo "Provision patch applies to pinned Zsign"
+      - name: Inspect Zsign Swift package
+        run: |
+          set -euo pipefail
+          cd upstream-ksign/Zsign
+          swift package dump-package > "$GITHUB_WORKSPACE/zsign-package.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zsign-package-diagnostic
+          path: zsign-package.json
+          if-no-files-found: ignore

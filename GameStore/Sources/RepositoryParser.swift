@@ -43,7 +43,7 @@ enum RepositoryParser {
             normalized["apps"] = apps.map { input -> [String: Any] in
                 var app = input
                 if app["bundleIdentifier"] == nil {
-                    app["bundleIdentifier"] = app["identifier"] ?? "zonoe.source.\\(UUID().uuidString)"
+                    app["bundleIdentifier"] = app["identifier"] ?? "zonoe.source.\(UUID().uuidString)"
                 }
                 if app["localizedDescription"] == nil {
                     app["localizedDescription"] = app["description"] ?? app["versionDescription"]

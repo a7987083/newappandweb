@@ -5,9 +5,14 @@ final class SourceRepositoryLoader {
     static let shared = SourceRepositoryLoader()
 
     private let session: URLSession
+    private let udidProvider: () -> String?
 
-    init(session: URLSession = .shared) {
+    init(
+        session: URLSession = .shared,
+        udidProvider: @escaping () -> String? = { UDIDService.shared.udid }
+    ) {
         self.session = session
+        self.udidProvider = udidProvider
     }
 
     func fetch(
@@ -21,7 +26,7 @@ final class SourceRepositoryLoader {
             return
         }
 
-        let requestURL = Self.sourceRequestURL(from: url)
+        let requestURL = sourceRequestURL(from: url)
 
         var request = URLRequest(
             url: requestURL,
@@ -69,9 +74,10 @@ final class SourceRepositoryLoader {
         }.resume()
     }
 
-    private static func sourceRequestURL(from sourceURL: URL) -> URL {
-        let udid = UserDefaults.standard.string(forKey: "zonoe.deviceUDID")?
+    private func sourceRequestURL(from sourceURL: URL) -> URL {
+        let udid = udidProvider()?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
         guard !udid.isEmpty,
               var components = URLComponents(url: sourceURL, resolvingAgainstBaseURL: false) else {
             return sourceURL
@@ -384,10 +390,44 @@ final class SourceRepositoryLoader {
     }
 }
 
+enum SourceAccessState: Equatable {
+    case available(URL)
+    case locked
+    case unavailable
+}
+
 final class SourceUnlockService {
     static let shared = SourceUnlockService()
 
     private init() {}
+
+    func accessState(for app: AppItem, udid: String?) -> SourceAccessState {
+        if let downloadURL = app.downloadURL {
+            return .available(downloadURL)
+        }
+
+        if let needsUnlock = app.sourceNeedsUnlock {
+            if !needsUnlock {
+                return .unavailable
+            }
+
+            guard let sourceURLString = app.sourceURL,
+                  let sourceURL = URL(string: sourceURLString),
+                  let udid = udid?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !udid.isEmpty else {
+                return .locked
+            }
+
+            return hasGrant(
+                sourceURL: sourceURL,
+                appIdentifier: app.packageName,
+                appName: app.name,
+                udid: udid
+            ) ? .unavailable : .locked
+        }
+
+        return .locked
+    }
 
     func hasGrant(sourceURL: URL, appIdentifier: String?, appName: String, udid: String) -> Bool {
         guard !udid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }

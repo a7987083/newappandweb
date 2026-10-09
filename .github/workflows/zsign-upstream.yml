@@ -42,7 +42,7 @@ jobs:
           set -euo pipefail
           sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
           xcodebuild \
-            -project upstream-ksign/Zsign/.swiftpm/xcode/package.xcworkspace \
+            -workspace upstream-ksign/Zsign/.swiftpm/xcode/package.xcworkspace \
             -scheme ZsignSwift \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \

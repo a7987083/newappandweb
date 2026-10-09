@@ -321,10 +321,14 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             }
 
             DispatchQueue.main.async {
-                let filenames = Set(files.map { $0.lastPathComponent })
-                // Reconcile metadata against files currently present on disk.
-                // Active downloads are unaffected: they have no final IPA yet.
-                Self.pruneCompletedSources(existingFilenames: filenames)
+                // Check current filesystem state before pruning: a download may
+                // have finished after the directory snapshot was enumerated.
+                let folder = Self.downloadsDirectory()
+                let validFiles = Set(Self.completedSources().keys.filter { name in
+                    let candidate = folder.appendingPathComponent(name)
+                    return FileManager.default.fileExists(atPath: candidate.path)
+                })
+                Self.pruneCompletedSources(existingFilenames: validFiles)
                 let sourceMap = Self.completedSources()
                 let existingByPath = Dictionary(
                     uniqueKeysWithValues: self.completedItems.compactMap { item -> (String, Item)? in

@@ -25,6 +25,7 @@
 		49D0F2D2C00C8D9BE3813889 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E258BB71BE37D5CD623C939B /* SearchView.swift */; };
 		12EE47EFC339155E2326F092 /* DownloadCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6755EBD5030562F38C83E91E /* DownloadCenterView.swift */; };
 		DC93A05AD2436991EDB45E4D /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9204A5E96E252FF4D82B817B /* ProfileView.swift */; };
+		E1F2A3B4C5D60718293A5001 /* SigningSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60718293A5002 /* SigningSettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -47,6 +48,7 @@
 		E258BB71BE37D5CD623C939B /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/SearchView.swift; sourceTree = "<group>"; };
 		6755EBD5030562F38C83E91E /* DownloadCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/DownloadCenterView.swift; sourceTree = "<group>"; };
 		9204A5E96E252FF4D82B817B /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/ProfileView.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D60718293A5002 /* SigningSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/SigningSettingsView.swift; sourceTree = "<group>"; };
 		9A25D6B406A7F21575D4B312 /* GameStore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GameStore.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -75,6 +77,7 @@
 				E258BB71BE37D5CD623C939B /* SearchView.swift */,
 				6755EBD5030562F38C83E91E /* DownloadCenterView.swift */,
 				9204A5E96E252FF4D82B817B /* ProfileView.swift */,
+				E1F2A3B4C5D60718293A5002 /* SigningSettingsView.swift */,
 				C844D856FEFC392299F6D0F7 /* Products */,
 			); sourceTree = "<group>"; };
 		C844D856FEFC392299F6D0F7 /* Products */ = {isa = PBXGroup; children = (9A25D6B406A7F21575D4B312 /* GameStore.app */,); name = Products; sourceTree = "<group>"; };
@@ -114,6 +117,7 @@
 				49D0F2D2C00C8D9BE3813889 /* SearchView.swift in Sources */,
 				12EE47EFC339155E2326F092 /* DownloadCenterView.swift in Sources */,
 				DC93A05AD2436991EDB45E4D /* ProfileView.swift in Sources */,
+				E1F2A3B4C5D60718293A5001 /* SigningSettingsView.swift in Sources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

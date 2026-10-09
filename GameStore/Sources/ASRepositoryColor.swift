@@ -110,7 +110,7 @@ public extension String {
 	}
 }
 
-extension Color: @retroactive RawRepresentable {
+extension Color: RawRepresentable {
 	public var rawValue: String {
 		return toHex
 	}

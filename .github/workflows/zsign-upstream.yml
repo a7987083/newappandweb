@@ -50,6 +50,7 @@ jobs:
             -scheme Ksign \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
+            -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO \
             build | tee zsign-device-build.log
       - uses: actions/upload-artifact@v4

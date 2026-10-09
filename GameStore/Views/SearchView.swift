@@ -1,93 +1,21 @@
 import SwiftUI
-import UIKit
 
+/// Software-source search is removed until a new catalog is implemented.
 struct SearchView: View {
-    @EnvironmentObject private var store: AppStoreViewModel
-
     var body: some View {
         NavigationView {
-            VStack(spacing: 0) {
-                searchBar
-                    .padding(.horizontal, 16)
-                    .padding(.top, 10)
-                    .padding(.bottom, 8)
-
-                if store.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    searchPrompt
-                } else if store.searchResults.isEmpty {
-                    emptyResults
-                } else {
-                    List {
-                        ForEach(store.searchResults) { app in
-                            NavigationLink(destination: AppDetailView(app: app)) {
-                                AppRowView(app: app)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                    }
-                    .listStyle(PlainListStyle())
-                }
+            VStack(spacing: 12) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 38))
+                    .foregroundColor(.secondary)
+                Text("暂无可搜索的软件")
+                    .font(.headline)
+                Text("当前仅保留添加软件源功能。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
             }
-            .background(Color(UIColor.systemGroupedBackground).edgesIgnoringSafeArea(.all))
             .navigationBarTitle("搜索")
-            .onAppear {
-                if store.apps.isEmpty {
-                    store.reload()
-                }
-            }
         }
         .navigationViewStyle(StackNavigationViewStyle())
-    }
-
-    private var searchBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.secondary)
-
-            TextField("游戏、应用、开发者", text: $store.searchText)
-                .disableAutocorrection(true)
-
-            if !store.searchText.isEmpty {
-                Button(action: { store.searchText = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 38)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .cornerRadius(10)
-    }
-
-    private var searchPrompt: some View {
-        VStack(spacing: 10) {
-            Spacer()
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 44))
-                .foregroundColor(.secondary)
-            Text("搜索 zonoe")
-                .font(.headline)
-            Text("游戏、应用、开发者")
-                .font(.footnote)
-                .foregroundColor(.secondary)
-            Spacer()
-        }
-    }
-
-    private var emptyResults: some View {
-        VStack(spacing: 10) {
-            Spacer()
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 44))
-                .foregroundColor(.secondary)
-            Text("未找到相关内容")
-                .font(.headline)
-            Text("尝试搜索其他游戏或关键词")
-                .font(.footnote)
-                .foregroundColor(.secondary)
-            Spacer()
-        }
     }
 }

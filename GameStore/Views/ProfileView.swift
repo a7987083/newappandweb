@@ -228,10 +228,19 @@ private struct SourcesView: View {
 
         }
         .navigationBarTitle("软件源")
+        .overlay(Group {
+            if sourceStore.isLoading {
+                ProgressView("正在验证软件源…")
+                    .padding(20)
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .cornerRadius(14)
+            }
+        })
         .navigationBarItems(trailing:
             Button(action: presentAddSourceAlert) {
                 Image(systemName: "plus")
             }
+            .disabled(sourceStore.isLoading)
         )
     }
 
@@ -286,7 +295,7 @@ private struct SourcesView: View {
     }
 
     private func sourceDisplayName(_ value: String) -> String {
-        URL(string: value)?.host ?? "软件源"
+        sourceStore.sourceNames[value] ?? URL(string: value)?.host ?? "软件源"
     }
 
     private func showError(_ message: String) {

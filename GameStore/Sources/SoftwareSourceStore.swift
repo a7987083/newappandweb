@@ -5,10 +5,12 @@ import Combine
 final class SoftwareSourceStore: ObservableObject {
     static let shared = SoftwareSourceStore()
     private static let storageKey = "zonoe.sources"
+    private static let identitiesKey = "zonoe.sourceIdentities"
+    private static let namesKey = "zonoe.sourceNames"
 
     @Published private(set) var sources: [String]
     @Published private(set) var isLoading = false
-    @Published private(set) var sourceNames: [String: String] = [:]
+    @Published private(set) var sourceNames: [String: String]
 
     private var registeredIdentities: [String: String] = [:]
     private var pendingURLs = Set<String>()
@@ -17,6 +19,8 @@ final class SoftwareSourceStore: ObservableObject {
     init(session: URLSession = .shared) {
         self.session = session
         sources = UserDefaults.standard.stringArray(forKey: Self.storageKey) ?? []
+        registeredIdentities = UserDefaults.standard.dictionary(forKey: Self.identitiesKey) as? [String: String] ?? [:]
+        sourceNames = UserDefaults.standard.dictionary(forKey: Self.namesKey) as? [String: String] ?? [:]
     }
 
     func add(_ url: URL, completion: @escaping (Result<Void, Error>) -> Void) {
@@ -100,6 +104,8 @@ final class SoftwareSourceStore: ObservableObject {
                 self.registeredIdentities[url] = identity
                 self.sourceNames[url] = name
                 UserDefaults.standard.set(self.sources, forKey: Self.storageKey)
+                UserDefaults.standard.set(self.registeredIdentities, forKey: Self.identitiesKey)
+                UserDefaults.standard.set(self.sourceNames, forKey: Self.namesKey)
                 completion(.success(()))
             }
         }

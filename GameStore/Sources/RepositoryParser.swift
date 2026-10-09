@@ -30,7 +30,32 @@ enum RepositoryParser {
 
     static func parse(_ data: Data, sourceURL: URL) throws -> ParsedRepository {
         // UnitXP/AltSourceKit canonical model. Do not duplicate its download/version heuristics.
-        let repository = try JSONDecoder().decode(ASRepository.self, from: data)
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let raw = object as? [String: Any] else { throw Failure.invalidRoot }
+        let root = (raw["repository"] as? [String: Any])
+            ?? (raw["repo"] as? [String: Any]) ?? raw
+        // Preserve UnitXP SourceRepositoryLoader normalization before ASRepository decoding.
+        var normalized = root
+        if normalized["iconURL"] == nil, let icon = normalized["sourceicon"] {
+            normalized["iconURL"] = icon
+        }
+        if let apps = normalized["apps"] as? [[String: Any]] {
+            normalized["apps"] = apps.map { input -> [String: Any] in
+                var app = input
+                if app["bundleIdentifier"] == nil {
+                    app["bundleIdentifier"] = app["identifier"] ?? "zonoe.source.\\(UUID().uuidString)"
+                }
+                if app["localizedDescription"] == nil {
+                    app["localizedDescription"] = app["description"] ?? app["versionDescription"]
+                }
+                if let size = app["size"] as? String, let number = Double(size) {
+                    app["size"] = Int64(number)
+                }
+                return app
+            }
+        }
+        let normalizedData = try JSONSerialization.data(withJSONObject: normalized)
+        let repository = try JSONDecoder().decode(ASRepository.self, from: normalizedData)
         let identity = repository.id ?? sourceURL.absoluteString
         let name = repository.name ?? sourceURL.host ?? "软件源"
         let apps = repository.apps.map { app -> RepositoryApp in

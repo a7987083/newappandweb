@@ -5,6 +5,14 @@ struct SigningSettingsView: View {
 
     var body: some View {
         Form {
+            Section(header: Text("证书管理")) {
+                NavigationLink(destination: CertificateManagementView()) {
+                    Label("导入证书", systemImage: "square.and.arrow.down")
+                }
+                Text("支持导入 P12 与 mobileprovision，签名时选择已保存的证书。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
             Section(header: Text("应用能力")) {
                 Toggle("强制本地化", isOn: binding(\.forceLocalization))
                 Toggle("文件共享", isOn: binding(\.fileSharing))

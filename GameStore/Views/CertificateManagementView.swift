@@ -52,11 +52,12 @@ struct CertificateManagementView: View {
                                     .font(.caption).foregroundColor(.secondary)
                             }
                             Spacer()
-                            Button(role: .destructive) {
+                            Button(action: {
                                 do { try store.remove(certificate) }
                                 catch { errorMessage = error.localizedDescription }
-                            } label: {
+                            }) {
                                 Image(systemName: "trash")
+                                    .foregroundColor(.red)
                             }
                             .buttonStyle(BorderlessButtonStyle())
                         }

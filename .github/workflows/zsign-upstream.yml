@@ -37,13 +37,14 @@ jobs:
           set -euo pipefail
           cd upstream-ksign/Zsign
           swift package dump-package > "$GITHUB_WORKSPACE/zsign-package.json"
-      - name: Compile ZsignSwift for iOS device
+      - name: Compile pinned Ksign with ZsignSwift for iOS device
         run: |
           set -euo pipefail
           sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          git -C upstream-ksign/Zsign apply "$GITHUB_WORKSPACE/provision.patch"
           xcodebuild \
-            -workspace upstream-ksign/Zsign/.swiftpm/xcode/package.xcworkspace \
-            -scheme ZsignSwift \
+            -project upstream-ksign/Ksign.xcodeproj \
+            -scheme Ksign \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO \

@@ -15,6 +15,8 @@ struct DownloadCenterView: View {
 private struct DownloadCenterContent: View {
     @ObservedObject var downloadCenter: DownloadCenter
     @State private var deleteError: String?
+    @State private var inspectionMessages: [String: String] = [:]
+    @State private var inspectingPaths = Set<String>()
 
     var body: some View {
         Group {
@@ -72,6 +74,19 @@ private struct DownloadCenterContent: View {
                         }
 
                         if item.state == .completed {
+                            if let localURL = item.localURL {
+                                let path = localURL.standardizedFileURL.path
+                                Button(inspectingPaths.contains(path) ? "检查中…" : "检查 IPA") {
+                                    inspect(localURL)
+                                }
+                                .disabled(inspectingPaths.contains(path))
+                                .font(.caption)
+                                if let message = inspectionMessages[path] {
+                                    Text(message)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
                             HStack {
                                 actionButton(
                                     title: "签名",
@@ -128,6 +143,25 @@ private struct DownloadCenterContent: View {
                 .padding(.vertical, 8)
                 .background(background)
                 .clipShape(Capsule())
+        }
+    }
+
+    private func inspect(_ url: URL) {
+        let path = url.standardizedFileURL.path
+        guard !inspectingPaths.contains(path) else { return }
+        inspectingPaths.insert(path)
+        DispatchQueue.global(qos: .utility).async {
+            let message: String
+            do {
+                let result = try IPAInspector.inspect(url)
+                message = "\(result.displayName) · \(result.version) · \(result.bundleID) · \(ByteCountFormatter.string(fromByteCount: result.size, countStyle: .file)) · SHA-256: \(result.sha256)"
+            } catch {
+                message = "IPA 校验失败：\(error.localizedDescription)"
+            }
+            DispatchQueue.main.async {
+                self.inspectionMessages[path] = message
+                self.inspectingPaths.remove(path)
+            }
         }
     }
 

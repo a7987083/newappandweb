@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import ZsignSwift
 
 protocol AppSigning {
     func sign(

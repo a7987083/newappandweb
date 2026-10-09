@@ -64,14 +64,19 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             taskIdentifier: task.taskIdentifier
         )
 
-        DispatchQueue.main.async {
+        let start = {
             self.activeItems.append(item)
             self.updateActiveItem(taskIdentifier: task.taskIdentifier) {
                 $0.state = .downloading
             }
+            task.resume()
         }
 
-        task.resume()
+        if Thread.isMainThread {
+            start()
+        } else {
+            DispatchQueue.main.async(execute: start)
+        }
     }
 
     func item(for url: URL) -> Item? {

@@ -1,0 +1,62 @@
+name: Package recent 20 GameStore IPAs
+on:
+  push:
+    paths:
+      - .github/workflows/package-recent20-ipas.yml
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect 20 verified CI IPAs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p versions
+          cat > mapping.txt <<'VERSIONS'
+01|37976562651|b22a1f919c|11639116999
+02|37972750752|52a672c3ed|11637296411
+03|37968476665|0acfcc1f75|11634700933
+04|37967225116|4c3e3d571b|11633553350
+05|37958811149|76d9f8fd52|11630421365
+06|37958797095|42a0c8fad7|11629956447
+07|37958765124|58959bca47|11630141386
+08|37955429753|3f8c540e3b|11627727427
+09|37955384166|5535eb04fc|11626984856
+10|37950636287|000f633192|11625762550
+11|37950428835|bd4f7649bb|11625377435
+12|37949803426|004a8631aa|11625831165
+13|37949789306|37ed6b6d76|11624914571
+14|37949776843|118b73b7b0|11624804854
+15|37947085617|57241e18ca|11623837859
+16|37947024951|5d0e2c25d4|11624132447
+17|37946945009|3669831301|11624012417
+18|37946880620|eb5ec2866c|11624517225
+19|37945549423|d1756ea0ce|11623970127
+20|37945387505|86210af7b0|11623765218
+VERSIONS
+          printf 'index,run_id,commit,artifact_id,filename\n' > versions/manifest.csv
+          while IFS='|' read -r idx run sha artifact; do
+            name="GameStore_${idx}_${sha}_CI${run}.ipa"
+            curl -fsSL --retry 3 -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact}/zip" -o /tmp/artifact.zip
+            unzip -Z1 /tmp/artifact.zip | grep -E '\.ipa$' > /tmp/ipa-paths
+            test "$(wc -l < /tmp/ipa-paths)" -eq 1
+            unzip -p /tmp/artifact.zip "$(cat /tmp/ipa-paths)" > "versions/${name}"
+            test -s "versions/${name}"
+            unzip -tq "versions/${name}" >/dev/null
+            echo "${idx},${run},${sha},${artifact},${name}" >> versions/manifest.csv
+          done < mapping.txt
+          test "$(find versions -maxdepth 1 -name '*.ipa' | wc -l)" -eq 20
+          zip -q -j GameStore_latest_20_IPAs.zip versions/*.ipa versions/manifest.csv
+          unzip -tq GameStore_latest_20_IPAs.zip
+      - name: Upload combined ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameStore-latest-20-IPAs-bundle
+          path: GameStore_latest_20_IPAs.zip
+          if-no-files-found: error
+          retention-days: 7

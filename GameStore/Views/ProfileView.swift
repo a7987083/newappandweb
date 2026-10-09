@@ -276,7 +276,7 @@ private struct SourcesView: View {
             addSource(value)
         })
 
-        guard let presenter = topViewController() else { return }
+        guard let presenter = UIApplication.shared.gameStoreTopViewController() else { return }
         presenter.present(alert, animated: true)
     }
 
@@ -316,7 +316,7 @@ private struct SourcesView: View {
     private func showError(_ message: String) {
         let alert = UIAlertController(title: "添加软件源失败", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "确定", style: .default))
-        guard let presenter = topViewController() else { return }
+        guard let presenter = UIApplication.shared.gameStoreTopViewController() else { return }
         presenter.present(alert, animated: true)
     }
 

@@ -106,6 +106,23 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         }
     }
 
+    func deleteDownloadedItem(_ item: Item) throws {
+        guard item.state == .completed,
+              let localURL = item.localURL else {
+            return
+        }
+
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: localURL.path) {
+            try fileManager.removeItem(at: localURL)
+        }
+
+        let path = localURL.standardizedFileURL.path
+        completedItems.removeAll {
+            $0.localURL?.standardizedFileURL.path == path
+        }
+    }
+
     func reloadDownloadedItems() {
         let fileManager = FileManager.default
         let directory = Self.downloadsDirectory(fileManager: fileManager)

@@ -18,14 +18,17 @@ struct SoftwareView: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 14) {
                                 ForEach(Array(sourceStore.allApps.prefix(8))) { app in
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        RemoteAppIcon(url: app.iconURL, size: 78, cornerRadius: 18)
-                                        Text(app.name).font(.headline).foregroundColor(.primary).lineLimit(1)
-                                        Text(app.subtitle.isEmpty ? app.version : app.subtitle)
-                                            .font(.caption).foregroundColor(.secondary).lineLimit(1)
+                                    NavigationLink(destination: RepositoryAppDetailView(app: app)) {
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            RemoteAppIcon(url: app.iconURL, size: 78, cornerRadius: 18)
+                                            Text(app.name).font(.headline).foregroundColor(.primary).lineLimit(1)
+                                            Text(app.subtitle.isEmpty ? app.version : app.subtitle)
+                                                .font(.caption).foregroundColor(.secondary).lineLimit(1)
+                                        }
+                                        .frame(width: 150, alignment: .leading)
+                                        .padding(12)
                                     }
-                                    .frame(width: 150, alignment: .leading)
-                                    .padding(12)
+                                    .buttonStyle(PlainButtonStyle())
                                 }
                             }.padding(.vertical, 5)
                         }
@@ -33,13 +36,18 @@ struct SoftwareView: View {
                     Section(header: Text("全部软件")) {
                         ForEach(sourceStore.allApps) { app in
                             HStack(spacing: 12) {
-                                RemoteAppIcon(url: app.iconURL, size: 58, cornerRadius: 13)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(app.name).font(.headline).foregroundColor(.primary).lineLimit(1)
-                                    Text(app.subtitle.isEmpty ? app.version : app.subtitle)
-                                        .font(.caption).foregroundColor(.secondary).lineLimit(1)
+                                NavigationLink(destination: RepositoryAppDetailView(app: app)) {
+                                    HStack(spacing: 12) {
+                                        RemoteAppIcon(url: app.iconURL, size: 58, cornerRadius: 13)
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(app.name).font(.headline).foregroundColor(.primary).lineLimit(1)
+                                            Text(app.subtitle.isEmpty ? app.version : app.subtitle)
+                                                .font(.caption).foregroundColor(.secondary).lineLimit(1)
+                                        }
+                                        Spacer(minLength: 8)
+                                    }
                                 }
-                                Spacer(minLength: 8)
+                                .buttonStyle(PlainButtonStyle())
                                 if let url = app.downloadURL {
                                     Button(action: { self.store.downloadCenter.enqueue(url) }) {
                                         Text("获取").font(.subheadline).fontWeight(.semibold)
@@ -64,6 +72,41 @@ struct SoftwareView: View {
         .onAppear {
             if self.sourceStore.allApps.isEmpty { self.sourceStore.refreshAll() }
         }
+    }
+}
+
+private struct RepositoryAppDetailView: View {
+    let app: RepositoryApp
+    @EnvironmentObject private var store: AppStoreViewModel
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .top, spacing: 16) {
+                    RemoteAppIcon(url: app.iconURL, size: 92, cornerRadius: 20)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(app.name).font(.title).fontWeight(.bold)
+                        if !app.version.isEmpty {
+                            Text("版本 " + app.version).font(.subheadline).foregroundColor(.secondary)
+                        }
+                        if let url = app.downloadURL {
+                            Button("获取") { self.store.downloadCenter.enqueue(url) }
+                                .padding(.horizontal, 22).padding(.vertical, 8)
+                                .foregroundColor(.white)
+                                .background(Color.accentColor)
+                                .clipShape(Capsule())
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                if !app.subtitle.isEmpty {
+                    Text("简介").font(.headline)
+                    Text(app.subtitle).foregroundColor(.secondary)
+                }
+            }
+            .padding(16)
+        }
+        .navigationBarTitle(app.name, displayMode: .inline)
     }
 }
 

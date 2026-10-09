@@ -14,6 +14,7 @@ final class SoftwareSourceStore: ObservableObject {
 
     private let loader: SourceRepositoryLoader
     private var loadGeneration = 0
+    private var appBuildGeneration = 0
 
     init(loader: SourceRepositoryLoader = .shared) {
         self.loader = loader
@@ -41,13 +42,17 @@ final class SoftwareSourceStore: ObservableObject {
 
                 switch result {
                 case .success(let repository):
+                    self.loadGeneration &+= 1
+
                     var updatedSources = self.sources
                     updatedSources.append(normalized)
                     self.sources = updatedSources
                     UserDefaults.standard.set(updatedSources, forKey: Self.storageKey)
 
-                    var updatedRepositories = self.repositories
-                    updatedRepositories.append(repository)
+                    let updatedRepositories = Self.orderedRepositories(
+                        self.repositories + [repository],
+                        sourceOrder: updatedSources
+                    )
                     self.repositories = updatedRepositories
                     self.rebuildApps(from: updatedRepositories)
                     self.errorMessage = nil
@@ -62,6 +67,8 @@ final class SoftwareSourceStore: ObservableObject {
     }
 
     func remove(at offsets: IndexSet) {
+        loadGeneration &+= 1
+
         let removedURLs = offsets.compactMap { index in
             sources.indices.contains(index) ? sources[index] : nil
         }
@@ -71,8 +78,16 @@ final class SoftwareSourceStore: ObservableObject {
         sources = updated
         UserDefaults.standard.set(updated, forKey: Self.storageKey)
 
-        repositories.removeAll { removedURLs.contains($0.sourceURL.absoluteString) }
+        let remaining = repositories.filter {
+            !removedURLs.contains($0.sourceURL.absoluteString)
+        }
+        repositories = Self.orderedRepositories(
+            remaining,
+            sourceOrder: updated
+        )
         rebuildApps(from: repositories)
+        isLoading = false
+        errorMessage = nil
     }
 
     func reloadAll() {
@@ -93,16 +108,16 @@ final class SoftwareSourceStore: ObservableObject {
 
         let group = DispatchGroup()
         let lock = NSLock()
-        var loaded: [SourceRepository] = []
+        var loaded = Array<SourceRepository?>(repeating: nil, count: urls.count)
         var firstError: Error?
 
-        for url in urls {
+        for (index, url) in urls.enumerated() {
             group.enter()
             loader.fetch(from: url) { result in
                 lock.lock()
                 switch result {
                 case .success(let repository):
-                    loaded.append(repository)
+                    loaded[index] = repository
                 case .failure(let error):
                     if firstError == nil { firstError = error }
                 }
@@ -113,18 +128,20 @@ final class SoftwareSourceStore: ObservableObject {
 
         group.notify(queue: .main) { [weak self] in
             guard let self = self, generation == self.loadGeneration else { return }
-            let sortedRepositories = loaded.sorted {
-                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-            }
-            self.repositories = sortedRepositories
-            self.rebuildApps(from: sortedRepositories)
+
+            let orderedRepositories = loaded.compactMap { $0 }
+            self.repositories = orderedRepositories
+            self.rebuildApps(from: orderedRepositories)
             self.isLoading = false
             self.errorMessage = firstError?.localizedDescription
         }
     }
 
     private func rebuildApps(from repositories: [SourceRepository]) {
+        appBuildGeneration &+= 1
+        let generation = appBuildGeneration
         let snapshot = repositories
+
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             var seen = Set<String>()
             var mapped: [AppItem] = []
@@ -143,10 +160,25 @@ final class SoftwareSourceStore: ObservableObject {
             }
 
             DispatchQueue.main.async {
-                guard let self = self else { return }
+                guard let self = self,
+                      generation == self.appBuildGeneration else {
+                    return
+                }
                 self.apps = mapped
             }
         }
+    }
+
+    private static func orderedRepositories(
+        _ repositories: [SourceRepository],
+        sourceOrder: [String]
+    ) -> [SourceRepository] {
+        let byURL = Dictionary(
+            repositories.map { ($0.sourceURL.absoluteString, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        return sourceOrder.compactMap { byURL[$0] }
     }
 
     private static let sourceDateFormatter: ISO8601DateFormatter = {

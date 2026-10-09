@@ -194,7 +194,7 @@ private struct SourceAppDetailContent: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(UIColor.systemBackground))
-        .navigationBarTitle("软件详情", displayMode: .inline)
+        .modifier(CompactDetailTitle())
     }
 
     private func metadataCell(_ label: String, _ value: String) -> some View {
@@ -245,5 +245,15 @@ private struct DownloadProgressBar: View {
                     .frame(width: geometry.size.width * CGFloat(max(0, min(1, progress))))
             }
         }.frame(width: 54, height: 5)
+    }
+}
+
+private struct CompactDetailTitle: ViewModifier {
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 14.0, *) {
+            content.navigationBarTitle("软件详情", displayMode: .inline)
+        } else {
+            content.navigationBarTitle("软件详情")
+        }
     }
 }

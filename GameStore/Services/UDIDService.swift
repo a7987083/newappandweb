@@ -163,7 +163,7 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
             self.acquisitionError = nil
             NotificationCenter.default.post(name: Self.didUpdateNotification, object: clean)
             self.deliverPendingCallback(clean)
-            self.endBackgroundTask()
+            self.endBackgroundTaskUnlessBridgePending()
         }
     }
 
@@ -176,7 +176,7 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
         if let value = items.first(where: { $0.name.lowercased() == "udid" })?.value {
             finishAcquisition(value, session: expected)
         }
-        endBackgroundTask()
+        endBackgroundTaskUnlessBridgePending()
     }
 
     private func deliverPendingCallback(_ value: String) {
@@ -254,6 +254,13 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
         backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "GameStore.UDID") { [weak self] in
             self?.endBackgroundTask()
         }
+    }
+
+    private func endBackgroundTaskUnlessBridgePending() {
+        bridgeLock.lock()
+        let pending = bridgeResults.values.contains { $0.expiry > Date() }
+        bridgeLock.unlock()
+        if !pending { endBackgroundTask() }
     }
 
     private func endBackgroundTask() {

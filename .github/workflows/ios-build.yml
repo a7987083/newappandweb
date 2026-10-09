@@ -13,6 +13,18 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+      - name: Restore pinned zonoe Zsign package
+        run: |
+          set -euo pipefail
+          git clone https://github.com/Nyasami/Ksign.git upstream-ksign
+          git -C upstream-ksign checkout 03a3a9c86897d79f9faf8106037b9971841d56a0
+          git -C upstream-ksign submodule update --init --recursive
+          test "$(git -C upstream-ksign/Zsign rev-parse HEAD)" = "6ffe703df73ef9069adacdbb19d571f11a69a801"
+          mkdir -p Vendor
+          cp -R upstream-ksign/Zsign Vendor/Zsign
+          curl -fLsS --retry 3 -o /tmp/zonoe-provision.patch https://raw.githubusercontent.com/a7987083/UnitXP_SP3-Moonstone/v3.0.0-alphaone13/HFASign/patches/0017-Fix-Zsign-removeProvision-semantics.patch
+          git -C Vendor/Zsign apply /tmp/zonoe-provision.patch
+
 
       - name: Select Xcode 15.4
         run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
@@ -24,6 +36,7 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild \
+            -skipPackagePluginValidation \
             -project GameStore.xcodeproj \
             -scheme GameStore \
             -configuration Debug \
@@ -37,6 +50,7 @@ jobs:
           set -o pipefail
           rm -rf DerivedDataDevice
           xcodebuild \
+            -skipPackagePluginValidation \
             -project GameStore.xcodeproj \
             -scheme GameStore \
             -configuration Debug \
@@ -57,18 +71,18 @@ jobs:
           cp -R "$APP_PATH" ipa/Payload/GameStore.app
           (
             cd ipa
-            /usr/bin/zip -qry ../GameStore-v0.2.7-dev-unsigned.ipa Payload
+            /usr/bin/zip -qry ../GameStore-v0.2.8-dev-unsigned.ipa Payload
           )
-          /usr/bin/unzip -l GameStore-v0.2.7-dev-unsigned.ipa | tee ipa-contents.log
-          test -s GameStore-v0.2.7-dev-unsigned.ipa
-          /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP_PATH/Info.plist" | grep -Fx "0.2.7"
-          /usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$APP_PATH/Info.plist" | grep -Fx "8"
+          /usr/bin/unzip -l GameStore-v0.2.8-dev-unsigned.ipa | tee ipa-contents.log
+          test -s GameStore-v0.2.8-dev-unsigned.ipa
+          /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP_PATH/Info.plist" | grep -Fx "0.2.8"
+          /usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$APP_PATH/Info.plist" | grep -Fx "9"
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: GameStore-v0.2.7-dev-unsigned-ipa
-          path: GameStore-v0.2.7-dev-unsigned.ipa
+          name: GameStore-v0.2.8-dev-unsigned-ipa
+          path: GameStore-v0.2.8-dev-unsigned.ipa
           if-no-files-found: error
 
       - name: Upload legacy build logs
@@ -87,6 +101,18 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+      - name: Restore pinned zonoe Zsign package
+        run: |
+          set -euo pipefail
+          git clone https://github.com/Nyasami/Ksign.git upstream-ksign
+          git -C upstream-ksign checkout 03a3a9c86897d79f9faf8106037b9971841d56a0
+          git -C upstream-ksign submodule update --init --recursive
+          test "$(git -C upstream-ksign/Zsign rev-parse HEAD)" = "6ffe703df73ef9069adacdbb19d571f11a69a801"
+          mkdir -p Vendor
+          cp -R upstream-ksign/Zsign Vendor/Zsign
+          curl -fLsS --retry 3 -o /tmp/zonoe-provision.patch https://raw.githubusercontent.com/a7987083/UnitXP_SP3-Moonstone/v3.0.0-alphaone13/HFASign/patches/0017-Fix-Zsign-removeProvision-semantics.patch
+          git -C Vendor/Zsign apply /tmp/zonoe-provision.patch
+
 
       - name: Select Xcode 26.6
         run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
@@ -98,6 +124,7 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild \
+            -skipPackagePluginValidation \
             -project GameStore.xcodeproj \
             -scheme GameStore \
             -configuration Debug \

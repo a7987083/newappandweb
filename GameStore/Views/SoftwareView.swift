@@ -37,16 +37,7 @@ struct SoftwareView: View {
                     sourceStore.refreshAll()
                 }
             }
-            .alert(isPresented: Binding(
-                get: { store.errorMessage != nil },
-                set: { if !$0 { store.errorMessage = nil } }
-            )) {
-                Alert(
-                    title: Text("错误"),
-                    message: Text(store.errorMessage ?? ""),
-                    dismissButton: .default(Text("确定"))
-                )
-            }
+
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }

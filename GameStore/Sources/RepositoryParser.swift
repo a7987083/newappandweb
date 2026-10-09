@@ -29,58 +29,24 @@ enum RepositoryParser {
     }
 
     static func parse(_ data: Data, sourceURL: URL) throws -> ParsedRepository {
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw Failure.invalidRoot
-        }
-        let root = (object["repository"] as? [String: Any])
-            ?? (object["repo"] as? [String: Any]) ?? object
-        guard let rawApps = (root["apps"] as? [Any]) ?? (root["applications"] as? [Any]) else {
-            throw Failure.missingApps
-        }
-        let identity = string(root, ["identifier", "id"]) ?? sourceURL.absoluteString
-        let name = string(root, ["name", "title"]) ?? sourceURL.host ?? "软件源"
-        var apps: [RepositoryApp] = []
-        var seen = Set<String>()
-        for value in rawApps {
-            guard let item = value as? [String: Any] else { continue }
-            let bundle = string(item, ["bundleIdentifier", "bundleID", "bundleId", "identifier", "packageName"]) ?? ""
-            let appName = string(item, ["name", "title", "appName"]) ?? bundle
-            guard !appName.isEmpty else { continue }
-            let versionObject = (item["versions"] as? [[String: Any]])?.first
-            let version = string(item, ["version", "versionName"]) ?? versionObject.flatMap { string($0, ["version", "versionName"]) } ?? ""
-            let link = string(item, ["downloadURL", "downloadUrl", "download", "url", "ipaURL", "ipa"]) ??
-                versionObject.flatMap { string($0, ["downloadURL", "downloadUrl", "download", "url"]) }
-            let icon = string(item, ["iconURL", "iconUrl", "icon", "iconPath", "image"])
-            let key = bundle.isEmpty ? appName : bundle
-            guard seen.insert(key).inserted else { continue }
-            apps.append(RepositoryApp(
-                id: sourceURL.absoluteString + "#" + key,
+        // UnitXP/AltSourceKit canonical model. Do not duplicate its download/version heuristics.
+        let repository = try JSONDecoder().decode(ASRepository.self, from: data)
+        let identity = repository.id ?? sourceURL.absoluteString
+        let name = repository.name ?? sourceURL.host ?? "软件源"
+        let apps = repository.apps.map { app -> RepositoryApp in
+            let bundle = app.id ?? ""
+            let displayName = app.currentName
+            return RepositoryApp(
+                id: sourceURL.absoluteString + "#" + (bundle.isEmpty ? displayName : bundle),
                 sourceURL: sourceURL.absoluteString,
                 bundleID: bundle,
-                name: appName,
-                version: version,
-                subtitle: string(item, ["subtitle", "description", "summary"]) ?? "",
-                iconURL: resolve(icon, against: sourceURL),
-                downloadURL: resolve(link, against: sourceURL)
-            ))
+                name: displayName,
+                version: app.currentVersion ?? "",
+                subtitle: app.currentDescription ?? "",
+                iconURL: app.iconURL,
+                downloadURL: app.currentDownloadUrl
+            )
         }
         return ParsedRepository(identity: identity, name: name, apps: apps)
-    }
-
-    private static func string(_ object: [String: Any], _ keys: [String]) -> String? {
-        for key in keys {
-            if let value = object[key] as? String {
-                let clean = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !clean.isEmpty { return clean }
-            }
-        }
-        return nil
-    }
-
-    private static func resolve(_ raw: String?, against source: URL) -> URL? {
-        guard let raw = raw, let url = URL(string: raw, relativeTo: source)?.absoluteURL,
-              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
-              url.host != nil else { return nil }
-        return url
     }
 }

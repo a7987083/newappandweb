@@ -25,6 +25,11 @@ struct SoftwareView: View {
                             if let url = app.downloadURL {
                                 Button("获取") { self.store.downloadCenter.enqueue(url) }
                                     .buttonStyle(BorderlessButtonStyle())
+                            } else {
+                                Text(app.requiresUnlock == true ? "需授权" :
+                                     app.unresolvedDownloadURL != nil ? "地址无效" : "未提供下载")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                             }
                         }
                         .padding(.vertical, 5)

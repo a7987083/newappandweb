@@ -7,7 +7,10 @@ struct SigningSettingsView: View {
         Form {
             Section(header: Text("证书管理")) {
                 NavigationLink(destination: CertificateManagementView()) {
-                    Label("导入证书", systemImage: "square.and.arrow.down")
+                    HStack(spacing: 8) {
+                        Image(systemName: "square.and.arrow.down")
+                        Text("导入证书")
+                    }
                 }
                 Text("支持导入 P12 与 mobileprovision，签名时选择已保存的证书。")
                     .font(.footnote)

@@ -28,7 +28,7 @@ struct SearchView: View {
                     }
                 }
             }
-            .listStyle(InsetGroupedListStyle())
+            .listStyle(GroupedListStyle())
             .navigationBarTitle("搜索")
             .onAppear { if sources.catalogApps.isEmpty { sources.refreshCatalog() } }
         }

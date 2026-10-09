@@ -14,10 +14,12 @@ final class UDIDLocalServer {
     private var socketFD: Int32 = -1
     private var isRunning = false
     private let profileData: Data
+    private let sessionToken: String
     private let onUDID: (String) -> Void
 
-    init(profileData: Data, onUDID: @escaping (String) -> Void) {
+    init(profileData: Data, sessionToken: String, onUDID: @escaping (String) -> Void) {
         self.profileData = profileData
+        self.sessionToken = sessionToken
         self.onUDID = onUDID
     }
 
@@ -91,6 +93,9 @@ final class UDIDLocalServer {
                 break
             }
 
+            var timeout = timeval(tv_sec: 10, tv_usec: 0)
+            setsockopt(clientFD, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+            setsockopt(clientFD, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
             handleClient(clientFD)
             Darwin.shutdown(clientFD, SHUT_RDWR)
             Darwin.close(clientFD)
@@ -117,6 +122,10 @@ final class UDIDLocalServer {
         }
 
         if request.method == "POST", request.path == "/udid" {
+            guard request.queryToken == sessionToken else {
+                send(status: "403 Forbidden", headers: [:], body: Data(), to: clientFD)
+                return
+            }
             guard let udid = extractUDID(from: request.body), !udid.isEmpty else {
                 send(status: "400 Bad Request", headers: [:], body: Data(), to: clientFD)
                 return
@@ -129,7 +138,10 @@ final class UDIDLocalServer {
             var callback = URLComponents()
             callback.scheme = "zonoe"
             callback.host = "udid-complete"
-            callback.queryItems = [URLQueryItem(name: "udid", value: udid)]
+            callback.queryItems = [
+                URLQueryItem(name: "udid", value: udid),
+                URLQueryItem(name: "session", value: sessionToken)
+            ]
 
             guard let location = callback.url?.absoluteString else {
                 send(status: "500 Internal Server Error", headers: [:], body: Data(), to: clientFD)
@@ -152,6 +164,7 @@ final class UDIDLocalServer {
         let method: String
         let path: String
         let body: Data
+        let queryToken: String?
     }
 
     private func readRequest(from fd: Int32) -> HTTPRequest? {
@@ -205,7 +218,9 @@ final class UDIDLocalServer {
         guard data.count >= bodyStart + contentLength else { return nil }
         let body = data.subdata(in: bodyStart..<(bodyStart + contentLength))
 
-        return HTTPRequest(method: method, path: path, body: body)
+        let queryToken = URLComponents(string: "http://localhost" + rawPath)?
+            .queryItems?.first(where: { $0.name == "session" })?.value
+        return HTTPRequest(method: method, path: path, body: body, queryToken: queryToken)
     }
 
     private func send(status: String, headers: [String: String], body: Data, to fd: Int32) {

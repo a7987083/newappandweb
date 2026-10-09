@@ -124,18 +124,6 @@ struct SoftwareView: View {
     }
 }
 
-struct SectionHeader: View {
-    let title: String
-
-    var body: some View {
-        HStack {
-            Text(title)
-                .font(.system(size: 20, weight: .bold))
-            Spacer()
-        }
-    }
-}
-
 struct FeaturedCardView: View {
     let app: AppItem
 

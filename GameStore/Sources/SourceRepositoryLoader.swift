@@ -536,18 +536,6 @@ final class SourceUnlockService {
         return components.url
     }
 
-    private static func intValue(_ value: Any?) -> Int? {
-        if let value = value as? NSNumber { return value.intValue }
-        if let value = value as? String { return Int(value) }
-        return nil
-    }
-
-    private static func doubleValue(_ value: Any?) -> TimeInterval? {
-        if let value = value as? NSNumber { return value.doubleValue }
-        if let value = value as? String { return TimeInterval(value) }
-        return nil
-    }
-
     enum UnlockError: LocalizedError {
         case missingUDID
         case emptyCode

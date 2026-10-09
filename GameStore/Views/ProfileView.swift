@@ -232,10 +232,22 @@ private struct SourcesView: View {
         .navigationBarTitle("软件源")
         .overlay(Group {
             if sourceStore.isLoading {
-                Text("正在验证软件源…")
-                    .padding(20)
-                    .background(Color(UIColor.secondarySystemBackground))
-                    .cornerRadius(14)
+                Color.black.opacity(0.18)
+                    .edgesIgnoringSafeArea(.all)
+                VStack(spacing: 12) {
+                    SourceActivityIndicator()
+                        .frame(width: 30, height: 30)
+                    Text("正在添加软件源")
+                        .font(.headline)
+                    Text("正在请求并解析软件源…")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 22)
+                .background(Color(UIColor.secondarySystemBackground))
+                .cornerRadius(18)
+                .shadow(radius: 8)
             }
         })
         .navigationBarItems(trailing:
@@ -311,3 +323,13 @@ private struct SourcesView: View {
 
 }
 
+
+private struct SourceActivityIndicator: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIActivityIndicatorView {
+        let view = UIActivityIndicatorView(style: .medium)
+        view.startAnimating()
+        return view
+    }
+
+    func updateUIView(_ uiView: UIActivityIndicatorView, context: Context) {}
+}

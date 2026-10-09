@@ -10,11 +10,14 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
     static let didUpdateNotification = Notification.Name("GameStoreUDIDDidUpdate")
     private static let storageKey = "zonoe.deviceUDID"
     private static let pendingCallbackKey = "zonoe.pendingUDIDCallback"
+    private static let pendingNonceKey = "zonoe.pendingUDIDNonce"
 
     @Published private(set) var udid: String?
     @Published private(set) var acquisitionError: String?
 
     private var localServer: UDIDLocalServer?
+    private let bridgeLock = NSLock()
+    private var bridgeResults: [String: (udid: String, expiry: Date)] = [:]
     private var sessionToken: String?
     private var completedSession: String?
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
@@ -44,12 +47,58 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
     func handleProviderRequest(_ url: URL) {
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         guard let value = items.first(where: { $0.name.lowercased() == "callback" })?.value,
-              let callback = URL(string: value), callback.scheme != nil else { return }
+              let callback = URL(string: value), let scheme = callback.scheme,
+              !scheme.isEmpty, scheme.lowercased() != "http",
+              scheme.lowercased() != "https" else { return }
+        let nonce = items.first(where: { $0.name.lowercased() == "nonce" })?.value
+        let validNonce = nonce.flatMap { UDIDLocalServer.validNonce($0) ? $0 : nil }
         if let udid = udid, !udid.isEmpty {
-            deliverProviderCallback(callback, udid: udid)
+            deliverProviderCallback(callback, udid: udid, nonce: validNonce)
         } else {
             UserDefaults.standard.set(callback.absoluteString, forKey: Self.pendingCallbackKey)
+            if let validNonce {
+                UserDefaults.standard.set(validNonce, forKey: Self.pendingNonceKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.pendingNonceKey)
+            }
             requestProfileConfiguration()
+        }
+    }
+
+    private func bridgeResult(_ nonce: String) -> String? {
+        bridgeLock.lock()
+        defer { bridgeLock.unlock() }
+        bridgeResults = bridgeResults.filter { $0.value.expiry > Date() }
+        return bridgeResults[nonce]?.udid
+    }
+
+    private func acknowledgeBridge(_ nonce: String) -> Bool {
+        bridgeLock.lock()
+        let didRemove = bridgeResults.removeValue(forKey: nonce) != nil
+        bridgeLock.unlock()
+        if didRemove {
+            DispatchQueue.main.async { self.endBackgroundTask() }
+        }
+        return didRemove
+    }
+
+    private func makeServer(profileData: Data, token: String, onUDID: @escaping (String) -> Void) -> UDIDLocalServer {
+        UDIDLocalServer(
+            profileData: profileData, sessionToken: token, onUDID: onUDID,
+            bridgeRead: { [weak self] nonce in self?.bridgeResult(nonce) },
+            bridgeAck: { [weak self] nonce in self?.acknowledgeBridge(nonce) ?? false }
+        )
+    }
+
+    private func ensureBridgeServer() -> Bool {
+        if localServer != nil { return true }
+        let server = makeServer(profileData: Data(), token: "", onUDID: { _ in })
+        do {
+            try server.start()
+            localServer = server
+            return true
+        } catch {
+            return false
         }
     }
 
@@ -95,7 +144,7 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
         let token = UUID().uuidString.lowercased()
         let configured = template.replacingOccurrences(of: endpoint, with: endpoint + "?session=" + token)
         guard let payload = configured.data(using: .utf8) else { throw AcquisitionError.missingProfile }
-        let server = UDIDLocalServer(profileData: payload, sessionToken: token) { [weak self] result in
+        let server = makeServer(profileData: payload, token: token) { [weak self] result in
             self?.finishAcquisition(result, session: token)
         }
         try server.start()
@@ -133,17 +182,33 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
     private func deliverPendingCallback(_ value: String) {
         guard let raw = UserDefaults.standard.string(forKey: Self.pendingCallbackKey),
               let url = URL(string: raw) else { return }
+        let nonce = UserDefaults.standard.string(forKey: Self.pendingNonceKey)
         UserDefaults.standard.removeObject(forKey: Self.pendingCallbackKey)
-        deliverProviderCallback(url, udid: value)
+        UserDefaults.standard.removeObject(forKey: Self.pendingNonceKey)
+        deliverProviderCallback(url, udid: value, nonce: nonce)
     }
 
-    private func deliverProviderCallback(_ callback: URL, udid: String) {
+    private func deliverProviderCallback(_ callback: URL, udid: String, nonce: String? = nil) {
         guard var target = URLComponents(url: callback, resolvingAgainstBaseURL: false) else { return }
         var items = target.queryItems ?? []
-        items.removeAll { $0.name.lowercased() == "udid" }
-        items.append(URLQueryItem(name: "udid", value: udid))
-        target.queryItems = items
-        if let url = target.url { UIApplication.shared.open(url, options: [:], completionHandler: nil) }
+        items.removeAll { $0.name.lowercased() == "udid" || $0.name.lowercased() == "nonce" }
+
+        // No-hook protocol: nonce stays with the caller; the callback URL wakes it only.
+        if let nonce = nonce, UDIDLocalServer.validNonce(nonce), ensureBridgeServer() {
+            bridgeLock.lock()
+            bridgeResults = bridgeResults.filter { $0.value.expiry > Date() }
+            bridgeResults[nonce] = (udid, Date().addingTimeInterval(60))
+            bridgeLock.unlock()
+            target.queryItems = items.isEmpty ? nil : items
+            beginBackgroundTask()
+        } else {
+            // Legacy consumers receive UDID directly when bridge setup is unavailable.
+            items.append(URLQueryItem(name: "udid", value: udid))
+            target.queryItems = items
+        }
+        if let url = target.url {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+        }
     }
 
     func safariViewControllerDidFinish(_ controller: SFSafariViewController) {

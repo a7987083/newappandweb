@@ -19,7 +19,9 @@ jobs:
           set -euo pipefail
           git clone https://github.com/Nyasami/Ksign.git upstream-ksign
           git -C upstream-ksign checkout 03a3a9c86897d79f9faf8106037b9971841d56a0
-          git -C upstream-ksign submodule update --init --recursive Zsign
+          git -C upstream-ksign submodule update --init --recursive
+          git -C upstream-ksign submodule status --recursive
+          test -f upstream-ksign/IDeviceKit/Package.swift
           test "$(git -C upstream-ksign/Zsign rev-parse HEAD)" = "6ffe703df73ef9069adacdbb19d571f11a69a801"
           test -f upstream-ksign/Zsign/Package.swift
           grep -q "ZsignSwift" upstream-ksign/Zsign/Package.swift

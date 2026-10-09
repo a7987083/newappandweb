@@ -23,6 +23,16 @@ final class SoftwareSourceStore: ObservableObject {
         sourceNames = UserDefaults.standard.dictionary(forKey: Self.namesKey) as? [String: String] ?? [:]
     }
 
+    func remove(_ value: String) {
+        guard let index = sources.firstIndex(of: value) else { return }
+        sources.remove(at: index)
+        registeredIdentities.removeValue(forKey: value)
+        sourceNames.removeValue(forKey: value)
+        UserDefaults.standard.set(sources, forKey: Self.storageKey)
+        UserDefaults.standard.set(registeredIdentities, forKey: Self.identitiesKey)
+        UserDefaults.standard.set(sourceNames, forKey: Self.namesKey)
+    }
+
     func add(_ url: URL, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let scheme = url.scheme?.lowercased(),
               (scheme == "http" || scheme == "https"),

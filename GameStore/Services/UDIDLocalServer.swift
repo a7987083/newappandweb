@@ -2,10 +2,18 @@ import Foundation
 import Darwin
 
 final class UDIDLocalServer {
-    enum ServerError: Error {
+    enum ServerError: LocalizedError {
         case socketCreationFailed
         case bindFailed
         case listenFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .socketCreationFailed: return "本机 UDID 服务无法创建网络监听"
+            case .bindFailed: return "本机 14302 端口已被占用，请关闭占用该端口的应用后重试"
+            case .listenFailed: return "本机 UDID 服务启动失败"
+            }
+        }
     }
 
     static let port: UInt16 = 14302

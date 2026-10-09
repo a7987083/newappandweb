@@ -16,64 +16,17 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         var taskIdentifier: Int?
     }
 
-    @Published private(set) var items: [Item] = []
+    @Published private(set) var activeItems: [Item] = []
+    @Published private(set) var completedItems: [Item] = []
+    @Published private(set) var terminalItems: [Item] = []
+
+    var items: [Item] {
+        activeItems + completedItems + terminalItems
+    }
 
     override init() {
         super.init()
         reloadDownloadedItems()
-    }
-
-    func reloadDownloadedItems() {
-        let fileManager = FileManager.default
-        let directory = Self.downloadsDirectory(fileManager: fileManager)
-
-        do {
-            try fileManager.createDirectory(
-                at: directory,
-                withIntermediateDirectories: true,
-                attributes: nil
-            )
-
-            let files = try fileManager.contentsOfDirectory(
-                at: directory,
-                includingPropertiesForKeys: [.fileSizeKey],
-                options: [.skipsHiddenFiles]
-            )
-            .filter { $0.pathExtension.lowercased() == "ipa" }
-            .sorted {
-                let lhs = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                let rhs = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                return lhs > rhs
-            }
-
-            let activeItems = items.filter {
-                $0.state == .queued || $0.state == .downloading || $0.state == .paused
-            }
-            let activePaths = Set(activeItems.compactMap { $0.localURL?.standardizedFileURL.path })
-
-            let completedItems = files.compactMap { fileURL -> Item? in
-                let path = fileURL.standardizedFileURL.path
-                guard !activePaths.contains(path) else { return nil }
-                return Item(
-                    id: UUID(),
-                    sourceURL: fileURL,
-                    progress: 1,
-                    state: .completed,
-                    localURL: fileURL,
-                    errorDescription: nil,
-                    taskIdentifier: nil
-                )
-            }
-
-            DispatchQueue.main.async {
-                let transientFailures = self.items.filter {
-                    $0.state == .failed || $0.state == .cancelled
-                }
-                self.items = activeItems + completedItems + transientFailures
-            }
-        } catch {
-            // Directory restore is best-effort. Active downloads remain intact.
-        }
     }
 
     private lazy var session: URLSession = {
@@ -94,16 +47,15 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             return
         }
 
-        if items.contains(where: {
-            $0.sourceURL == url && ($0.state == .queued || $0.state == .downloading)
-        }) {
+        guard !activeItems.contains(where: { $0.sourceURL == url }) else {
             return
         }
 
-        let id = UUID()
+        terminalItems.removeAll { $0.sourceURL == url }
+
         let task = session.downloadTask(with: url)
         let item = Item(
-            id: id,
+            id: UUID(),
             sourceURL: url,
             progress: 0,
             state: .queued,
@@ -113,8 +65,8 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         )
 
         DispatchQueue.main.async {
-            self.items.append(item)
-            self.updateItem(taskIdentifier: task.taskIdentifier) {
+            self.activeItems.append(item)
+            self.updateActiveItem(taskIdentifier: task.taskIdentifier) {
                 $0.state = .downloading
             }
         }
@@ -123,17 +75,97 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
     }
 
     func item(for url: URL) -> Item? {
-        items.last(where: { $0.sourceURL == url })
+        if let active = activeItems.last(where: { $0.sourceURL == url }) {
+            return active
+        }
+        if let completed = completedItems.last(where: { $0.sourceURL == url }) {
+            return completed
+        }
+        return terminalItems.last(where: { $0.sourceURL == url })
     }
 
     func cancel(_ item: Item) {
         guard let taskIdentifier = item.taskIdentifier else { return }
+
         session.getAllTasks { tasks in
             tasks.first(where: { $0.taskIdentifier == taskIdentifier })?.cancel()
         }
+
         DispatchQueue.main.async {
-            self.updateItem(taskIdentifier: taskIdentifier) {
-                $0.state = .cancelled
+            self.finishActiveItem(
+                taskIdentifier: taskIdentifier,
+                state: .cancelled,
+                localURL: nil,
+                errorDescription: nil
+            )
+        }
+    }
+
+    func reloadDownloadedItems() {
+        let fileManager = FileManager.default
+        let directory = Self.downloadsDirectory(fileManager: fileManager)
+
+        do {
+            try fileManager.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+
+            let files = try fileManager.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            )
+            .filter { $0.pathExtension.lowercased() == "ipa" }
+            .sorted {
+                let lhs = (try? $0.resourceValues(
+                    forKeys: [.contentModificationDateKey]
+                ).contentModificationDate) ?? .distantPast
+                let rhs = (try? $1.resourceValues(
+                    forKeys: [.contentModificationDateKey]
+                ).contentModificationDate) ?? .distantPast
+                return lhs > rhs
+            }
+
+            DispatchQueue.main.async {
+                let existingByPath = Dictionary(
+                    uniqueKeysWithValues: self.completedItems.compactMap { item -> (String, Item)? in
+                        guard let localURL = item.localURL else { return nil }
+                        return (localURL.standardizedFileURL.path, item)
+                    }
+                )
+
+                self.completedItems = files.map { fileURL in
+                    let path = fileURL.standardizedFileURL.path
+                    if let existing = existingByPath[path] {
+                        return existing
+                    }
+
+                    return Item(
+                        id: UUID(),
+                        sourceURL: fileURL,
+                        progress: 1,
+                        state: .completed,
+                        localURL: fileURL,
+                        errorDescription: nil,
+                        taskIdentifier: nil
+                    )
+                }
+            }
+        } catch {
+            DispatchQueue.main.async {
+                self.terminalItems.append(
+                    Item(
+                        id: UUID(),
+                        sourceURL: directory,
+                        progress: 0,
+                        state: .failed,
+                        localURL: nil,
+                        errorDescription: "读取下载目录失败：\(error.localizedDescription)",
+                        taskIdentifier: nil
+                    )
+                )
             }
         }
     }
@@ -146,9 +178,14 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         totalBytesExpectedToWrite: Int64
     ) {
         guard totalBytesExpectedToWrite > 0 else { return }
-        let progress = min(1, max(0, Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)))
+
+        let progress = min(
+            1,
+            max(0, Double(totalBytesWritten) / Double(totalBytesExpectedToWrite))
+        )
+
         DispatchQueue.main.async {
-            self.updateItem(taskIdentifier: downloadTask.taskIdentifier) {
+            self.updateActiveItem(taskIdentifier: downloadTask.taskIdentifier) {
                 $0.progress = progress
                 $0.state = .downloading
             }
@@ -172,28 +209,29 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                 suggestedFilename: downloadTask.response?.suggestedFilename,
                 sourceURL: downloadTask.originalRequest?.url
             )
-            let fileManager = FileManager.default
 
+            let fileManager = FileManager.default
             if fileManager.fileExists(atPath: destination.path) {
                 try fileManager.removeItem(at: destination)
             }
-
             try fileManager.moveItem(at: location, to: destination)
 
             DispatchQueue.main.async {
-                self.updateItem(taskIdentifier: taskIdentifier) {
-                    $0.progress = 1
-                    $0.state = .completed
-                    $0.localURL = destination
-                    $0.errorDescription = nil
-                }
+                self.finishActiveItem(
+                    taskIdentifier: taskIdentifier,
+                    state: .completed,
+                    localURL: destination,
+                    errorDescription: nil
+                )
             }
         } catch {
             DispatchQueue.main.async {
-                self.updateItem(taskIdentifier: taskIdentifier) {
-                    $0.state = .failed
-                    $0.errorDescription = error.localizedDescription
-                }
+                self.finishActiveItem(
+                    taskIdentifier: taskIdentifier,
+                    state: .failed,
+                    localURL: nil,
+                    errorDescription: error.localizedDescription
+                )
             }
         }
     }
@@ -206,29 +244,83 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         guard let error = error else { return }
 
         DispatchQueue.main.async {
-            self.updateItem(taskIdentifier: task.taskIdentifier) {
-                if (error as NSError).code == NSURLErrorCancelled {
-                    $0.state = .cancelled
-                } else if $0.state != .failed {
-                    $0.state = .failed
-                    $0.errorDescription = error.localizedDescription
-                }
-            }
+            let state: State = (error as NSError).code == NSURLErrorCancelled
+                ? .cancelled
+                : .failed
+
+            self.finishActiveItem(
+                taskIdentifier: task.taskIdentifier,
+                state: state,
+                localURL: nil,
+                errorDescription: state == .failed ? error.localizedDescription : nil
+            )
         }
     }
 
-    private func updateItem(taskIdentifier: Int, mutate: (inout Item) -> Void) {
-        guard let index = items.lastIndex(where: { $0.taskIdentifier == taskIdentifier }) else {
+    private func updateActiveItem(
+        taskIdentifier: Int,
+        mutate: (inout Item) -> Void
+    ) {
+        guard let index = activeItems.lastIndex(where: {
+            $0.taskIdentifier == taskIdentifier
+        }) else {
             return
         }
-        var item = items[index]
+
+        var item = activeItems[index]
         mutate(&item)
-        items[index] = item
+        activeItems[index] = item
     }
 
-    private static func downloadsDirectory(fileManager: FileManager = .default) -> URL {
-        let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        return documents.appendingPathComponent("Downloads", isDirectory: true)
+    private func finishActiveItem(
+        taskIdentifier: Int,
+        state: State,
+        localURL: URL?,
+        errorDescription: String?
+    ) {
+        guard let index = activeItems.lastIndex(where: {
+            $0.taskIdentifier == taskIdentifier
+        }) else {
+            return
+        }
+
+        var item = activeItems.remove(at: index)
+        item.progress = state == .completed ? 1 : item.progress
+        item.state = state
+        item.localURL = localURL
+        item.errorDescription = errorDescription
+        item.taskIdentifier = nil
+
+        switch state {
+        case .completed:
+            guard let localURL = localURL else { return }
+            let path = localURL.standardizedFileURL.path
+            completedItems.removeAll {
+                $0.localURL?.standardizedFileURL.path == path
+            }
+            completedItems.insert(item, at: 0)
+
+        case .failed, .cancelled:
+            terminalItems.removeAll { $0.sourceURL == item.sourceURL }
+            terminalItems.insert(item, at: 0)
+
+        case .queued, .downloading, .paused:
+            break
+        }
+    }
+
+    private static func downloadsDirectory(
+        fileManager: FileManager = .default
+    ) -> URL {
+        let documents = fileManager.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        ).first!
+
+        return documents.appendingPathComponent(
+            "Downloads",
+            isDirectory: true
+        )
     }
 
     private static func downloadDestination(
@@ -236,40 +328,43 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         sourceURL: URL?
     ) throws -> URL {
         let fileManager = FileManager.default
-        let directory = Self.downloadsDirectory(fileManager: fileManager)
+        let directory = downloadsDirectory(fileManager: fileManager)
+
         try fileManager.createDirectory(
             at: directory,
             withIntermediateDirectories: true,
             attributes: nil
         )
 
+        let fallback = sourceURL?.lastPathComponent
         var fileName = suggestedFilename?
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         if fileName == nil || fileName?.isEmpty == true {
-            fileName = sourceURL?.lastPathComponent
+            fileName = fallback
         }
         if fileName == nil || fileName?.isEmpty == true {
             fileName = "download.ipa"
         }
 
-        let sanitized = fileName!
+        var sanitized = fileName!
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "\\", with: "_")
 
+        if sanitized.lowercased().hasSuffix(".ipa") == false {
+            sanitized += ".ipa"
+        }
+
         let base = (sanitized as NSString).deletingPathExtension
         let ext = (sanitized as NSString).pathExtension
+
         var destination = directory.appendingPathComponent(sanitized)
         var suffix = 2
 
         while fileManager.fileExists(atPath: destination.path) {
-            let candidate: String
-            if ext.isEmpty {
-                candidate = "\(base)-\(suffix)"
-            } else {
-                candidate = "\(base)-\(suffix).\(ext)"
-            }
-            destination = directory.appendingPathComponent(candidate)
+            destination = directory.appendingPathComponent(
+                "\(base)-\(suffix).\(ext)"
+            )
             suffix += 1
         }
 

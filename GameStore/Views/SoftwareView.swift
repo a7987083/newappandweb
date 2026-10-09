@@ -1,4 +1,5 @@
 import SwiftUI
+import ImageIO
 import Combine
 import UIKit
 
@@ -241,3 +242,12 @@ final class RemoteImageLoader: ObservableObject {
     }
 }
 
+
+private struct ActivityIndicator: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIActivityIndicatorView {
+        let view = UIActivityIndicatorView(style: .medium)
+        view.startAnimating()
+        return view
+    }
+    func updateUIView(_ uiView: UIActivityIndicatorView, context: Context) {}
+}

@@ -48,7 +48,7 @@ struct ProfileView: View {
                     }
 
                     NavigationLink(destination: SourcesView()) {
-                        ProfileRow(icon: "tray.full", title: "软件源", subtitle: "添加和管理软件源")
+                        ProfileRow(icon: "tray.full", title: "软件源", subtitle: "添加软件源")
                     }
 
                     NavigationLink(destination: SigningSettingsView()) {
@@ -220,7 +220,6 @@ private struct SourcesView: View {
                             }
                             .padding(.vertical, 4)
                         }
-                        .onDelete(perform: deleteSources)
                     }
                 }
             }
@@ -235,7 +234,7 @@ private struct SourcesView: View {
                         .frame(width: 30, height: 30)
                     Text("正在添加软件源")
                         .font(.headline)
-                    Text("正在请求并解析软件源…")
+                    Text("正在保存软件源…")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -303,10 +302,6 @@ private struct SourcesView: View {
                 }
             }
         }
-    }
-
-    private func deleteSources(at offsets: IndexSet) {
-        sourceStore.remove(at: offsets)
     }
 
     private func sourceDisplayName(_ value: String) -> String {

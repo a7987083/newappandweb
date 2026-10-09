@@ -6,6 +6,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C1A2B3C4D5E60718293A4021 /* ASRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A2B3C4D5E60718293A4022 /* ASRepository.swift */; };
+		C1A2B3C4D5E60718293A4023 /* ASRepositoryColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A2B3C4D5E60718293A4024 /* ASRepositoryColor.swift */; };
+		C1A2B3C4D5E60718293A4025 /* ASRepositoryArraySafe.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A2B3C4D5E60718293A4026 /* ASRepositoryArraySafe.swift */; };
 		A1B2C3D4E5F60718293A4007 /* SoftwareSourceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4008 /* SoftwareSourceStore.swift */; };
 		B1A2C3D4E5F6012345678901 /* UDIDLocalServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A2C3D4E5F6012345678902 /* UDIDLocalServer.swift */; };
 		B1A2C3D4E5F6012345678903 /* UDIDRequest.mobileconfig in Resources */ = {isa = PBXBuildFile; fileRef = B1A2C3D4E5F6012345678904 /* UDIDRequest.mobileconfig */; };
@@ -28,6 +31,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		C1A2B3C4D5E60718293A4022 /* ASRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/ASRepository.swift; sourceTree = "<group>"; };
+		C1A2B3C4D5E60718293A4024 /* ASRepositoryColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/ASRepositoryColor.swift; sourceTree = "<group>"; };
+		C1A2B3C4D5E60718293A4026 /* ASRepositoryArraySafe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/ASRepositoryArraySafe.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4008 /* SoftwareSourceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/SoftwareSourceStore.swift; sourceTree = "<group>"; };
 		B1A2C3D4E5F6012345678902 /* UDIDLocalServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/UDIDLocalServer.swift; sourceTree = "<group>"; };
 		B1A2C3D4E5F6012345678904 /* UDIDRequest.mobileconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = GameStore/Resources/UDIDRequest.mobileconfig; sourceTree = "<group>"; };
@@ -60,6 +66,9 @@
 				CE5E269F8DB38CC172D0633D /* SigningModels.swift */,
 				A1B2C3D4E5F60718293A4008 /* SoftwareSourceStore.swift */,
 				C1A2B3C4D5E60718293A4012 /* RepositoryParser.swift */,
+				C1A2B3C4D5E60718293A4022 /* ASRepository.swift */,
+				C1A2B3C4D5E60718293A4024 /* ASRepositoryColor.swift */,
+				C1A2B3C4D5E60718293A4026 /* ASRepositoryArraySafe.swift */,
 				A1B2C3D4E5F60718293A4006 /* QNQSourcePayloadDecoder.swift */,
 				23512DC7C6E4A1B407524CB6 /* UDIDService.swift */,
 				B1A2C3D4E5F6012345678902 /* UDIDLocalServer.swift */,
@@ -100,6 +109,9 @@
 				CC893E0A2BEC2140C9DC4C48 /* SigningModels.swift in Sources */,
 				A1B2C3D4E5F60718293A4007 /* SoftwareSourceStore.swift in Sources */,
 				C1A2B3C4D5E60718293A4011 /* RepositoryParser.swift in Sources */,
+				C1A2B3C4D5E60718293A4021 /* ASRepository.swift in Sources */,
+				C1A2B3C4D5E60718293A4023 /* ASRepositoryColor.swift in Sources */,
+				C1A2B3C4D5E60718293A4025 /* ASRepositoryArraySafe.swift in Sources */,
 				A1B2C3D4E5F60718293A4005 /* QNQSourcePayloadDecoder.swift in Sources */,
 				A17DE75B44120741CF22397D /* UDIDService.swift in Sources */,
 				B1A2C3D4E5F6012345678901 /* UDIDLocalServer.swift in Sources */,

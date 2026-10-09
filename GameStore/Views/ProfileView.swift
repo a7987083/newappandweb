@@ -47,21 +47,10 @@ struct ProfileView: View {
                         }
                     }
 
-                    NavigationLink(destination: PlaceholderView(title: "我的证书", message: "证书接口与导入流程将在 Phase 3 接入。")) {
-                        ProfileRow(icon: "person.text.rectangle", title: "我的证书", subtitle: "管理设备导入证书")
-                    }
-
-                    NavigationLink(destination: PlaceholderView(title: "我的游戏", message: "激活码与已激活游戏协议将在 Phase 1 接入。")) {
-                        ProfileRow(icon: "gamecontroller", title: "我的游戏", subtitle: "已激活游戏与激活码")
-                    }
-
                     NavigationLink(destination: SourcesView()) {
                         ProfileRow(icon: "tray.full", title: "软件源", subtitle: "添加和管理软件源")
                     }
 
-                    NavigationLink(destination: SettingsView()) {
-                        ProfileRow(icon: "gearshape", title: "通用设置", subtitle: nil)
-                    }
                 }
 
                 Section {
@@ -358,21 +347,3 @@ private struct SourceActivityIndicator: UIViewRepresentable {
     func updateUIView(_ uiView: UIActivityIndicatorView, context: Context) {}
 }
 
-private struct PlaceholderView: View {
-    let title: String
-    let message: String
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "hammer")
-                .font(.system(size: 38))
-                .foregroundColor(.secondary)
-            Text(message)
-                .font(.body)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 28)
-        }
-        .navigationBarTitle(title)
-    }
-}

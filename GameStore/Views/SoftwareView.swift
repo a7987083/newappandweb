@@ -262,37 +262,11 @@ private struct DownloadActionButton: View {
         app.sourcePayURL.flatMap(URL.init(string:))
     }
 
-    private var hasGrant: Bool {
-        guard let sourceURL = sourceURL,
-              let udid = udidService.udid,
-              !udid.isEmpty else {
-            return false
-        }
-        return SourceUnlockService.shared.hasGrant(
-            sourceURL: sourceURL,
-            appIdentifier: app.packageName,
-            appName: app.name,
-            udid: udid
+    private var accessState: SourceAccessState {
+        SourceUnlockService.shared.accessState(
+            for: app,
+            udid: udidService.udid
         )
-    }
-
-    private var isLocked: Bool {
-        // Server-authoritative path: when the repository is fetched with the
-        // current UDID, an authorised app exposes its download URL even if the
-        // source keeps its lock flag set.
-        if app.downloadURL != nil {
-            return false
-        }
-
-        if let needsUnlock = app.sourceNeedsUnlock {
-            if !needsUnlock { return false }
-
-            // Legacy fallback for sources whose unlock state is represented
-            // only by the local grant after a successful redemption.
-            return !hasGrant
-        }
-
-        return true
     }
 
     private var item: DownloadCenter.Item? {
@@ -302,7 +276,8 @@ private struct DownloadActionButton: View {
 
     var body: some View {
         Group {
-            if isLocked {
+            switch accessState {
+            case .locked:
                 Button(action: beginUnlock) {
                     Text("解锁")
                         .font(.subheadline)
@@ -313,50 +288,60 @@ private struct DownloadActionButton: View {
                         .background(Color.orange)
                         .clipShape(Capsule())
                 }
-            } else if let item = item {
-                switch item.state {
-                case .queued, .downloading:
-                    HStack(spacing: 6) {
-                        ActivityIndicator()
-                            .frame(width: 18, height: 18)
-                        Text("\(Int(item.progress * 100))%")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
 
-                case .completed:
-                    HStack(spacing: 5) {
-                        Image(systemName: "checkmark.circle.fill")
-                        Text("已下载")
-                    }
-                    .font(.subheadline)
-                    .foregroundColor(.green)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-
-                case .failed:
-                    VStack(alignment: .leading, spacing: 5) {
-                        actionButton(title: "重试", background: .red, action: startDownload)
-                        if let message = item.errorDescription, !message.isEmpty {
-                            Text(message)
-                                .font(.caption)
-                                .foregroundColor(.red)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-
-                case .cancelled, .paused:
-                    actionButton(title: "获取", background: .accentColor, action: startDownload)
-                }
-            } else {
+            case .unavailable:
                 actionButton(
-                    title: app.downloadURL == nil ? "暂无下载地址" : "获取",
-                    background: app.downloadURL == nil ? .secondary : .accentColor,
-                    action: startDownload
+                    title: "暂无下载地址",
+                    background: .secondary,
+                    action: {}
                 )
-                .disabled(app.downloadURL == nil)
+                .disabled(true)
+
+            case .available:
+                if let item = item {
+                    switch item.state {
+                    case .queued, .downloading:
+                        HStack(spacing: 6) {
+                            ActivityIndicator()
+                                .frame(width: 18, height: 18)
+                            Text("\(Int(item.progress * 100))%")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+
+                    case .completed:
+                        HStack(spacing: 5) {
+                            Image(systemName: "checkmark.circle.fill")
+                            Text("已下载")
+                        }
+                        .font(.subheadline)
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+
+                    case .failed:
+                        VStack(alignment: .leading, spacing: 5) {
+                            actionButton(title: "重试", background: .red, action: startDownload)
+                            if let message = item.errorDescription, !message.isEmpty {
+                                Text(message)
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+
+                    case .cancelled, .paused:
+                        actionButton(title: "获取", background: .accentColor, action: startDownload)
+                    }
+                } else {
+                    actionButton(
+                        title: "获取",
+                        background: .accentColor,
+                        action: startDownload
+                    )
+                }
             }
         }
         .buttonStyle(PlainButtonStyle())
@@ -431,7 +416,7 @@ private struct DownloadActionButton: View {
     }
 
     private func startDownload() {
-        guard !isLocked, let url = app.downloadURL else { return }
+        guard case .available(let url) = accessState else { return }
         downloadCenter.enqueue(url)
     }
 

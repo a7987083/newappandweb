@@ -128,46 +128,73 @@ private struct SourceAppDetailContent: View {
     }
 
     var body: some View {
-        List {
-            Section {
-                HStack(spacing: 14) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 14) {
                     SourceAppIcon(url: app.iconURL)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(app.name).font(.headline)
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text(app.name)
+                            .font(.headline)
+                            .fixedSize(horizontal: false, vertical: true)
                         if !app.developer.isEmpty {
                             Text(app.developer).font(.caption).foregroundColor(.secondary)
                         }
                         downloadControl
                     }
+                    Spacer(minLength: 0)
                 }
-            }
-            Section {
-                HStack {
+                .padding(.top, 18)
+                .padding(.bottom, 20)
+
+                Divider()
+
+                HStack(alignment: .top, spacing: 8) {
                     metadataCell("版本", app.version)
-                    Spacer(minLength: 4)
+                    Spacer(minLength: 0)
                     if let bytes = app.sizeBytes, bytes > 0 {
                         metadataCell("大小", ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
-                        Spacer(minLength: 4)
+                        Spacer(minLength: 0)
                     }
                     if let date = displayedDate {
                         metadataCell("更新时间", date)
                     }
-                }.padding(.vertical, 6)
-            }
-            if !app.description.isEmpty {
-                Section(header: Text("简介")) { Text(app.description) }
-            }
-            if !app.releaseNotes.isEmpty {
-                Section(header: Text("更新说明")) { Text(app.releaseNotes) }
-            }
-            Section(header: Text("信息")) {
-                if !app.bundleIdentifier.isEmpty { Text("Bundle ID: " + app.bundleIdentifier) }
-                if !app.category.isEmpty { Text("分类: " + app.category) }
+                }
+                .padding(.vertical, 18)
+
+                if !app.description.isEmpty {
+                    Divider()
+                    Text("简介").font(.headline).padding(.top, 19)
+                    Text(app.description)
+                        .font(.body)
+                        .padding(.top, 8)
+                        .padding(.bottom, 19)
+                }
+                if !app.releaseNotes.isEmpty {
+                    Divider()
+                    Text("更新说明").font(.headline).padding(.top, 19)
+                    Text(app.releaseNotes)
+                        .font(.body)
+                        .padding(.top, 8)
+                        .padding(.bottom, 19)
+                }
+
+                Divider()
+                Text("信息").font(.headline).padding(.top, 19)
+                if !app.bundleIdentifier.isEmpty {
+                    Text("Bundle ID: " + app.bundleIdentifier).padding(.top, 9)
+                }
+                if !app.category.isEmpty {
+                    Text("分类: " + app.category).padding(.top, 9)
+                }
                 Text("来源: " + (URL(string: app.sourceURL)?.host ?? app.sourceURL))
+                    .padding(.top, 9)
+                    .padding(.bottom, 24)
             }
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .listStyle(GroupedListStyle())
-        .navigationBarTitle(app.name)
+        .background(Color(UIColor.systemBackground))
+        .navigationBarTitle("软件详情", displayMode: .inline)
     }
 
     private func metadataCell(_ label: String, _ value: String) -> some View {

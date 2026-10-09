@@ -31,6 +31,8 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
     }
 
     private static func updateCompletedSource(filename: String, source: URL?) {
+        // Keep metadata mutations on main to avoid lost read-modify-write updates.
+        precondition(Thread.isMainThread)
         var entries = completedSources()
         if let source = source {
             entries[filename] = source.absoluteString
@@ -38,6 +40,16 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             entries.removeValue(forKey: filename)
         }
         UserDefaults.standard.set(entries, forKey: completedSourcesKey)
+    }
+
+    private static func pruneCompletedSources(existingFilenames: Set<String>) {
+        precondition(Thread.isMainThread)
+        var entries = completedSources()
+        let before = entries.count
+        entries = entries.filter { existingFilenames.contains($0.key) }
+        if entries.count != before {
+            UserDefaults.standard.set(entries, forKey: completedSourcesKey)
+        }
     }
 
     // Resume data is persisted to Application Support, not UserDefaults.
@@ -291,7 +303,13 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                 includingPropertiesForKeys: [.contentModificationDateKey],
                 options: [.skipsHiddenFiles]
             )
-            .filter { $0.pathExtension.lowercased() == "ipa" }
+            .filter { url in
+                guard url.pathExtension.lowercased() == "ipa",
+                      let values = try? url.resourceValues(forKeys: [.isRegularFileKey]) else {
+                    return false
+                }
+                return values.isRegularFile == true
+            }
             .sorted {
                 let lhs = (try? $0.resourceValues(
                     forKeys: [.contentModificationDateKey]
@@ -303,6 +321,11 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             }
 
             DispatchQueue.main.async {
+                let filenames = Set(files.map { $0.lastPathComponent })
+                // Reconcile metadata against files currently present on disk.
+                // Active downloads are unaffected: they have no final IPA yet.
+                Self.pruneCompletedSources(existingFilenames: filenames)
+                let sourceMap = Self.completedSources()
                 let existingByPath = Dictionary(
                     uniqueKeysWithValues: self.completedItems.compactMap { item -> (String, Item)? in
                         guard let localURL = item.localURL else { return nil }
@@ -316,7 +339,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                         return existing
                     }
 
-                    let original = Self.completedSources()[fileURL.lastPathComponent]
+                    let original = sourceMap[fileURL.lastPathComponent]
                         .flatMap(URL.init(string:)) ?? fileURL
                     return Item(
                         id: UUID(),
@@ -391,12 +414,16 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             // a unique filename; moveItem fails safely if another writer wins.
             try FileManager.default.moveItem(at: location, to: destination)
             let originalSource = downloadTask.originalRequest?.url
-            Self.updateCompletedSource(
-                filename: destination.lastPathComponent,
-                source: originalSource
-            )
-
             DispatchQueue.main.async {
+                // Publish the source map and the completed item in one main-queue
+                // transition. Do not let a stale callback overwrite a newer task.
+                guard self.activeItems.contains(where: { $0.taskIdentifier == taskIdentifier }) else {
+                    return
+                }
+                Self.updateCompletedSource(
+                    filename: destination.lastPathComponent,
+                    source: originalSource
+                )
                 self.finishActiveItem(
                     taskIdentifier: taskIdentifier,
                     state: .completed,

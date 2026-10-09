@@ -95,7 +95,11 @@ enum CertificateImportError: LocalizedError {
         switch self {
         case .invalidFileType: return "请选择 .p12 证书和 .mobileprovision 描述文件"
         case .emptyFile: return "导入文件为空"
-        case .p12Invalid(let status): return "P12 密码或证书无效（状态码：\\(status)）"
+        case .p12Invalid(let status):
+            let detail = (SecCopyErrorMessageString(status, nil) as String?) ?? "未知 Security 错误"
+            if status == errSecAuthFailed { return "P12 验证失败（可能是密码错误或证书加密格式不受系统支持），状态码：\(status)，\(detail)" }
+            if status == errSecDecode { return "P12 解析失败（可能是证书文件损坏或加密格式不兼容），状态码：\(status)，\(detail)" }
+            return "P12 导入失败，Security 状态码：\(status)，\(detail)"
         case .identityMissing: return "P12 内未找到签名身份"
         }
     }

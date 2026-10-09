@@ -5,9 +5,6 @@ final class AppStoreViewModel: ObservableObject {
     @Published var apps: [AppItem] = []
     @Published var searchText = ""
     @Published private(set) var searchResults: [AppItem] = []
-    @Published var selectedSort: SortOption = .default
-    @Published var currentPage = 1
-    @Published var totalPages = 1
     @Published var isLoading = false
     @Published var errorMessage: String?
 
@@ -18,7 +15,7 @@ final class AppStoreViewModel: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     private var searchGeneration = 0
 
-    init(api: APIClient = APIService.shared) {
+    init() {
         sourceStore.$apps
             .receive(on: DispatchQueue.main)
             .sink { [weak self] apps in
@@ -42,6 +39,19 @@ final class AppStoreViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        udidService.$udid
+            .dropFirst()
+            .map { value in
+                value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            }
+            .removeDuplicates()
+            .filter { !$0.isEmpty }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.sourceStore.reloadAll()
+            }
+            .store(in: &cancellables)
+
         $searchText
             .removeDuplicates()
             .debounce(for: .milliseconds(280), scheduler: DispatchQueue.main)
@@ -60,10 +70,6 @@ final class AppStoreViewModel: ObservableObject {
     }
 
     func reload() {
-        sourceStore.reloadAll()
-    }
-
-    func fetchPage(_ page: Int, replacing: Bool) {
         sourceStore.reloadAll()
     }
 

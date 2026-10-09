@@ -87,6 +87,36 @@ final class GameStoreAppDelegate: UIResponder, UIApplicationDelegate {
     }
 }
 
+extension UIApplication {
+    func gameStoreTopViewController() -> UIViewController? {
+        let root = windows.first(where: { $0.isKeyWindow })?.rootViewController
+            ?? windows.first?.rootViewController
+
+        var current = root
+
+        while true {
+            if let presented = current?.presentedViewController {
+                current = presented
+                continue
+            }
+
+            if let navigation = current as? UINavigationController {
+                current = navigation.visibleViewController ?? navigation
+                continue
+            }
+
+            if let tab = current as? UITabBarController {
+                current = tab.selectedViewController ?? tab
+                continue
+            }
+
+            break
+        }
+
+        return current
+    }
+}
+
 extension Notification.Name {
     static let gameStoreDidOpenURL = Notification.Name("GameStoreDidOpenURL")
 }

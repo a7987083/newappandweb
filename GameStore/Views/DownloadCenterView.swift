@@ -56,6 +56,21 @@ private struct DownloadCenterContent: View {
                             .font(.caption)
                             .foregroundColor(item.state == .failed ? .red : .secondary)
 
+                        if item.state == .downloading || item.state == .paused || item.state == .failed || item.state == .cancelled {
+                            HStack {
+                                if item.state == .downloading {
+                                    Button("暂停") { downloadCenter.pause(item) }
+                                } else if item.state == .paused {
+                                    Button("继续") { downloadCenter.resume(item) }
+                                } else {
+                                    Button("重试") { downloadCenter.enqueue(item.sourceURL) }
+                                }
+                                Spacer()
+                            }
+                            .font(.subheadline)
+                            .buttonStyle(BorderlessButtonStyle())
+                        }
+
                         if item.state == .completed {
                             HStack {
                                 actionButton(

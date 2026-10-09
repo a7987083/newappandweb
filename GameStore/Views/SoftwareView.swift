@@ -151,6 +151,14 @@ struct FeaturedCardView: View {
 struct AppRowView: View {
     let app: AppItem
 
+    private var actionTitle: String {
+        switch SourceUnlockService.shared.accessState(for: app, udid: UDIDService.shared.udid) {
+        case .available: return "获取"
+        case .locked: return "解锁"
+        case .unavailable: return "暂无地址"
+        }
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             RemoteAppIcon(url: app.iconURL, size: 58, cornerRadius: 13)
@@ -169,7 +177,7 @@ struct AppRowView: View {
 
             Spacer(minLength: 8)
 
-            Text("获取")
+            Text(actionTitle)
                 .font(.subheadline)
                 .fontWeight(.semibold)
                 .foregroundColor(.accentColor)

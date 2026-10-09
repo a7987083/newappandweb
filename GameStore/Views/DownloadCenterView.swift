@@ -54,6 +54,9 @@ struct DownloadCenterView: View {
                 }
             }
             .navigationBarTitle("下载管理")
+            .onAppear {
+                store.downloadCenter.reloadDownloadedItems()
+            }
         }
     }
 

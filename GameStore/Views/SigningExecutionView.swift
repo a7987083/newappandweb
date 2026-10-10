@@ -48,10 +48,10 @@ struct SigningExecutionView: View {
                         Toggle("强制本地化", isOn: optionBinding(\.forceLocalization))
                     }
                     Section(header: Text("签名行为")) {
-                        Toggle("临时签署（仅修改，不进行证书签名）", isOn: optionBinding(\.temporarySigning))
+                        Toggle("Ad-hoc 伪签名（无需证书）", isOn: optionBinding(\.temporarySigning))
                         Toggle("签名完成自动安装", isOn: optionBinding(\.autoInstallAfterSigning))
                         Toggle("注册回调", isOn: optionBinding(\.registerCallback))
-                        Text("自动安装与注册回调尚未接入实际执行，当前仅保存设置。")
+                        Text("注册回调将在目标 App 注册 zonoe UDID URL Scheme；自动安装尚未接入。")
                             .font(.footnote).foregroundColor(.secondary)
                         Picker("打包规则", selection: packagingRuleBinding) {
                             ForEach(SigningPackagingRule.allCases) { item in Text(item.title).tag(item) }
@@ -177,7 +177,7 @@ struct SigningExecutionView: View {
         case .verifyCertificate: return "验证证书"
         case .prepareIPA: return "检查 IPA"
         case .extracting: return "解包 IPA"
-        case .signing: return "使用 Zsign 签名"
+        case .signing: return signingOptions.options.temporarySigning ? "Ad-hoc 伪签名" : "使用证书签名"
         case .repacking: return "重新打包 IPA"
         case .verifySignature: return result == nil ? "验证输出" : "签名已完成"
         case .waitingForSystemInstall: return "等待安装"

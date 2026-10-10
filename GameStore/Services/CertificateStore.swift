@@ -41,9 +41,7 @@ final class CertificateStore: ObservableObject {
         let profile = try Data(contentsOf: sourceProvision)
         guard !p12.isEmpty && !profile.isEmpty else { throw CertificateImportError.emptyFile }
         // Match zonoe v3.0.0's native OpenSSL PKCS12 verification pipeline.
-        password_check_fix_WHAT_THE_FUCK(sourceProvision.path)
-        defer { password_check_fix_WHAT_THE_FUCK_free(sourceProvision.path) }
-        guard p12_password_check(sourceP12.path, password) else {
+        guard NativeP12Verifier.verify(p12: sourceP12, provision: sourceProvision, password: password) else {
             throw CertificateImportError.p12PasswordRejected
         }
         try fm.createDirectory(at: root, withIntermediateDirectories: true, attributes: nil)
@@ -92,6 +90,22 @@ enum CertificateImportError: LocalizedError {
         case .invalidFileType: return "请选择 .p12 证书和 .mobileprovision 描述文件"
         case .emptyFile: return "导入文件为空"
         case .p12PasswordRejected: return "Zsign P12 校验未通过：请检查密码或证书格式"
+        }
+    }
+}
+
+// C ABI bridge implemented in the pinned Zsign openssl_tools.mm source.
+@_silgen_name("zn_p12_verify")
+private func zn_p12_verify(_ p12: UnsafePointer<CChar>, _ provision: UnsafePointer<CChar>, _ password: UnsafePointer<CChar>) -> Bool
+
+enum NativeP12Verifier {
+    static func verify(p12: URL, provision: URL, password: String) -> Bool {
+        return p12.path.withCString { p12Path in
+            provision.path.withCString { profilePath in
+                password.withCString { pass in
+                    zn_p12_verify(p12Path, profilePath, pass)
+                }
+            }
         }
     }
 }

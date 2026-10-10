@@ -229,6 +229,7 @@ extension SoftwareSourceStore {
                 self.catalogApps = next.values.flatMap { $0 }.sorted {
                     $0.name.localizedStandardCompare($1.name) == .orderedAscending
                 }
+                SourceIconCache.shared.prefetch(self.catalogApps.compactMap { $0.iconURL })
                 self.catalogError = failures.isEmpty ? nil : "刷新部分失败，已保留旧数据"
             } catch {
                 self.catalogError = "本地缓存写入失败：" + error.localizedDescription

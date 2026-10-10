@@ -86,7 +86,7 @@ final class AppSigningService: AppSigning {
         if options.temporarySigning {
             emit(.signing)
             var callbackError: Error?
-            _ = Zsign.sign(
+            let signed = Zsign.sign(
                 appPath: app.path,
                 entitlementsPath: "",
                 customIdentifier: request.editing.bundleIdentifier ?? "",
@@ -99,6 +99,7 @@ final class AppSigningService: AppSigning {
             if let error = callbackError {
                 throw SigningServiceError.nativeSigningFailed(error.localizedDescription)
             }
+            guard signed else { throw SigningServiceError.nativeSigningFailed("Zsign 未成功完成 Ad-hoc 重签名") }
             let signature = app.appendingPathComponent("_CodeSignature/CodeResources")
             guard fm.fileExists(atPath: signature.path) else {
                 throw SigningServiceError.outputValidationFailed
@@ -124,10 +125,11 @@ final class AppSigningService: AppSigning {
                 callbackError = error
             }
         )
-        _ = signed
         if let error = callbackError {
             throw SigningServiceError.nativeSigningFailed(error.localizedDescription)
         }
+
+        guard signed else { throw SigningServiceError.nativeSigningFailed("Zsign 未成功完成证书重签名") }
 
         // Do not report success unless the app has both a signature resource
         // and the embedded provisioning profile required for installation.

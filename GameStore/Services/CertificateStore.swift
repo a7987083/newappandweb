@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Security
 
 /// Certificate files are copied into the app sandbox. P12 passwords are never persisted.
 final class CertificateStore: ObservableObject {
@@ -60,8 +61,13 @@ final class CertificateStore: ObservableObject {
             try folder.setResourceValues(values)
             let name = sourceP12.deletingPathExtension().lastPathComponent
             let item = DeviceCertificate(id: id, name: name, p12URL: p12URL, mobileProvisionURL: profileURL)
+            try CertificatePasswordKeychain.save(password, for: id)
             certificates.append(item)
-            try persist()
+            do { try persist() } catch {
+                certificates.removeAll { $0.id == id }
+                CertificatePasswordKeychain.delete(for: id)
+                throw error
+            }
         } catch {
             try? fm.removeItem(at: dir)
             throw error
@@ -75,6 +81,7 @@ final class CertificateStore: ObservableObject {
         do { try persist() } catch { certificates = old; throw error }
         let dir = root.appendingPathComponent(item.id, isDirectory: true)
         try? fm.removeItem(at: dir)
+        CertificatePasswordKeychain.delete(for: item.id)
     }
 
     private func persist() throws {
@@ -107,5 +114,53 @@ enum NativeP12Verifier {
                 }
             }
         }
+    }
+}
+
+enum CertificatePasswordKeychain {
+    private static let service = "com.gamestore.signing.p12"
+    static func read(for id: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: id,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+    static func save(_ password: String, for id: String) throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: id
+        ]
+        let attributes: [String: Any] = [
+            kSecValueData as String: Data(password.utf8),
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
+        let status: OSStatus
+        if SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess {
+            status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        } else {
+            var entry = query
+            attributes.forEach { entry[$0.key] = $0.value }
+            status = SecItemAdd(entry as CFDictionary, nil)
+        }
+        guard status == errSecSuccess else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status),
+                          userInfo: [NSLocalizedDescriptionKey: "无法安全保存证书密码（Keychain：\(status)）"])
+        }
+    }
+    static func delete(for id: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: id
+        ]
+        SecItemDelete(query as CFDictionary)
     }
 }

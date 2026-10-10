@@ -11,7 +11,11 @@ struct SigningExecutionView: View {
     @State private var password = ""
     @State private var previewIcon: UIImage?
     @State private var replacementIconPNG: Data?
-    @State private var showingIconPicker = false
+    private enum ActiveSheet: String, Identifiable {
+        case icon, share, report
+        var id: String { rawValue }
+    }
+    @State private var activeSheet: ActiveSheet?
     @State private var appName = ""
     @State private var bundleID = ""
     @State private var version = ""
@@ -22,8 +26,6 @@ struct SigningExecutionView: View {
     @State private var running = false
     @State private var result: SignedArtifact?
     @State private var errorMessage: String?
-    @State private var showShare = false
-    @State private var showReport = false
     @State private var reportLines: [String] = []
     @State private var installMode = IPAInstallMode.local
     @State private var installing = false
@@ -122,7 +124,7 @@ struct SigningExecutionView: View {
                                 if running { SigningActivityIndicator().frame(width: 22, height: 22) }
                                 Text(stageName(state))
                             }
-                            Button("查看签名详细报告（\(reportLines.count) 条）") { showReport = true }
+                            Button("查看签名详细报告（\(reportLines.count) 条）") { activeSheet = .report }
                                 .font(.footnote)
                             if let failure = errorMessage {
                                 Text(failure).font(.footnote).foregroundColor(.red)
@@ -130,7 +132,7 @@ struct SigningExecutionView: View {
                             if let artifact = result {
                                 Text(artifact.ipaURL.lastPathComponent)
                                     .font(.footnote)
-                                Button("分享 / 保存文件") { showShare = true }
+                                Button("分享 / 保存文件") { activeSheet = .share }
                                 Button(installing ? "正在启动安装…" : "安装应用") { beginInstall(artifact) }
                                     .disabled(installing)
                             }
@@ -182,34 +184,36 @@ struct SigningExecutionView: View {
                     version = inspection.version
                 }
             }
-            .sheet(isPresented: $showingIconPicker) {
-                GameStoreIconImagePicker { image in
-                    if let bytes = image.pngData() {
-                        replacementIconPNG = bytes
-                        previewIcon = image
+            .sheet(item: $activeSheet) { sheet in
+                Group {
+                    if sheet == .icon {
+                        GameStoreIconImagePicker { image in
+                            if let bytes = image.pngData() {
+                                replacementIconPNG = bytes
+                                previewIcon = image
+                            }
+                        }
+                    } else if sheet == .share {
+                        if let artifact = result { ActivityShareView(items: [artifact.ipaURL]) }
+                    } else {
+                        NavigationView {
+                            ScrollView {
+                                Text(reportLines.isEmpty ? "等待签名开始…" : reportLines.joined(separator: "\n"))
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(16)
+                            }
+                            .navigationBarTitle(running ? "签名进行中" : "签名详细报告", displayMode: .inline)
+                            .navigationBarItems(
+                                leading: Button("复制") {
+                                    UIPasteboard.general.string = reportLines.joined(separator: "\n")
+                                },
+                                trailing: Button("关闭") { activeSheet = nil }
+                            )
+                        }
+                        .navigationViewStyle(StackNavigationViewStyle())
                     }
                 }
-            }
-            .sheet(isPresented: $showShare) {
-                if let artifact = result { ActivityShareView(items: [artifact.ipaURL]) }
-            }
-            .sheet(isPresented: $showReport) {
-                NavigationView {
-                    ScrollView {
-                        Text(reportLines.isEmpty ? "等待签名开始…" : reportLines.joined(separator: "\n"))
-                            .font(.system(size: 12, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(16)
-                    }
-                    .navigationBarTitle(running ? "签名进行中" : "签名详细报告", displayMode: .inline)
-                    .navigationBarItems(
-                        leading: Button("复制") {
-                            UIPasteboard.general.string = reportLines.joined(separator: "\n")
-                        },
-                        trailing: Button("关闭") { showReport = false }
-                    )
-                }
-                .navigationViewStyle(StackNavigationViewStyle())
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
@@ -217,7 +221,7 @@ struct SigningExecutionView: View {
 
     private var iconHeader: some View {
         VStack(spacing: 9) {
-            Button(action: { if !running { showingIconPicker = true } }) {
+            Button(action: { if !running { activeSheet = .icon } }) {
             Group {
                 if let icon = previewIcon {
                     Image(uiImage: icon)
@@ -328,7 +332,7 @@ struct SigningExecutionView: View {
         errorMessage = nil
         state = .prepareContext
         reportLines = []
-        showReport = true
+        activeSheet = .report
         engine.onReport = { message in
             if self.reportLines.count < 2000 {
                 self.reportLines.append(message)

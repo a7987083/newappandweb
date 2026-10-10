@@ -45,6 +45,17 @@ struct SigningExecutionView: View {
                         Toggle("ProMotion", isOn: optionBinding(\.proMotion))
                         Toggle("游戏模式", isOn: optionBinding(\.gameMode))
                         Toggle("iPad 全屏", isOn: optionBinding(\.ipadFullscreen))
+                        Toggle("强制本地化", isOn: optionBinding(\.forceLocalization))
+                    }
+                    Section(header: Text("签名行为")) {
+                        Toggle("临时签署（仅修改，不进行证书签名）", isOn: optionBinding(\.temporarySigning))
+                        Toggle("签名完成自动安装", isOn: optionBinding(\.autoInstallAfterSigning))
+                        Toggle("注册回调", isOn: optionBinding(\.registerCallback))
+                        Text("自动安装与注册回调尚未接入实际执行，当前仅保存设置。")
+                            .font(.footnote).foregroundColor(.secondary)
+                        Picker("打包规则", selection: packagingRuleBinding) {
+                            ForEach(SigningPackagingRule.allCases) { item in Text(item.title).tag(item) }
+                        }
                     }
                     Section(header: Text("注入选项"), footer: Text("库注入、依赖修复和 Mach-O 编辑需要单独接入安全的二进制处理流程，本版不执行。")) {
                         Text("注入路径：@executable_path / @rpath").foregroundColor(.secondary)
@@ -85,7 +96,7 @@ struct SigningExecutionView: View {
                         .font(.headline).frame(maxWidth: .infinity).padding(15)
                         .background(Color.blue).foregroundColor(.white).cornerRadius(14)
                 }
-                .disabled(running || result != nil || !certificates.certificates.contains(where: { $0.id == selectedID }))
+                .disabled(running || result != nil || (!signingOptions.options.temporarySigning && !certificates.certificates.contains(where: { $0.id == selectedID })))
                 .padding(.horizontal, 16).padding(.vertical, 10)
             }
             .navigationBarTitle("修改应用信息", displayMode: .inline)
@@ -114,21 +125,30 @@ struct SigningExecutionView: View {
                 })
     }
 
+    private var packagingRuleBinding: Binding<SigningPackagingRule> {
+        Binding(get: { self.signingOptions.options.packagingRule }, set: { value in
+            var options = self.signingOptions.options
+            options.packagingRule = value
+            self.signingOptions.options = options
+        })
+    }
     private var selectedCertificateNeedsPassword: Bool {
         !selectedID.isEmpty && CertificatePasswordKeychain.read(for: selectedID) == nil
     }
 
     private func start() {
-        guard !running,
-              let certificate = certificates.certificates.first(where: { $0.id == selectedID }) else {
+        guard !running else { return }
+        let temporary = signingOptions.options.temporarySigning
+        guard temporary || certificates.certificates.contains(where: { $0.id == selectedID }) else {
             errorMessage = "请选择已导入的证书"
             return
         }
+        let certificate = certificates.certificates.first(where: { $0.id == selectedID }) ?? DeviceCertificate(id: "modify-only", name: "仅修改", p12URL: nil, mobileProvisionURL: nil)
         running = true
         result = nil
         errorMessage = nil
         state = .prepareContext
-        let storedPassword = CertificatePasswordKeychain.read(for: certificate.id)
+        let storedPassword = temporary ? "" : CertificatePasswordKeychain.read(for: certificate.id)
         let effectivePassword = storedPassword ?? password
         let wasLegacy = storedPassword == nil
         let editing = SigningAppEditing(displayName: appName, bundleIdentifier: bundleID, version: version, minimumOS: minimumOS, removeURLSchemes: removeURLSchemes, outputFormat: outputFormat)
@@ -139,7 +159,7 @@ struct SigningExecutionView: View {
             running = false
             switch response {
             case .success(let artifact):
-                if wasLegacy { try? CertificatePasswordKeychain.save(effectivePassword, for: certificate.id) }
+                if wasLegacy && !temporary { try? CertificatePasswordKeychain.save(effectivePassword, for: certificate.id) }
                 password = ""
                 result = artifact
                 state = .verifySignature

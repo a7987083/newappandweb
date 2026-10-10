@@ -27,18 +27,18 @@ jobs:
           cp -R upstream-ksign/Zsign Vendor/Zsign
           # Export a stable C ABI from the existing zonoe OpenSSL implementation.
           cat >> Vendor/Zsign/src/openssl_tools.mm <<'ZN_P12_BRIDGE'
-extern "C" bool zn_p12_verify(const char *p12Path, const char *provisionPath, const char *password) {
-    if (!p12Path || !provisionPath || !password) return false;
-    NSString *p12 = [NSString stringWithUTF8String:p12Path];
-    NSString *provision = [NSString stringWithUTF8String:provisionPath];
-    NSString *pass = [NSString stringWithUTF8String:password];
-    if (!p12 || !provision || !pass) return false;
-    password_check_fix_WHAT_THE_FUCK(provision);
-    bool valid = p12_password_check(p12, pass);
-    password_check_fix_WHAT_THE_FUCK_free(provision);
-    return valid;
-}
-ZN_P12_BRIDGE
+          extern "C" bool zn_p12_verify(const char *p12Path, const char *provisionPath, const char *password) {
+              if (!p12Path || !provisionPath || !password) return false;
+              NSString *p12 = [NSString stringWithUTF8String:p12Path];
+              NSString *provision = [NSString stringWithUTF8String:provisionPath];
+              NSString *pass = [NSString stringWithUTF8String:password];
+              if (!p12 || !provision || !pass) return false;
+              password_check_fix_WHAT_THE_FUCK(provision);
+              bool valid = p12_password_check(p12, pass);
+              password_check_fix_WHAT_THE_FUCK_free(provision);
+              return valid;
+          }
+          ZN_P12_BRIDGE
           test -f Vendor/Zsign/Package.swift
           echo "Native verifier source and public header locations:"
           sed -n '1,110p' upstream-ksign/Zsign/src/openssl_tools.mm
@@ -142,18 +142,18 @@ ZN_P12_BRIDGE
           cp -R upstream-ksign/Zsign Vendor/Zsign
           # Export a stable C ABI from the existing zonoe OpenSSL implementation.
           cat >> Vendor/Zsign/src/openssl_tools.mm <<'ZN_P12_BRIDGE'
-extern "C" bool zn_p12_verify(const char *p12Path, const char *provisionPath, const char *password) {
-    if (!p12Path || !provisionPath || !password) return false;
-    NSString *p12 = [NSString stringWithUTF8String:p12Path];
-    NSString *provision = [NSString stringWithUTF8String:provisionPath];
-    NSString *pass = [NSString stringWithUTF8String:password];
-    if (!p12 || !provision || !pass) return false;
-    password_check_fix_WHAT_THE_FUCK(provision);
-    bool valid = p12_password_check(p12, pass);
-    password_check_fix_WHAT_THE_FUCK_free(provision);
-    return valid;
-}
-ZN_P12_BRIDGE
+          extern "C" bool zn_p12_verify(const char *p12Path, const char *provisionPath, const char *password) {
+              if (!p12Path || !provisionPath || !password) return false;
+              NSString *p12 = [NSString stringWithUTF8String:p12Path];
+              NSString *provision = [NSString stringWithUTF8String:provisionPath];
+              NSString *pass = [NSString stringWithUTF8String:password];
+              if (!p12 || !provision || !pass) return false;
+              password_check_fix_WHAT_THE_FUCK(provision);
+              bool valid = p12_password_check(p12, pass);
+              password_check_fix_WHAT_THE_FUCK_free(provision);
+              return valid;
+          }
+          ZN_P12_BRIDGE
           test -f Vendor/Zsign/Package.swift
           # Verify the native PKCS12 functions used by zonoe 3.0.0 are actually provided.
           if grep -R -n -E 'p12_password_check|password_check_fix_WHAT_THE_FUCK' upstream-ksign/Zsign upstream-ksign/Ksign --include='*.c' --include='*.cpp' --include='*.h' --include='*.mm' --include='*.swift'; then

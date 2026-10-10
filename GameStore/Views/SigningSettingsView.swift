@@ -27,9 +27,9 @@ struct SigningSettingsView: View {
 
             Section(
                 header: Text("签名行为"),
-                footer: Text("“临时签署”按当前项目定义为只修改并重新打包 IPA，不执行证书签名。")
+                footer: Text("“临时签署”使用 Zsign Ad-hoc 伪签名，不需要证书；注册回调用于向目标 App 注册 zonoe UDID URL Scheme。")
             ) {
-                Toggle("临时签署", isOn: binding(\.temporarySigning))
+                Toggle("Ad-hoc 伪签名", isOn: binding(\.temporarySigning))
                 Toggle("签名完成自动安装", isOn: binding(\.autoInstallAfterSigning))
                 Toggle("注册回调", isOn: binding(\.registerCallback))
             }

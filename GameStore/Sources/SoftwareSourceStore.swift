@@ -38,7 +38,11 @@ final class SoftwareSourceStore: ObservableObject {
         UserDefaults.standard.set(sources, forKey: Self.storageKey)
         UserDefaults.standard.set(registeredIdentities, forKey: Self.identitiesKey)
         UserDefaults.standard.set(sourceNames, forKey: Self.namesKey)
+        refreshGeneration += 1
+        catalogsBySource.removeValue(forKey: value)
         catalogApps.removeAll { $0.sourceURL == value }
+        do { try SourceCatalogCache.save(catalogsBySource) }
+        catch { catalogError = "本地缓存保存失败：" + error.localizedDescription }
     }
 
     func add(_ url: URL, completion: @escaping (Result<Void, Error>) -> Void) {
@@ -169,11 +173,13 @@ extension SoftwareSourceStore {
             catalogError = nil
             return
         }
+        refreshGeneration += 1
+        let generation = refreshGeneration
         isCatalogLoading = true
         catalogError = nil
         let group = DispatchGroup()
         let lock = NSLock()
-        var collected = [SourceCatalogApp]()
+        var collected = [String: [SourceCatalogApp]]()
         var failures = [String]()
         for source in registered {
             guard let originalURL = URL(string: source) else { continue }
@@ -201,7 +207,7 @@ extension SoftwareSourceStore {
                     do {
                         let decoded = try result.get()
                         let entries = try Self.parseCatalog(decoded, source: source, baseURL: originalURL)
-                        lock.lock(); collected.append(contentsOf: entries); lock.unlock()
+                        lock.lock(); collected[source] = entries; lock.unlock()
                     } catch {
                         lock.lock(); failures.append(source + ": " + error.localizedDescription); lock.unlock()
                     }

@@ -139,6 +139,7 @@ final class AppSigningService: AppSigning {
         }
 
         }
+        try verifyNestedSignatures(in: app)
         emit(.repacking)
         let outDir = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Signed", isDirectory: true)
@@ -163,6 +164,65 @@ final class AppSigningService: AppSigning {
         } catch {
             try? fm.removeItem(at: output)
             throw error
+        }
+    }
+
+    /// Reject nested dylibs/framework executables lacking a Mach-O code-signature command.
+    /// This is a structural sanity check, not cryptographic signature verification.
+    private func verifyNestedSignatures(in app: URL) throws {
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(at: app,
+            includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { return }
+        for case let file as URL in enumerator {
+            let relative = String(file.path.dropFirst(app.path.count))
+            guard relative.contains("/Frameworks/") || relative.contains("/PlugIns/") else { continue }
+            guard let attributes = try? fm.attributesOfItem(atPath: file.path),
+                  let size = attributes[.size] as? NSNumber, size.intValue >= 32 else { continue }
+            guard let handle = try? FileHandle(forReadingFrom: file) else { continue }
+            let data = handle.readData(ofLength: 64)
+            handle.closeFile()
+            guard data.count >= 28 else { continue }
+            let bytes = [UInt8](data)
+            let magic = UInt32(bytes[0]) | UInt32(bytes[1]) << 8 |
+                        UInt32(bytes[2]) << 16 | UInt32(bytes[3]) << 24
+            // Only inspect little-endian thin Mach-O. FAT slices require their own audit.
+            guard magic == 0xfeedface || magic == 0xfeedfacf else { continue }
+            let headerSize = magic == 0xfeedfacf ? 32 : 28
+            let commands = Int(UInt32(bytes[16]) | UInt32(bytes[17]) << 8 |
+                               UInt32(bytes[18]) << 16 | UInt32(bytes[19]) << 24)
+            let commandsSize = Int(UInt32(bytes[20]) | UInt32(bytes[21]) << 8 |
+                                   UInt32(bytes[22]) << 16 | UInt32(bytes[23]) << 24)
+            guard commands >= 0, commands < 4096, commandsSize >= 0,
+                  commandsSize <= size.intValue - headerSize else {
+                throw SigningServiceError.nativeSigningFailed("Mach-O 头损坏：" + relative)
+            }
+            guard let reader = try? FileHandle(forReadingFrom: file) else { continue }
+            reader.seek(toFileOffset: UInt64(headerSize))
+            let commandData = [UInt8](reader.readData(ofLength: commandsSize))
+            reader.closeFile()
+            var offset = 0
+            var hasSignature = false
+            for _ in 0..<commands {
+                guard offset + 8 <= commandData.count else { break }
+                func read(_ n: Int) -> UInt32 {
+                    UInt32(commandData[n]) | UInt32(commandData[n+1]) << 8 |
+                    UInt32(commandData[n+2]) << 16 | UInt32(commandData[n+3]) << 24
+                }
+                let cmd = read(offset)
+                let length = Int(read(offset + 4))
+                guard length >= 8, offset + length <= commandData.count else { break }
+                if cmd == 0x1d && length >= 16 {
+                    let blobOffset = Int(read(offset + 8))
+                    let blobSize = Int(read(offset + 12))
+                    if blobSize > 0 && blobOffset >= headerSize && blobOffset <= size.intValue - blobSize {
+                        hasSignature = true
+                    }
+                }
+                offset += length
+            }
+            guard hasSignature else {
+                throw SigningServiceError.nativeSigningFailed("嵌套 Mach-O 缺少有效签名区段：" + relative)
+            }
         }
     }
 

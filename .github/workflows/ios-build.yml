@@ -120,7 +120,7 @@ jobs:
           cp -R "$APP_PATH" ipa/Payload/GameStore.app
           (
             cd ipa
-            /usr/bin/zip -qry ../GameStore-${{ env.APP_VERSION }}-dev-unsigned.ipa Payload
+            /usr/bin/zip -qry ../GameStore-${APP_VERSION}-dev-unsigned.ipa Payload
           )
           /usr/bin/unzip -l GameStore-${APP_VERSION}-dev-unsigned.ipa | tee ipa-contents.log
           test -s GameStore-${APP_VERSION}-dev-unsigned.ipa

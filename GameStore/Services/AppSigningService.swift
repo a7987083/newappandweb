@@ -2,6 +2,7 @@ import Foundation
 import ZsignSwift
 import Zsign
 import ZIPFoundation
+import CryptoKit
 
 protocol AppSigning {
     func sign(
@@ -111,6 +112,8 @@ final class AppSigningService: AppSigning {
             report("已移除主 App 旧 embedded.mobileprovision")
         } else { report("主 App 无旧 embedded.mobileprovision") }
 
+        let beforeNested = nestedDiagnosticSnapshot(in: app, phase: "签名前")
+
         if options.temporarySigning {
             emit(.signing)
             report("调用 Zsign：Ad-hoc 模式")
@@ -173,6 +176,8 @@ final class AppSigningService: AppSigning {
         }
 
         }
+        let afterNested = nestedDiagnosticSnapshot(in: app, phase: "签名后")
+        compareNestedSnapshots(before: beforeNested, after: afterNested)
         report("开始检查嵌套 Framework / dylib 的 Mach-O 签名区段")
         try verifyNestedSignatures(in: app)
         report("嵌套 Mach-O 结构检查结束（非密码学验签）")
@@ -203,6 +208,83 @@ final class AppSigningService: AppSigning {
             try? fm.removeItem(at: output)
             throw error
         }
+    }
+
+    // Diagnostics only; this does NOT determine cryptographic signing validity.
+    private func nestedDiagnosticSnapshot(in app: URL, phase: String) -> [String: String] {
+        let fm = FileManager.default
+        var snapshot: [String: String] = [:]
+        var machOCount = 0
+        var notMachO = 0
+        var unreadable = 0
+        guard let files = fm.enumerator(at: app, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+                                        options: []) else {
+            report("[\(phase)] 无法枚举 App 文件")
+            return snapshot
+        }
+        let prefixes = ["/Frameworks/", "/PlugIns/", "/Watch/", "/XPCServices/"]
+        for case let file as URL in files {
+            let relative = String(file.path.dropFirst(app.path.count))
+            guard prefixes.contains(where: { relative.contains($0) }) else { continue }
+            let type = (try? file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]))
+            if type?.isSymbolicLink == true {
+                report("[\(phase)] 符号链接：\(relative)")
+                continue
+            }
+            guard type?.isRegularFile == true else { continue }
+            guard let handle = try? FileHandle(forReadingFrom: file) else {
+                unreadable += 1
+                report("[\(phase)] 无法读取：\(relative)")
+                continue
+            }
+            let header = handle.readData(ofLength: 4)
+            handle.closeFile()
+            let magic = header.map { String(format: "%02x", $0) }.joined()
+            let magics: Set<String> = ["feedfacf", "feedface", "cffaedfe", "cefaedfe",
+                                       "cafebabe", "cafebabf", "bebafeca", "bfbafeca"]
+            guard magics.contains(magic) else {
+                notMachO += 1
+                if relative.hasSuffix(".dylib") || relative.hasSuffix(".so") {
+                    report("[\(phase)] 疑似动态库但非 Mach-O：\(relative) magic=\(magic)")
+                }
+                continue
+            }
+            machOCount += 1
+            let size = ((try? fm.attributesOfItem(atPath: file.path)[.size]) as? NSNumber)?.int64Value ?? -1
+            // Size-limited diagnostics avoid reading huge UnityFramework binaries into RAM.
+            if size >= 0 && size <= 128 * 1024 * 1024,
+               let data = try? Data(contentsOf: file, options: .mappedIfSafe) {
+                let hash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+                snapshot[relative] = hash
+                report("[\(phase)] Mach-O：\(relative) · \(size) bytes · SHA256 \(hash.prefix(16))…")
+            } else {
+                snapshot[relative] = "未计算 SHA256"
+                report("[\(phase)] Mach-O：\(relative) · \(size) bytes · 跳过哈希（文件过大或读取失败）")
+            }
+        }
+        report("[\(phase)] 汇总：Mach-O=\(machOCount)，非Mach-O资源=\(notMachO)，不可读取=\(unreadable)")
+        if machOCount == 0 {
+            report("[\(phase)] 提示：标准嵌套目录没有发现 Mach-O；并不表示签名成功")
+        }
+        return snapshot
+    }
+
+    private func compareNestedSnapshots(before: [String: String], after: [String: String]) {
+        let removed = Set(before.keys).subtracting(after.keys).sorted()
+        let added = Set(after.keys).subtracting(before.keys).sorted()
+        let changed = before.keys.filter {
+            guard let old = before[$0], let new = after[$0] else { return false }
+            return old != "未计算 SHA256" && new != "未计算 SHA256" && old != new
+        }.sorted()
+        let unchanged = before.keys.filter {
+            guard let old = before[$0], let new = after[$0] else { return false }
+            return old != "未计算 SHA256" && old == new
+        }.count
+        report("[签名前后对比] 内容变化=\(changed.count)，未变化=\(unchanged)，新增=\(added.count)，消失=\(removed.count)")
+        for path in changed { report("[内容变化] " + path) }
+        for path in removed { report("[文件消失] " + path) }
+        for path in added { report("[新增文件] " + path) }
+        report("注意：哈希变化只表示文件内容变化，不代表签名身份或密码学验签通过")
     }
 
     /// Structural verification of every thin/FAT Mach-O inside nested code bundles.

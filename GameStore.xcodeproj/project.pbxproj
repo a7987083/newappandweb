@@ -30,6 +30,7 @@
 		E10000000000000000000003 /* CertificateManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000004 /* CertificateManagementView.swift */; };
 		E10000000000000000000005 /* SigningExecutionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000006 /* SigningExecutionView.swift */; };
 		C0A100000000000000000001 /* IPAIconReplacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A100000000000000000002 /* IPAIconReplacement.swift */; };
+		C0A200000000000000000001 /* SourceCatalogCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A200000000000000000002 /* SourceCatalogCache.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -56,6 +57,7 @@
 		E10000000000000000000004 /* CertificateManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/CertificateManagementView.swift; sourceTree = "<group>"; };
 		E10000000000000000000006 /* SigningExecutionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/SigningExecutionView.swift; sourceTree = "<group>"; };
 		C0A100000000000000000002 /* IPAIconReplacement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/IPAIconReplacement.swift; sourceTree = "<group>"; };
+		C0A200000000000000000002 /* SourceCatalogCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/SourceCatalogCache.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -67,6 +69,7 @@
 				D68E78F467EB94B3056A42B4 /* GameStoreApp.swift */,
 				CE5E269F8DB38CC172D0633D /* SigningModels.swift */,
 				A1B2C3D4E5F60718293A4008 /* SoftwareSourceStore.swift */,
+				C0A200000000000000000002 /* SourceCatalogCache.swift */,
 				A1B2C3D4E5F60718293A4006 /* QNQSourcePayloadDecoder.swift */,
 				23512DC7C6E4A1B407524CB6 /* UDIDService.swift */,
 				B1A2C3D4E5F6012345678902 /* UDIDLocalServer.swift */,
@@ -110,6 +113,7 @@
 				57E7BF5F348BD682C2F48632 /* GameStoreApp.swift in Sources */,
 				CC893E0A2BEC2140C9DC4C48 /* SigningModels.swift in Sources */,
 				A1B2C3D4E5F60718293A4007 /* SoftwareSourceStore.swift in Sources */,
+				C0A200000000000000000001 /* SourceCatalogCache.swift in Sources */,
 				A1B2C3D4E5F60718293A4005 /* QNQSourcePayloadDecoder.swift in Sources */,
 				A17DE75B44120741CF22397D /* UDIDService.swift in Sources */,
 				B1A2C3D4E5F6012345678901 /* UDIDLocalServer.swift in Sources */,

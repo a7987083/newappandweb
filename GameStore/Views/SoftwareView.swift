@@ -61,7 +61,6 @@ struct SoftwareView: View {
             .overlay(Group {
                 if sources.isCatalogLoading { Text("正在解析软件源…").font(.footnote).padding(12).background(Color(UIColor.secondarySystemBackground)).cornerRadius(12) }
             })
-            .onAppear { if sources.catalogApps.isEmpty { sources.refreshCatalog() } }
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }

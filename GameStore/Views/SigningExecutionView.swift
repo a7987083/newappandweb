@@ -21,86 +21,136 @@ struct SigningExecutionView: View {
     @State private var showShare = false
     private let engine = AppSigningService()
 
+
+    private let pageColor = Color(red: 0.92, green: 0.92, blue: 0.94)
+
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                Form {
-                    Section(header: Text("应用信息"), footer: Text("修改项将在重新签名前写入应用 Info.plist。")) {
-                        HStack { Text("应用名称"); Spacer(); TextField("应用名称", text: $appName).multilineTextAlignment(.trailing) }
-                        HStack { Text("应用标识符"); Spacer(); TextField("Bundle ID", text: $bundleID).multilineTextAlignment(.trailing).autocapitalization(.none) }
-                        HStack { Text("版本号"); Spacer(); TextField("版本", text: $version).multilineTextAlignment(.trailing) }
-                        HStack { Text("最低系统要求"); Spacer(); TextField("最低版本", text: $minimumOS).multilineTextAlignment(.trailing).keyboardType(.numbersAndPunctuation) }
-                    }
-                    Section(header: Text("输出格式")) {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        iconHeader
+                        inputField("应用名称", value: $appName)
+                        inputField("应用标识符", value: $bundleID)
+                        inputField("版本号", value: $version)
+                        inputField("最低系统要求", value: $minimumOS)
+
+                        sectionLabel("输出格式")
                         Picker("输出格式", selection: $outputFormat) {
                             Text("ipa").tag("ipa")
                             Text("zip").tag("zip")
                             Text("tipa").tag("tipa")
-                        }.pickerStyle(SegmentedPickerStyle())
-                    }
-                    Section(header: Text("打包选项")) {
-                        Toggle("移除应用跳转", isOn: $removeURLSchemes)
-                        Toggle("文件共享", isOn: optionBinding(\.fileSharing))
-                        Toggle("iTunes 文件共享", isOn: optionBinding(\.itunesFileSharing))
-                        Toggle("ProMotion", isOn: optionBinding(\.proMotion))
-                        Toggle("游戏模式", isOn: optionBinding(\.gameMode))
-                        Toggle("iPad 全屏", isOn: optionBinding(\.ipadFullscreen))
-                        Toggle("强制本地化", isOn: optionBinding(\.forceLocalization))
-                    }
-                    Section(header: Text("签名行为")) {
-                        Toggle("Ad-hoc 伪签名（无需证书）", isOn: optionBinding(\.temporarySigning))
-                        Toggle("签名完成自动安装", isOn: optionBinding(\.autoInstallAfterSigning))
-                        Toggle("注册回调", isOn: optionBinding(\.registerCallback))
-                        Text("注册回调将在目标 App 注册 zonoe UDID URL Scheme；自动安装尚未接入。")
-                            .font(.footnote).foregroundColor(.secondary)
-                        Picker("打包规则", selection: packagingRuleBinding) {
-                            ForEach(SigningPackagingRule.allCases) { item in Text(item.title).tag(item) }
                         }
-                    }
-                    Section(header: Text("注入选项"), footer: Text("库注入、依赖修复和 Mach-O 编辑需要单独接入安全的二进制处理流程，本版不执行。")) {
-                        Text("注入路径：@executable_path / @rpath").foregroundColor(.secondary)
-                        Text("目标目录：根目录 / Frameworks").foregroundColor(.secondary)
-                        HStack { Text("选择注入文件"); Spacer(); Text("待接入").foregroundColor(.secondary) }
-                        HStack { Text("选择要移除的库"); Spacer(); Text("待接入").foregroundColor(.secondary) }
-                    }
-                    Section(header: Text("高级操作")) {
-                        HStack { Text("提取库"); Spacer(); Text("待接入").foregroundColor(.secondary) }
-                        HStack { Text("编辑 Info.plist"); Spacer(); Text("上方已支持常用字段").foregroundColor(.secondary) }
-                    }
-                    Section(header: Text("签名证书")) {
-                        if certificates.certificates.isEmpty {
-                            Text("请先到签名设置导入证书").foregroundColor(.secondary)
-                        } else {
-                            Picker("选择证书", selection: $selectedID) {
-                                ForEach(certificates.certificates) { item in Text(item.name).tag(item.id) }
-                            }
-                            if selectedCertificateNeedsPassword {
-                                SecureField("旧证书：补录一次 P12 密码", text: $password)
-                            }
-                        }
-                    }
-                    Section(header: Text("签名进度")) {
+                        .pickerStyle(SegmentedPickerStyle())
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 28)
+
+                        sectionLabel("打包选项")
+                        roundedToggle("移除应用跳转", value: $removeURLSchemes)
+                        roundedToggle("文件共享", value: optionBinding(\\.fileSharing))
+                        roundedToggle("iTunes 文件共享", value: optionBinding(\\.itunesFileSharing))
+                        roundedToggle("ProMotion", value: optionBinding(\\.proMotion))
+                        roundedToggle("游戏模式", value: optionBinding(\\.gameMode))
+                        roundedToggle("iPad 全屏", value: optionBinding(\\.ipadFullscreen))
+                        roundedToggle("强制本地化", value: optionBinding(\\.forceLocalization))
+
+                        sectionLabel("签名方式")
+                        roundedToggle("Ad-hoc 伪签名", value: optionBinding(\\.temporarySigning))
+                        roundedToggle("注册 zonoe UDID 回调", value: optionBinding(\\.registerCallback))
+                        roundedToggle("签名完成自动安装（未接入）", value: optionBinding(\\.autoInstallAfterSigning))
                         HStack {
-                            if running { SigningActivityIndicator().frame(width: 20, height: 20) }
-                            Text(stageName(state))
+                            Text("打包规则")
+                            Spacer()
+                            Picker("打包规则", selection: packagingRuleBinding) {
+                                ForEach(SigningPackagingRule.allCases) { item in
+                                    Text(item.title).tag(item)
+                                }
+                            }
+                            .labelsHidden()
                         }
-                        if let failure = errorMessage { Text(failure).foregroundColor(.red) }
-                        if let artifact = result {
-                            Text("处理完成：" + artifact.displayName).foregroundColor(.green)
-                            Button("分享 / 保存文件") { showShare = true }
+                        .padding(14)
+                        .background(Color.white)
+                        .cornerRadius(12)
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 12)
+
+                        if !signingOptions.options.temporarySigning {
+                            sectionLabel("签名证书")
+                            VStack(alignment: .leading, spacing: 8) {
+                                if certificates.certificates.isEmpty {
+                                    Text("请先在签名设置导入 P12 与描述文件")
+                                        .foregroundColor(.secondary)
+                                } else {
+                                    Picker("选择证书", selection: $selectedID) {
+                                        ForEach(certificates.certificates) { item in
+                                            Text(item.name).tag(item.id)
+                                        }
+                                    }
+                                    if selectedCertificateNeedsPassword {
+                                        SecureField("旧证书：补录一次 P12 密码", text: $password)
+                                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    }
+                                }
+                            }
+                            .padding(14)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.white)
+                            .cornerRadius(12)
+                            .padding(.horizontal, 18)
                         }
+
+                        sectionLabel("执行状态")
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                if running { SigningActivityIndicator().frame(width: 22, height: 22) }
+                                Text(stageName(state))
+                            }
+                            if let failure = errorMessage {
+                                Text(failure).font(.footnote).foregroundColor(.red)
+                            }
+                            if let artifact = result {
+                                Text(artifact.ipaURL.lastPathComponent)
+                                    .font(.footnote)
+                                Button("分享 / 保存文件") { showShare = true }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .background(Color.white)
+                        .cornerRadius(12)
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 28)
                     }
                 }
+                .background(pageColor)
+
                 Button(action: start) {
                     Text(running ? "正在处理…" : "确认修改 / 打包")
-                        .font(.headline).frame(maxWidth: .infinity).padding(15)
-                        .background(Color.blue).foregroundColor(.white).cornerRadius(14)
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(Color(red: 0.20, green: 0.47, blue: 0.97))
+                        .foregroundColor(.white)
+                        .cornerRadius(17)
                 }
-                .disabled(running || result != nil || (!signingOptions.options.temporarySigning && !certificates.certificates.contains(where: { $0.id == selectedID })))
-                .padding(.horizontal, 16).padding(.vertical, 10)
+                .disabled(running || result != nil ||
+                          (!signingOptions.options.temporarySigning &&
+                           !certificates.certificates.contains(where: { $0.id == selectedID })))
+                .padding(.horizontal, 18)
+                .padding(.top, 14)
+                .padding(.bottom, 12)
+                .background(pageColor)
             }
             .navigationBarTitle("修改应用信息", displayMode: .inline)
-            .navigationBarItems(leading: Button("取消") { presentation.wrappedValue.dismiss() }.disabled(running))
+            .navigationBarItems(
+                leading: Button("取消") { presentation.wrappedValue.dismiss() }.disabled(running),
+                trailing: Button(action: {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                                    to: nil, from: nil, for: nil)
+                }) {
+                    Image(systemName: "keyboard.chevron.compact.down")
+                }
+            )
             .onAppear {
                 certificates.reload()
                 if selectedID.isEmpty { selectedID = certificates.certificates.first?.id ?? "" }
@@ -116,6 +166,68 @@ struct SigningExecutionView: View {
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
+
+    private var iconHeader: some View {
+        VStack(spacing: 9) {
+            Image(systemName: "app.fill")
+                .resizable()
+                .foregroundColor(Color(red: 0.29, green: 0.48, blue: 0.88))
+                .frame(width: 94, height: 94)
+                .cornerRadius(20)
+            Text(ipaURL.lastPathComponent)
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+            Text("当前应用图标（更换能力待接入）")
+                .foregroundColor(.secondary)
+                .font(.system(size: 14))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 24)
+        .padding(.bottom, 22)
+    }
+
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 15))
+            .foregroundColor(.gray)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 28)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
+    }
+
+    private func inputField(_ title: String, value: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 15))
+                .foregroundColor(.gray)
+                .padding(.leading, 10)
+            TextField(title, text: value)
+                .font(.system(size: 17))
+                .padding(.horizontal, 12)
+                .frame(height: 48)
+                .background(Color.white)
+                .cornerRadius(12)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.25)))
+                .autocapitalization(.none)
+        }
+        .padding(.horizontal, 18)
+        .padding(.bottom, 15)
+    }
+
+    private func roundedToggle(_ title: String, value: Binding<Bool>) -> some View {
+        Toggle(title, isOn: value)
+            .font(.system(size: 16))
+            .padding(.horizontal, 14)
+            .frame(height: 52)
+            .background(Color.white)
+            .cornerRadius(12)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.20)))
+            .padding(.horizontal, 18)
+            .padding(.bottom, 12)
+    }
+
     private func optionBinding(_ key: WritableKeyPath<SigningOptions, Bool>) -> Binding<Bool> {
         Binding(get: { self.signingOptions.options[keyPath: key] },
                 set: { newValue in

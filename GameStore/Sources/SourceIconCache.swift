@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import SystemConfiguration
 
 /// URL-keyed two-layer cache. Visible requests never wait behind bulk prefetch work.
 final class SourceIconCache {
@@ -16,6 +17,12 @@ final class SourceIconCache {
     private var diskChecking = Set<String>()
     private var maxDownloads = 12
     private var prefetchGeneration = 0
+    private var knownURLs: [URL] = []
+    private var retries: [String: Int] = [:]
+    private var retryAfter: [String: Date] = [:]
+    private var retryWorkScheduled = false
+    private let diskLimit: Int64 = 300 * 1024 * 1024
+    private var networkReachability: SCNetworkReachability?
 
     private init() {
         memory.countLimit = 300
@@ -26,6 +33,26 @@ final class SourceIconCache {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
         session = URLSession(configuration: config)
+        if let reachability = SCNetworkReachabilityCreateWithName(nil, "apple.com") {
+            networkReachability = reachability
+            let callback: SCNetworkReachabilityCallBack = { _, flags, info in
+                guard let info = info else { return }
+                let cache = Unmanaged<SourceIconCache>.fromOpaque(info).takeUnretainedValue()
+                let reachable = flags.contains(.reachable) && !flags.contains(.connectionRequired)
+                if reachable { cache.retryWhenOnline() }
+            }
+            var context = SCNetworkReachabilityContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(), retain: nil, release: nil, copyDescription: nil)
+            if SCNetworkReachabilitySetCallback(reachability, callback, &context) {
+                SCNetworkReachabilitySetDispatchQueue(reachability, state)
+            }
+        }
+    }
+
+    private func retryWhenOnline() {
+        state.async {
+            self.retryAfter.removeAll()
+            self.enqueueMissing(self.knownURLs)
+        }
     }
 
     private func path(for url: URL) -> URL {
@@ -125,39 +152,89 @@ final class SourceIconCache {
                     let image = valid.flatMap(UIImage.init(data:))
                     self.state.async {
                         self.active.remove(key)
+                        if image == nil {
+                            let count = min((self.retries[key] ?? 0) + 1, 6)
+                            self.retries[key] = count
+                            self.retryAfter[key] = Date().addingTimeInterval(min(300, pow(2.0, Double(count)) * 2.0))
+                        } else {
+                            self.retries.removeValue(forKey: key)
+                            self.retryAfter.removeValue(forKey: key)
+                        }
                         self.complete(url, image: image)
                         self.schedule()
+                        if image == nil { self.scheduleRetry() }
                     }
                 }
             }.resume()
         }
     }
 
+    private func scheduleRetry() {
+        guard !retryWorkScheduled, !retryAfter.isEmpty else { return }
+        retryWorkScheduled = true
+        let delay = max(1, retryAfter.values.map { $0.timeIntervalSinceNow }.min() ?? 5)
+        state.asyncAfter(deadline: .now() + delay) {
+            self.retryWorkScheduled = false
+            self.enqueueMissing(self.knownURLs)
+            if !self.retryAfter.isEmpty { self.scheduleRetry() }
+        }
+    }
+
+    private func enqueueMissing(_ urls: [URL]) {
+        prefetchGeneration += 1
+        let generation = prefetchGeneration
+        background.removeAll()
+        diskQueue.async {
+            var seen = Set<String>()
+            let missing = urls.filter {
+                seen.insert($0.absoluteString).inserted &&
+                !FileManager.default.fileExists(atPath: self.path(for: $0).path)
+            }
+            self.state.async {
+                guard generation == self.prefetchGeneration else { return }
+                for url in missing {
+                    let key = url.absoluteString
+                    guard (self.retryAfter[key] ?? .distantPast) <= Date() else { continue }
+                    if self.memory.object(forKey: key as NSString) == nil &&
+                       !self.active.contains(key) && !self.diskChecking.contains(key) &&
+                       !self.foreground.contains(where: { $0.absoluteString == key }) {
+                        self.background.append(url)
+                    }
+                }
+                self.schedule()
+                self.scheduleRetry()
+            }
+        }
+    }
+
     func prefetch(_ urls: [URL]) {
         state.async {
-            self.prefetchGeneration += 1
-            let generation = self.prefetchGeneration
-            self.background.removeAll()
-            // Check existing files off the UI and network scheduling queues.
-            self.diskQueue.async {
-                var seen = Set<String>()
-                let missing = urls.filter {
-                    seen.insert($0.absoluteString).inserted &&
-                    !FileManager.default.fileExists(atPath: self.path(for: $0).path)
-                }
-                self.state.async {
-                    guard generation == self.prefetchGeneration else { return }
-                    for url in missing {
-                        let key = url.absoluteString
-                        if self.memory.object(forKey: key as NSString) == nil &&
-                            !self.active.contains(key) &&
-                            !self.diskChecking.contains(key) &&
-                            !self.foreground.contains(where: { $0.absoluteString == key }) {
-                            self.background.append(url)
-                        }
-                    }
-                    self.schedule()
-                }
+            self.knownURLs = Array(Dictionary(grouping: urls, by: { $0.absoluteString }).values.compactMap { $0.first })
+            self.enqueueMissing(self.knownURLs)
+            self.cleanDisk(protecting: Set(self.knownURLs.map { self.path(for: $0).lastPathComponent }))
+        }
+    }
+
+    private func cleanDisk(protecting protected: Set<String>) {
+        diskQueue.async {
+            let fm = FileManager.default
+            let files = (try? fm.contentsOfDirectory(at: self.directory,
+                includingPropertiesForKeys: [.fileSizeKey, .contentAccessDateKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles])) ?? []
+            var entries: [(URL, Int64, Date)] = []
+            var total: Int64 = 0
+            for file in files {
+                guard let metadata = try? file.resourceValues(forKeys: [.fileSizeKey, .contentAccessDateKey, .contentModificationDateKey]),
+                      let size = metadata.fileSize else { continue }
+                let bytes = Int64(size)
+                total += bytes
+                entries.append((file, bytes, metadata.contentAccessDate ?? metadata.contentModificationDate ?? .distantPast))
+            }
+            guard total > self.diskLimit else { return }
+            for entry in entries.sorted(by: { $0.2 < $1.2 }) where !protected.contains(entry.0.lastPathComponent) {
+                try? fm.removeItem(at: entry.0)
+                total -= entry.1
+                if total <= self.diskLimit { break }
             }
         }
     }

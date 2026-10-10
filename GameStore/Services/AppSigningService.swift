@@ -81,7 +81,7 @@ final class AppSigningService: AppSigning {
         }
 
         let options = SigningOptionsStore.shared.options
-        try applyZonoeInfoOptions(options, to: app)
+        try applyZonoeInfoOptions(options, editing: request.editing, to: app)
         emit(.signing)
         var callbackError: Error?
         let signed = Zsign.sign(
@@ -90,9 +90,9 @@ final class AppSigningService: AppSigning {
             p12Path: p12.path,
             p12Password: request.password,
             entitlementsPath: "",
-            customIdentifier: "",
-            customName: "",
-            customVersion: "",
+            customIdentifier: request.editing.bundleIdentifier ?? "",
+            customName: request.editing.displayName ?? "",
+            customVersion: request.editing.version ?? "",
             removeProvision: false,
             completion: { _, error in
                 callbackError = error
@@ -122,7 +122,9 @@ final class AppSigningService: AppSigning {
         case .preserveOriginalFilename: outputName = baseName + ".ipa"
         case .standardIPA: outputName = baseName + "-signed-" + String(UUID().uuidString.prefix(8)) + ".ipa"
         }
-        let output = outDir.appendingPathComponent(outputName)
+        let ext = request.editing.outputFormat == "zip" ? "zip" : (request.editing.outputFormat == "tipa" ? "tipa" : "ipa")
+        let destinationName = (outputName as NSString).deletingPathExtension + "." + ext
+        let output = outDir.appendingPathComponent(destinationName)
         do {
             if fm.fileExists(atPath: output.path) { try fm.removeItem(at: output) }
             try fm.zipItem(at: payloadRoot, to: output, shouldKeepParent: false, compressionMethod: .deflate)
@@ -138,12 +140,17 @@ final class AppSigningService: AppSigning {
     }
 
     // Matches zonoe/Ksign SigningHandler._modifyDict for these five switches.
-    private func applyZonoeInfoOptions(_ options: SigningOptions, to app: URL) throws {
+    private func applyZonoeInfoOptions(_ options: SigningOptions, editing: SigningAppEditing, to app: URL) throws {
         let url = app.appendingPathComponent("Info.plist")
         let data = try Data(contentsOf: url)
         guard var info = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else {
             throw SigningServiceError.malformedPayload
         }
+        if let name = editing.displayName, !name.isEmpty { info["CFBundleDisplayName"] = name }
+        if let bundle = editing.bundleIdentifier, !bundle.isEmpty { info["CFBundleIdentifier"] = bundle }
+        if let version = editing.version, !version.isEmpty { info["CFBundleShortVersionString"] = version }
+        if let minimum = editing.minimumOS, !minimum.isEmpty { info["MinimumOSVersion"] = minimum }
+        if editing.removeURLSchemes { info.removeValue(forKey: "CFBundleURLTypes") }
         if options.fileSharing { info["UISupportsDocumentBrowser"] = true }
         if options.itunesFileSharing { info["UIFileSharingEnabled"] = true }
         if options.proMotion { info["CADisableMinimumFrameDurationOnPhone"] = true }

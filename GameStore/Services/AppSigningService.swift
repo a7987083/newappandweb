@@ -36,6 +36,12 @@ enum SigningServiceError: LocalizedError {
 }
 
 final class AppSigningService: AppSigning {
+    /// User-visible diagnostics. Never include passwords, private keys or certificate bytes.
+    var onReport: ((String) -> Void)?
+
+    private func report(_ message: String) {
+        DispatchQueue.main.async { [weak self] in self?.onReport?(message) }
+    }
     func sign(
         request: SigningRequest,
         progress: @escaping (SigningState) -> Void,
@@ -46,17 +52,22 @@ final class AppSigningService: AppSigning {
                 DispatchQueue.main.async { progress(state) }
             }
             emit(.prepareContext)
+            self.report("开始处理 IPA：" + request.ipaURL.lastPathComponent)
             do {
                 let options = SigningOptionsStore.shared.options
                 if !options.temporarySigning {
                     emit(.verifyCertificate)
+                    self.report("验证 P12 与描述文件是否可读取")
                     try self.validateCertificate(request.certificate, password: request.password)
                 }
                 emit(.prepareIPA)
-                _ = try IPAInspector.inspect(request.ipaURL)
+                let source = try IPAInspector.inspect(request.ipaURL)
+                self.report("原始 IPA 解析成功：\(source.bundleID) · \(source.version)")
                 let result = try self.signIPA(request: request, emit: emit)
+                self.report("签名与打包流程完成；注意：尚未验证 iOS 系统能否安装")
                 DispatchQueue.main.async { completion(.success(result)) }
             } catch {
+                self.report("失败：" + error.localizedDescription)
                 emit(.failed)
                 DispatchQueue.main.async { completion(.failure(error)) }
             }
@@ -73,25 +84,36 @@ final class AppSigningService: AppSigning {
 
         emit(.extracting)
         try fm.unzipItem(at: request.ipaURL, to: payloadRoot)
+        report("IPA 解压完成")
         let payload = payloadRoot.appendingPathComponent("Payload", isDirectory: true)
         let apps = (try fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: [.isDirectoryKey]))
             .filter { $0.pathExtension.lowercased() == "app" }
         guard apps.count == 1, let app = apps.first else { throw SigningServiceError.malformedPayload }
+        report("定位主 App：" + app.lastPathComponent)
 
         let options = SigningOptionsStore.shared.options
         try applyZonoeInfoOptions(options, editing: request.editing, to: app)
+        report("Info.plist 选项已处理")
         if let png = request.editing.replacementIconPNG {
+            report("正在替换应用图标")
             try IPAIconReplacement.apply(png: png, to: app)
         }
         // Match zonoe300 pre-sign preparation: discard the old main-app seal
         // and embedded profile before Zsign writes the new signing identity.
         let oldSeal = app.appendingPathComponent("_CodeSignature", isDirectory: true)
         let oldProfile = app.appendingPathComponent("embedded.mobileprovision")
-        if fm.fileExists(atPath: oldSeal.path) { try fm.removeItem(at: oldSeal) }
-        if fm.fileExists(atPath: oldProfile.path) { try fm.removeItem(at: oldProfile) }
+        if fm.fileExists(atPath: oldSeal.path) {
+            try fm.removeItem(at: oldSeal)
+            report("已移除主 App 旧 _CodeSignature")
+        } else { report("主 App 无旧 _CodeSignature") }
+        if fm.fileExists(atPath: oldProfile.path) {
+            try fm.removeItem(at: oldProfile)
+            report("已移除主 App 旧 embedded.mobileprovision")
+        } else { report("主 App 无旧 embedded.mobileprovision") }
 
         if options.temporarySigning {
             emit(.signing)
+            report("调用 Zsign：Ad-hoc 模式")
             var callbackError: Error?
             let signed = Zsign.sign(
                 appPath: app.path,
@@ -107,6 +129,7 @@ final class AppSigningService: AppSigning {
                 throw SigningServiceError.nativeSigningFailed(error.localizedDescription)
             }
             guard signed else { throw SigningServiceError.nativeSigningFailed("Zsign 未成功完成 Ad-hoc 重签名") }
+            report("Zsign 返回成功（Ad-hoc）；这不等于系统验签通过")
             let signature = app.appendingPathComponent("_CodeSignature/CodeResources")
             guard fm.fileExists(atPath: signature.path) else {
                 throw SigningServiceError.outputValidationFailed
@@ -117,6 +140,7 @@ final class AppSigningService: AppSigning {
             throw SigningServiceError.missingCertificateFile
         }
         emit(.signing)
+        report("调用 Zsign：P12 + provisioning profile；开始签署整个 App")
         var callbackError: Error?
         let signed = Zsign.sign(
             appPath: app.path,
@@ -137,6 +161,7 @@ final class AppSigningService: AppSigning {
         }
 
         guard signed else { throw SigningServiceError.nativeSigningFailed("Zsign 未成功完成证书重签名") }
+        report("Zsign 返回成功（证书模式）；待检查嵌套 Mach-O")
 
         // Do not report success unless the app has both a signature resource
         // and the embedded provisioning profile required for installation.
@@ -148,8 +173,11 @@ final class AppSigningService: AppSigning {
         }
 
         }
+        report("开始检查嵌套 Framework / dylib 的 Mach-O 签名区段")
         try verifyNestedSignatures(in: app)
+        report("嵌套 Mach-O 结构检查结束（非密码学验签）")
         emit(.repacking)
+        report("开始压缩输出 IPA")
         let outDir = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Signed", isDirectory: true)
         try fm.createDirectory(at: outDir, withIntermediateDirectories: true, attributes: nil)
@@ -167,6 +195,7 @@ final class AppSigningService: AppSigning {
             try fm.zipItem(at: payloadRoot, to: output, shouldKeepParent: false, compressionMethod: .deflate)
             emit(.verifySignature)
             let inspected = try IPAInspector.inspect(output)
+            report("输出 IPA 结构解析成功：" + output.lastPathComponent)
             guard fm.fileExists(atPath: output.path) else { throw SigningServiceError.outputValidationFailed }
             return SignedArtifact(ipaURL: output, bundleIdentifier: inspected.bundleID,
                                   displayName: inspected.displayName, version: inspected.version)
@@ -267,6 +296,7 @@ final class AppSigningService: AppSigning {
                 throw SigningServiceError.nativeSigningFailed("Fat Mach-O 结构错误：" + relative)
             }
             for section in sections { try check(bytes, slice: section, file: relative) }
+            report("签名区段存在：\(relative) · \(sections.count) 架构切片")
         }
     }
 

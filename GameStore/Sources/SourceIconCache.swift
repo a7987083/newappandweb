@@ -14,7 +14,7 @@ final class SourceIconCache {
     private var background: [URL] = []
     private var active = Set<String>()
     private var diskChecking = Set<String>()
-    private var maxDownloads = 6
+    private var maxDownloads = 12
     private var prefetchGeneration = 0
 
     private init() {
@@ -100,7 +100,7 @@ final class SourceIconCache {
                 url = foreground.remove(at: index)
             } else if !background.isEmpty {
                 // Keep two network slots available for visible icons.
-                if active.count >= maxDownloads - 2 { break }
+                if active.count >= maxDownloads - 4 { break }
                 url = background.removeFirst()
             } else {
                 break

@@ -26,6 +26,16 @@ struct SigningRequest {
     let ipaURL: URL
     let certificate: DeviceCertificate
     let password: String
+    var editing: SigningAppEditing = SigningAppEditing()
+}
+
+struct SigningAppEditing {
+    var displayName: String? = nil
+    var bundleIdentifier: String? = nil
+    var version: String? = nil
+    var minimumOS: String? = nil
+    var removeURLSchemes = false
+    var outputFormat: String = "ipa"
 }
 
 struct SignedArtifact {

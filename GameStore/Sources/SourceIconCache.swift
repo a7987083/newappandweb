@@ -136,16 +136,29 @@ final class SourceIconCache {
     func prefetch(_ urls: [URL]) {
         state.async {
             self.prefetchGeneration += 1
+            let generation = self.prefetchGeneration
             self.background.removeAll()
-            var seen = Set<String>()
-            for url in urls where seen.insert(url.absoluteString).inserted {
-                if self.memory.object(forKey: url.absoluteString as NSString) == nil &&
-                    !self.active.contains(url.absoluteString) &&
-                    !self.foreground.contains(where: { $0.absoluteString == url.absoluteString }) {
-                    self.background.append(url)
+            // Check existing files off the UI and network scheduling queues.
+            self.diskQueue.async {
+                var seen = Set<String>()
+                let missing = urls.filter {
+                    seen.insert($0.absoluteString).inserted &&
+                    !FileManager.default.fileExists(atPath: self.path(for: $0).path)
+                }
+                self.state.async {
+                    guard generation == self.prefetchGeneration else { return }
+                    for url in missing {
+                        let key = url.absoluteString
+                        if self.memory.object(forKey: key as NSString) == nil &&
+                            !self.active.contains(key) &&
+                            !self.diskChecking.contains(key) &&
+                            !self.foreground.contains(where: { $0.absoluteString == key }) {
+                            self.background.append(url)
+                        }
+                    }
+                    self.schedule()
                 }
             }
-            self.schedule()
         }
     }
 }

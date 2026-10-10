@@ -41,7 +41,7 @@ enum ZNZsignKit {
             credentials = (p12.path, provision.path, password, false)
         }
         let targets = try discoverMachOs(in: request.app)
-        report("ZNZsignKit 待签名 Mach-O：\\(targets.count)")
+        report("ZNZsignKit 待签名 Mach-O：\(targets.count)")
         var callbackSuccess = false
         var callbackInvoked = false
         var callbackError: Error?
@@ -64,7 +64,7 @@ enum ZNZsignKit {
         )
         guard result && callbackInvoked && callbackSuccess && callbackError == nil else {
             throw Failure.nativeFailure(callbackError?.localizedDescription ??
-                "result=\\(result), callback=\\(callbackInvoked ? String(callbackSuccess) : "missing")")
+                "result=\(result), callback=\(callbackInvoked ? String(callbackSuccess) : "missing")")
         }
         // A native success boolean alone is not proof that every nested binary was signed.
         for path in targets {
@@ -77,7 +77,7 @@ enum ZNZsignKit {
         guard FileManager.default.fileExists(atPath: rootSignature.path) else {
             throw Failure.missingSignature(rootSignature.path)
         }
-        report("ZNZsignKit Mach-O 签名检查完成：\\(targets.count)")
+        report("ZNZsignKit Mach-O 签名检查完成：\(targets.count)")
     }
 
     /// Scan actual Mach-O magic, not file extensions alone. Avoid treating resources as binaries.

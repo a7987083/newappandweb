@@ -1,5 +1,6 @@
 import Foundation
 import ZIPFoundation
+import Zip
 import CryptoKit
 
 protocol AppSigning {
@@ -82,11 +83,11 @@ final class AppSigningService: AppSigning {
         try fm.createDirectory(at: payloadRoot, withIntermediateDirectories: true, attributes: nil)
 
         emit(.extracting)
-        // IPAInspector has already validated every ZIP entry name as UTF-8.
-        // ZIPFoundation otherwise interprets names without GPBF bit 11 as CP437,
-        // corrupting UTF-8 .app and resource paths in some third-party IPAs.
-        try fm.unzipItem(at: request.ipaURL, to: payloadRoot, pathEncoding: .utf8)
-        report("IPA 解压完成")
+        // Match Zonoe/Ksign's default "Zip" extraction engine (minizip),
+        // rather than forcing ZIPFoundation's UTF-8 path decoding.
+        // Keep ZIPFoundation for IPA repacking and inspection.
+        try Zip.unzipFile(request.ipaURL, destination: payloadRoot, overwrite: true, password: nil)
+        report("IPA 解压完成（Zonoe Zip/minizip）")
         let payload = payloadRoot.appendingPathComponent("Payload", isDirectory: true)
         let apps = (try fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: [.isDirectoryKey]))
             .filter { $0.pathExtension.lowercased() == "app" }

@@ -16,14 +16,14 @@ struct ContentView: View {
 
             SearchView()
                 .tabItem {
-                    Image(systemName: "shippingbox.fill")
-                    Text("软件包")
+                    Image(systemName: "magnifyingglass")
+                    Text("搜索")
                 }
                 .tag(1)
 
             DownloadCenterView()
                 .tabItem {
-                    Image(systemName: "puzzlepiece.extension.fill")
+                    Image(systemName: "shippingbox.fill")
                     Text("下载")
                 }
                 .tag(2)

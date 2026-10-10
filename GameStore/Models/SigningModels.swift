@@ -70,8 +70,7 @@ struct SigningOptions: Codable, Equatable {
     var gameMode: Bool
     var ipadFullscreen: Bool
 
-    /// User-defined semantics: temporary signing means modify/package only,
-    /// without invoking certificate signing.
+    /// Ad-hoc signing mode; stored with the legacy key for settings compatibility.
     var temporarySigning: Bool
 
     var autoInstallAfterSigning: Bool

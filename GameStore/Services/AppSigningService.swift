@@ -80,7 +80,27 @@ final class AppSigningService: AppSigning {
 
         let options = SigningOptionsStore.shared.options
         try applyZonoeInfoOptions(options, editing: request.editing, to: app)
-        if !options.temporarySigning {
+        if options.temporarySigning {
+            emit(.signing)
+            var callbackError: Error?
+            _ = Zsign.sign(
+                appPath: app.path,
+                entitlementsPath: "",
+                customIdentifier: request.editing.bundleIdentifier ?? "",
+                customName: request.editing.displayName ?? "",
+                customVersion: request.editing.version ?? "",
+                adhoc: true,
+                removeProvision: false,
+                completion: { _, error in callbackError = error }
+            )
+            if let error = callbackError {
+                throw SigningServiceError.nativeSigningFailed(error.localizedDescription)
+            }
+            let signature = app.appendingPathComponent("_CodeSignature/CodeResources")
+            guard fm.fileExists(atPath: signature.path) else {
+                throw SigningServiceError.outputValidationFailed
+            }
+        } else {
         guard let p12 = request.certificate.p12URL,
               let provision = request.certificate.mobileProvisionURL else {
             throw SigningServiceError.missingCertificateFile
@@ -124,7 +144,7 @@ final class AppSigningService: AppSigning {
         let outputName: String
         switch options.packagingRule {
         case .preserveOriginalFilename: outputName = baseName + ".ipa"
-        case .standardIPA: outputName = baseName + (options.temporarySigning ? "-modified-" : "-signed-") + String(UUID().uuidString.prefix(8)) + ".ipa"
+        case .standardIPA: outputName = baseName + (options.temporarySigning ? "-adhoc-" : "-signed-") + String(UUID().uuidString.prefix(8)) + ".ipa"
         }
         let ext = request.editing.outputFormat == "zip" ? "zip" : (request.editing.outputFormat == "tipa" ? "tipa" : "ipa")
         let destinationName = (outputName as NSString).deletingPathExtension + "." + ext
@@ -167,6 +187,30 @@ final class AppSigningService: AppSigning {
                 let updated = try PropertyListSerialization.data(fromPropertyList: localized, format: .binary, options: 0)
                 try updated.write(to: stringsURL, options: .atomic)
             }
+        }
+        if options.registerCallback {
+            let marker = "zonoe.udid.callback"
+            let previous = info["ZonoeUDIDCallbackScheme"] as? String
+            var urlTypes = info["CFBundleURLTypes"] as? [[String: Any]] ?? []
+            urlTypes.removeAll { item in
+                if item["CFBundleURLName"] as? String == marker { return true }
+                guard let previous = previous else { return false }
+                return (item["CFBundleURLSchemes"] as? [String])?.contains(previous) == true
+            }
+            let rawIdentifier = editing.bundleIdentifier ?? (info["CFBundleIdentifier"] as? String ?? "unknown")
+            let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+.-")
+            let sanitized = rawIdentifier.unicodeScalars.map { allowed.contains($0) ? String($0) : "-" }
+                .joined().trimmingCharacters(in: CharacterSet(charactersIn: "-")).lowercased()
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.dateFormat = "yyyyMMddHHmm"
+            let nonce = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+            let scheme = "zonoe-\(sanitized.isEmpty ? "unknown" : sanitized)-\(formatter.string(from: Date()))-\(nonce)"
+            urlTypes.append(["CFBundleURLName": marker, "CFBundleURLSchemes": [scheme]])
+            info["CFBundleURLTypes"] = urlTypes
+            info["ZonoeUDIDCallbackScheme"] = scheme
+            info["ZonoeUDIDCallbackHost"] = "udid-callback"
         }
         if options.fileSharing { info["UISupportsDocumentBrowser"] = true }
         if options.itunesFileSharing { info["UIFileSharingEnabled"] = true }

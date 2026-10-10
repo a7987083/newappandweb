@@ -56,7 +56,6 @@ struct ContentView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
-        .accessibilityLabel(label)
-        .accessibilityAddTraits(active ? [.isSelected] : [])
+
     }
 }

@@ -90,6 +90,10 @@ jobs:
         run: |
           set -euo pipefail
           APP_PATH="DerivedDataDevice/Build/Products/Debug-iphoneos/GameStore.app"
+          APP_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP_PATH/Info.plist")
+          APP_BUILD=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$APP_PATH/Info.plist")
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+          echo "APP_BUILD=$APP_BUILD" >> "$GITHUB_ENV"
           test -d "$APP_PATH"
           # Embed user-supplied icon in the unsigned device app before IPA packaging.
           base64 -D -i GameStore/Resources/AppIconSource.base64 -o /tmp/gamestore-icon-source.png
@@ -116,18 +120,18 @@ jobs:
           cp -R "$APP_PATH" ipa/Payload/GameStore.app
           (
             cd ipa
-            /usr/bin/zip -qry ../GameStore-v0.2.14-dev-unsigned.ipa Payload
+            /usr/bin/zip -qry ../GameStore-${{ env.APP_VERSION }}-dev-unsigned.ipa Payload
           )
-          /usr/bin/unzip -l GameStore-v0.2.14-dev-unsigned.ipa | tee ipa-contents.log
-          test -s GameStore-v0.2.14-dev-unsigned.ipa
-          /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP_PATH/Info.plist" | grep -Fx "0.2.14"
-          /usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$APP_PATH/Info.plist" | grep -Fx "15"
+          /usr/bin/unzip -l GameStore-${APP_VERSION}-dev-unsigned.ipa | tee ipa-contents.log
+          test -s GameStore-${APP_VERSION}-dev-unsigned.ipa
+          /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP_PATH/Info.plist" | grep -Fx "$APP_VERSION"
+          /usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$APP_PATH/Info.plist" | grep -Fx "$APP_BUILD"
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: GameStore-v0.2.14-dev-unsigned-ipa
-          path: GameStore-v0.2.14-dev-unsigned.ipa
+          name: GameStore-${APP_VERSION}-dev-unsigned-ipa
+          path: GameStore-${APP_VERSION}-dev-unsigned.ipa
           if-no-files-found: error
 
       - name: Upload legacy build logs

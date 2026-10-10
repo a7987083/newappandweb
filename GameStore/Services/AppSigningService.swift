@@ -47,8 +47,11 @@ final class AppSigningService: AppSigning {
             }
             emit(.prepareContext)
             do {
-                emit(.verifyCertificate)
-                try self.validateCertificate(request.certificate, password: request.password)
+                let options = SigningOptionsStore.shared.options
+                if !options.temporarySigning {
+                    emit(.verifyCertificate)
+                    try self.validateCertificate(request.certificate, password: request.password)
+                }
                 emit(.prepareIPA)
                 _ = try IPAInspector.inspect(request.ipaURL)
                 let result = try self.signIPA(request: request, emit: emit)
@@ -75,13 +78,16 @@ final class AppSigningService: AppSigning {
             .filter { $0.pathExtension.lowercased() == "app" }
         guard apps.count == 1, let app = apps.first else { throw SigningServiceError.malformedPayload }
 
+        let options = SigningOptionsStore.shared.options
+        if !options.temporarySigning {
         guard let p12 = request.certificate.p12URL,
               let provision = request.certificate.mobileProvisionURL else {
             throw SigningServiceError.missingCertificateFile
         }
 
-        let options = SigningOptionsStore.shared.options
+        }
         try applyZonoeInfoOptions(options, editing: request.editing, to: app)
+        if !options.temporarySigning {
         emit(.signing)
         var callbackError: Error?
         let signed = Zsign.sign(
@@ -112,6 +118,7 @@ final class AppSigningService: AppSigning {
             throw SigningServiceError.outputValidationFailed
         }
 
+        }
         emit(.repacking)
         let outDir = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Signed", isDirectory: true)
@@ -120,7 +127,7 @@ final class AppSigningService: AppSigning {
         let outputName: String
         switch options.packagingRule {
         case .preserveOriginalFilename: outputName = baseName + ".ipa"
-        case .standardIPA: outputName = baseName + "-signed-" + String(UUID().uuidString.prefix(8)) + ".ipa"
+        case .standardIPA: outputName = baseName + (options.temporarySigning ? "-modified-" : "-signed-") + String(UUID().uuidString.prefix(8)) + ".ipa"
         }
         let ext = request.editing.outputFormat == "zip" ? "zip" : (request.editing.outputFormat == "tipa" ? "tipa" : "ipa")
         let destinationName = (outputName as NSString).deletingPathExtension + "." + ext
@@ -151,6 +158,19 @@ final class AppSigningService: AppSigning {
         if let version = editing.version, !version.isEmpty { info["CFBundleShortVersionString"] = version }
         if let minimum = editing.minimumOS, !minimum.isEmpty { info["MinimumOSVersion"] = minimum }
         if editing.removeURLSchemes { info.removeValue(forKey: "CFBundleURLTypes") }
+        if options.forceLocalization, let name = editing.displayName, !name.isEmpty {
+            let localeDirs = (try? FileManager.default.contentsOfDirectory(at: app, includingPropertiesForKeys: nil)) ?? []
+            for directory in localeDirs where directory.pathExtension == "lproj" {
+                let stringsURL = directory.appendingPathComponent("InfoPlist.strings")
+                guard FileManager.default.fileExists(atPath: stringsURL.path),
+                      let stringsData = try? Data(contentsOf: stringsURL),
+                      let parsed = try? PropertyListSerialization.propertyList(from: stringsData, options: [], format: nil) as? [String: Any] else { continue }
+                var localized = parsed
+                localized["CFBundleDisplayName"] = name
+                let updated = try PropertyListSerialization.data(fromPropertyList: localized, format: .binary, options: 0)
+                try updated.write(to: stringsURL, options: .atomic)
+            }
+        }
         if options.fileSharing { info["UISupportsDocumentBrowser"] = true }
         if options.itunesFileSharing { info["UIFileSharingEnabled"] = true }
         if options.proMotion { info["CADisableMinimumFrameDurationOnPhone"] = true }

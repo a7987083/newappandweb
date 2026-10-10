@@ -4,6 +4,10 @@
 
 This repository is a clean-room reimplementation of an authorized GameStore target. Do not treat decompiler pseudocode, strings alone, inferred server behavior, or behavior from other projects as ground truth.
 
+## Mandatory engineering contract
+
+Read and follow [ENGINEERING_CONTRACT.md](ENGINEERING_CONTRACT.md) before every change. **Any API requiring iOS 14+ is strictly prohibited, even when guarded by `#available`.** Both Xcode 15.4 / iOS 13 and Xcode 26.6 CI must pass; the modern lane must retain iOS 13 deployment target.
+
 ## Product compatibility requirement
 
 - Minimum supported OS: **iOS 13.0**.

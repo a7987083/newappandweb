@@ -218,9 +218,21 @@ extension SoftwareSourceStore {
         }
         group.notify(queue: .main) { [weak self] in
             guard let self = self else { return }
-            // Ignore responses from a previous refresh when registration changed.
-            self.catalogApps = collected.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-            self.catalogError = failures.isEmpty ? nil : "\(failures.count) 个软件源加载失败，可下拉刷新重试"
+            guard generation == self.refreshGeneration else { return }
+            var next = self.catalogsBySource.filter { registered.contains($0.key) }
+            for (source, apps) in collected where registered.contains(source) {
+                next[source] = apps
+            }
+            do {
+                try SourceCatalogCache.save(next)
+                self.catalogsBySource = next
+                self.catalogApps = next.values.flatMap { $0 }.sorted {
+                    $0.name.localizedStandardCompare($1.name) == .orderedAscending
+                }
+                self.catalogError = failures.isEmpty ? nil : "刷新部分失败，已保留旧数据"
+            } catch {
+                self.catalogError = "本地缓存写入失败：" + error.localizedDescription
+            }
             self.isCatalogLoading = false
         }
     }

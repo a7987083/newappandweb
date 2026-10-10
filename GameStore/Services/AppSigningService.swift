@@ -1,6 +1,4 @@
 import Foundation
-import ZsignSwift
-import Zsign
 import ZIPFoundation
 import CryptoKit
 
@@ -117,67 +115,30 @@ final class AppSigningService: AppSigning {
 
         let beforeNested = nestedDiagnosticSnapshot(in: app, phase: "签名前")
 
+        emit(.signing)
+        let mode: ZNZsignKit.Mode
         if options.temporarySigning {
-            emit(.signing)
-            report("调用 Zsign：Ad-hoc 模式")
-            var callbackError: Error?
-            let signed = Zsign.sign(
-                appPath: app.path,
-                entitlementsPath: "",
-                customIdentifier: request.editing.bundleIdentifier ?? "",
-                customName: request.editing.displayName ?? "",
-                customVersion: request.editing.version ?? "",
-                adhoc: true,
-                removeProvision: false,
-                completion: { _, error in callbackError = error }
-            )
-            if let error = callbackError {
-                throw SigningServiceError.nativeSigningFailed(error.localizedDescription)
+            mode = .adhoc
+        } else {
+            guard let p12 = request.certificate.p12URL,
+                  let provision = request.certificate.mobileProvisionURL else {
+                throw SigningServiceError.missingCertificateFile
             }
-            guard signed else { throw SigningServiceError.nativeSigningFailed("Zsign 未成功完成 Ad-hoc 重签名") }
-            report("Zsign 返回成功（Ad-hoc）；这不等于系统验签通过")
-            let signature = app.appendingPathComponent("_CodeSignature/CodeResources")
-            guard fm.fileExists(atPath: signature.path) else {
+            mode = .certificate(p12: p12, provision: provision, password: request.password)
+        }
+        try ZNZsignKit.sign(.init(
+            app: app,
+            mode: mode,
+            bundleIdentifier: request.editing.bundleIdentifier,
+            displayName: request.editing.displayName,
+            version: request.editing.version,
+            entitlements: nil
+        ), report: report)
+        if !options.temporarySigning {
+            let embedded = app.appendingPathComponent("embedded.mobileprovision")
+            guard fm.fileExists(atPath: embedded.path) else {
                 throw SigningServiceError.outputValidationFailed
             }
-        } else {
-        guard let p12 = request.certificate.p12URL,
-              let provision = request.certificate.mobileProvisionURL else {
-            throw SigningServiceError.missingCertificateFile
-        }
-        emit(.signing)
-        report("调用 Zsign：P12 + provisioning profile；开始签署整个 App")
-        var callbackError: Error?
-        let signed = Zsign.sign(
-            appPath: app.path,
-            provisionPath: provision.path,
-            p12Path: p12.path,
-            p12Password: request.password,
-            entitlementsPath: "",
-            customIdentifier: request.editing.bundleIdentifier ?? "",
-            customName: request.editing.displayName ?? "",
-            customVersion: request.editing.version ?? "",
-            removeProvision: false,
-            completion: { _, error in
-                callbackError = error
-            }
-        )
-        if let error = callbackError {
-            throw SigningServiceError.nativeSigningFailed(error.localizedDescription)
-        }
-
-        guard signed else { throw SigningServiceError.nativeSigningFailed("Zsign 未成功完成证书重签名") }
-        report("Zsign 返回成功（证书模式）；待检查嵌套 Mach-O")
-
-        // Do not report success unless the app has both a signature resource
-        // and the embedded provisioning profile required for installation.
-        let signature = app.appendingPathComponent("_CodeSignature/CodeResources")
-        let embedded = app.appendingPathComponent("embedded.mobileprovision")
-        guard fm.fileExists(atPath: signature.path),
-              fm.fileExists(atPath: embedded.path) else {
-            throw SigningServiceError.outputValidationFailed
-        }
-
         }
         let afterNested = nestedDiagnosticSnapshot(in: app, phase: "签名后")
         compareNestedSnapshots(before: beforeNested, after: afterNested)

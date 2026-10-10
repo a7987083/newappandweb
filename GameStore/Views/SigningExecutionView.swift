@@ -23,6 +23,8 @@ struct SigningExecutionView: View {
     @State private var result: SignedArtifact?
     @State private var errorMessage: String?
     @State private var showShare = false
+    @State private var showReport = false
+    @State private var reportLines: [String] = []
     @State private var installMode = IPAInstallMode.local
     @State private var installing = false
     private let engine = AppSigningService()
@@ -120,6 +122,8 @@ struct SigningExecutionView: View {
                                 if running { SigningActivityIndicator().frame(width: 22, height: 22) }
                                 Text(stageName(state))
                             }
+                            Button("查看签名详细报告（\(reportLines.count) 条）") { showReport = true }
+                                .font(.footnote)
                             if let failure = errorMessage {
                                 Text(failure).font(.footnote).foregroundColor(.red)
                             }
@@ -188,6 +192,24 @@ struct SigningExecutionView: View {
             }
             .sheet(isPresented: $showShare) {
                 if let artifact = result { ActivityShareView(items: [artifact.ipaURL]) }
+            }
+            .sheet(isPresented: $showReport) {
+                NavigationView {
+                    ScrollView {
+                        Text(reportLines.isEmpty ? "等待签名开始…" : reportLines.joined(separator: "\n"))
+                            .font(.system(size: 12, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(16)
+                    }
+                    .navigationBarTitle(running ? "签名进行中" : "签名详细报告", displayMode: .inline)
+                    .navigationBarItems(
+                        leading: Button("复制") {
+                            UIPasteboard.general.string = reportLines.joined(separator: "\n")
+                        },
+                        trailing: Button("关闭") { showReport = false }
+                    )
+                }
+                .navigationViewStyle(StackNavigationViewStyle())
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
@@ -305,6 +327,13 @@ struct SigningExecutionView: View {
         result = nil
         errorMessage = nil
         state = .prepareContext
+        reportLines = []
+        showReport = true
+        engine.onReport = { message in
+            if self.reportLines.count < 2000 {
+                self.reportLines.append(message)
+            }
+        }
         let storedPassword = temporary ? "" : CertificatePasswordKeychain.read(for: certificate.id)
         let effectivePassword = storedPassword ?? password
         let wasLegacy = storedPassword == nil

@@ -70,7 +70,7 @@ struct SourceAppRow: View {
     let app: SourceCatalogApp
     var body: some View {
         HStack(spacing: 12) {
-            SourceAppIcon(url: app.iconURL)
+            SourceAppIcon(url: app.iconURL).id(app.iconURL?.absoluteString ?? "no-icon")
             VStack(alignment: .leading, spacing: 4) {
                 Text(app.name).font(.headline)
                 Text([app.version, app.category].filter { !$0.isEmpty }.joined(separator: " · "))
@@ -96,10 +96,6 @@ struct SourceAppIcon: View {
         .cornerRadius(12)
         .clipped()
         .onAppear { fetch() }
-        .onChange(of: url) { _ in
-            loadedImage = nil
-            fetch()
-        }
     }
     private func fetch() {
         guard let url = url else { return }

@@ -15,6 +15,8 @@ final class SoftwareSourceStore: ObservableObject {
     @Published fileprivate(set) var catalogError: String?
     @Published private(set) var sourceNames: [String: String]
 
+    private var catalogsBySource: [String: [SourceCatalogApp]] = [:]
+    private var refreshGeneration = 0
     private var registeredIdentities: [String: String] = [:]
     private var pendingURLs = Set<String>()
     private let session: URLSession
@@ -24,6 +26,8 @@ final class SoftwareSourceStore: ObservableObject {
         sources = UserDefaults.standard.stringArray(forKey: Self.storageKey) ?? []
         registeredIdentities = UserDefaults.standard.dictionary(forKey: Self.identitiesKey) as? [String: String] ?? [:]
         sourceNames = UserDefaults.standard.dictionary(forKey: Self.namesKey) as? [String: String] ?? [:]
+        catalogsBySource = SourceCatalogCache.load().filter { sources.contains($0.key) }
+        catalogApps = catalogsBySource.values.flatMap { $0 }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     func remove(_ value: String) {

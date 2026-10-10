@@ -178,9 +178,6 @@ final class AppSigningService: AppSigning {
         }
         let afterNested = nestedDiagnosticSnapshot(in: app, phase: "签名后")
         compareNestedSnapshots(before: beforeNested, after: afterNested)
-        report("开始检查嵌套 Framework / dylib 的 Mach-O 签名区段")
-        try verifyNestedSignatures(in: app)
-        report("嵌套 Mach-O 结构检查结束（非密码学验签）")
         emit(.repacking)
         report("开始压缩输出 IPA")
         let outDir = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -285,101 +282,6 @@ final class AppSigningService: AppSigning {
         for path in removed { report("[文件消失] " + path) }
         for path in added { report("[新增文件] " + path) }
         report("注意：哈希变化只表示文件内容变化，不代表签名身份或密码学验签通过")
-    }
-
-    /// Structural verification of every thin/FAT Mach-O inside nested code bundles.
-    /// Zsign remains the only signer; this checks the resulting signature slots, not trust.
-    private func verifyNestedSignatures(in app: URL) throws {
-        let fm = FileManager.default
-        guard let enumerator = fm.enumerator(at: app,
-            includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { return }
-
-        func number(_ data: [UInt8], _ at: Int, _ width: Int, _ big: Bool) -> UInt64? {
-            guard at >= 0, width > 0, at <= data.count - width else { return nil }
-            var result: UInt64 = 0
-            if big {
-                for n in at..<(at + width) { result = (result << 8) | UInt64(data[n]) }
-            } else {
-                for n in (at..<(at + width)).reversed() { result = (result << 8) | UInt64(data[n]) }
-            }
-            return result
-        }
-
-        func slices(_ data: [UInt8]) -> [(Int, Int, Bool)]? {
-            guard let magic = number(data, 0, 4, true) else { return nil }
-            if magic == 0xfeedfacf || magic == 0xfeedface { return [(0, data.count, true)] }
-            if magic == 0xcffaedfe || magic == 0xcefaedfe { return [(0, data.count, false)] }
-            let big = magic == 0xcafebabe || magic == 0xcafebabf
-            let little = magic == 0xbebafeca || magic == 0xbfbafeca
-            guard big || little, let count = number(data, 4, 4, big), count > 0, count <= 64 else { return nil }
-            let is64 = magic == 0xcafebabf || magic == 0xbfbafeca
-            let stride = is64 ? 32 : 20
-            var found: [(Int, Int, Bool)] = []
-            for n in 0..<Int(count) {
-                let base = 8 + n * stride
-                let startAt = base + 8
-                let lengthAt = base + (is64 ? 16 : 12)
-                guard let start = number(data, startAt, is64 ? 8 : 4, big),
-                      let length = number(data, lengthAt, is64 ? 8 : 4, big),
-                      length >= 28, start <= UInt64(data.count),
-                      length <= UInt64(data.count) - start else { return nil }
-                found.append((Int(start), Int(length), true))
-            }
-            return found
-        }
-
-        func check(_ data: [UInt8], slice: (Int, Int, Bool), file: String) throws {
-            let base = slice.0, length = slice.1
-            guard let magic = number(data, base, 4, true) else { throw SigningServiceError.nativeSigningFailed("Mach-O 无效：" + file) }
-            let is64 = magic == 0xfeedfacf || magic == 0xcffaedfe
-            let big = magic == 0xfeedface || magic == 0xfeedfacf
-            guard is64 || magic == 0xfeedface || magic == 0xcefaedfe else {
-                throw SigningServiceError.nativeSigningFailed("Mach-O 架构无效：" + file)
-            }
-            let header = is64 ? 32 : 28
-            guard length >= header, let ncmd = number(data, base + 16, 4, big),
-                  let cmdsSize = number(data, base + 20, 4, big),
-                  ncmd <= 4096, cmdsSize <= UInt64(length - header) else {
-                throw SigningServiceError.nativeSigningFailed("Mach-O Load Commands 无效：" + file)
-            }
-            var cursor = base + header
-            let limit = cursor + Int(cmdsSize)
-            var found = false
-            for _ in 0..<Int(ncmd) {
-                guard cursor + 8 <= limit,
-                      let cmd = number(data, cursor, 4, big),
-                      let bytes = number(data, cursor + 4, 4, big),
-                      bytes >= 8, bytes <= UInt64(limit - cursor) else {
-                    throw SigningServiceError.nativeSigningFailed("Mach-O Load Command 损坏：" + file)
-                }
-                if cmd == 0x1d && bytes >= 16,
-                   let offset = number(data, cursor + 8, 4, big),
-                   let size = number(data, cursor + 12, 4, big),
-                   size > 0, offset <= UInt64(length),
-                   size <= UInt64(length) - offset { found = true }
-                cursor += Int(bytes)
-            }
-            if !found { throw SigningServiceError.nativeSigningFailed("嵌套 Mach-O 缺少签名区段：" + file) }
-        }
-
-        for case let file as URL in enumerator {
-            let relative = String(file.path.dropFirst(app.path.count))
-            guard relative.contains("/Frameworks/") || relative.contains("/PlugIns/") ||
-                  relative.contains("/Watch/") || relative.contains("/XPCServices/") else { continue }
-            guard let size = (try? fm.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.intValue,
-                  size >= 28, size <= 500 * 1024 * 1024 else { continue }
-            guard let data = try? Data(contentsOf: file, options: .mappedIfSafe) else { continue }
-            let bytes = [UInt8](data)
-            guard let magic = number(bytes, 0, 4, true) else { continue }
-            let supported: Set<UInt64> = [0xfeedface, 0xfeedfacf, 0xcefaedfe, 0xcffaedfe,
-                                           0xcafebabe, 0xcafebabf, 0xbebafeca, 0xbfbafeca]
-            guard supported.contains(magic) else { continue }
-            guard let sections = slices(bytes) else {
-                throw SigningServiceError.nativeSigningFailed("Fat Mach-O 结构错误：" + relative)
-            }
-            for section in sections { try check(bytes, slice: section, file: relative) }
-            report("签名区段存在：\(relative) · \(sections.count) 架构切片")
-        }
     }
 
     // Matches zonoe/Ksign SigningHandler._modifyDict for these five switches.

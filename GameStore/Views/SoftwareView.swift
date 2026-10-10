@@ -82,14 +82,11 @@ struct SourceAppRow: View {
 
 struct SourceAppIcon: View {
     let url: URL?
+    @State private var loadedImage: UIImage?
     var body: some View {
         Group {
-            if #available(iOS 15.0, *), let url = url {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    Image(systemName: "app").resizable().scaledToFit().padding(10)
-                }
+            if let image = loadedImage ?? url.flatMap({ SourceIconCache.shared.cachedMemoryImage(for: $0) }) {
+                Image(uiImage: image).resizable().scaledToFill()
             } else {
                 Image(systemName: "app").resizable().scaledToFit().padding(10)
             }
@@ -98,6 +95,17 @@ struct SourceAppIcon: View {
         .background(Color(UIColor.secondarySystemGroupedBackground))
         .cornerRadius(12)
         .clipped()
+        .onAppear { fetch() }
+        .onChange(of: url) { _ in
+            loadedImage = nil
+            fetch()
+        }
+    }
+    private func fetch() {
+        guard let url = url else { return }
+        SourceIconCache.shared.load(url) { image in
+            if self.url == url { self.loadedImage = image }
+        }
     }
 }
 

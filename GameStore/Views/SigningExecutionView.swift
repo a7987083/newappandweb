@@ -30,7 +30,11 @@ struct SigningExecutionView: View {
                                 Text(item.name).tag(item.id)
                             }
                         }
-                        SecureField("P12 密码", text: $password)
+                        if selectedCertificateNeedsPassword {
+                            SecureField("旧证书：请补录一次 P12 密码", text: $password)
+                            Text("旧版导入的证书未保存密码；本次验证成功后将保存到 Keychain。")
+                                .font(.footnote).foregroundColor(.secondary)
+                        }
                     }
                 }
                 Section(header: Text("签名进度")) {
@@ -70,6 +74,10 @@ struct SigningExecutionView: View {
         .navigationViewStyle(StackNavigationViewStyle())
     }
 
+    private var selectedCertificateNeedsPassword: Bool {
+        !selectedID.isEmpty && CertificatePasswordKeychain.read(for: selectedID) == nil
+    }
+
     private func start() {
         guard !running,
               let certificate = certificates.certificates.first(where: { $0.id == selectedID }) else {
@@ -80,14 +88,18 @@ struct SigningExecutionView: View {
         result = nil
         errorMessage = nil
         state = .prepareContext
-        let request = SigningRequest(ipaURL: ipaURL, certificate: certificate, password: password)
+        let storedPassword = CertificatePasswordKeychain.read(for: certificate.id)
+        let effectivePassword = storedPassword ?? password
+        let wasLegacy = storedPassword == nil
+        let request = SigningRequest(ipaURL: ipaURL, certificate: certificate, password: effectivePassword)
         engine.sign(request: request, progress: { nextState in
             state = nextState
         }, completion: { response in
             running = false
-            password = ""
             switch response {
             case .success(let artifact):
+                if wasLegacy { try? CertificatePasswordKeychain.save(effectivePassword, for: certificate.id) }
+                password = ""
                 result = artifact
                 state = .verifySignature
             case .failure(let error):

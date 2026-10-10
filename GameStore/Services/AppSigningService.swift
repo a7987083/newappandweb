@@ -167,62 +167,97 @@ final class AppSigningService: AppSigning {
         }
     }
 
-    /// Reject nested dylibs/framework executables lacking a Mach-O code-signature command.
-    /// This is a structural sanity check, not cryptographic signature verification.
+    /// Structural verification of every thin/FAT Mach-O inside nested code bundles.
+    /// Zsign remains the only signer; this checks the resulting signature slots, not trust.
     private func verifyNestedSignatures(in app: URL) throws {
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(at: app,
             includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { return }
+
+        func number(_ data: [UInt8], _ at: Int, _ width: Int, _ big: Bool) -> UInt64? {
+            guard at >= 0, width > 0, at <= data.count - width else { return nil }
+            var result: UInt64 = 0
+            if big {
+                for n in at..<(at + width) { result = (result << 8) | UInt64(data[n]) }
+            } else {
+                for n in (at..<(at + width)).reversed() { result = (result << 8) | UInt64(data[n]) }
+            }
+            return result
+        }
+
+        func slices(_ data: [UInt8]) -> [(Int, Int, Bool)]? {
+            guard let magic = number(data, 0, 4, true) else { return nil }
+            if magic == 0xfeedfacf || magic == 0xfeedface { return [(0, data.count, true)] }
+            if magic == 0xcffaedfe || magic == 0xcefaedfe { return [(0, data.count, false)] }
+            let big = magic == 0xcafebabe || magic == 0xcafebabf
+            let little = magic == 0xbebafeca || magic == 0xbfbafeca
+            guard big || little, let count = number(data, 4, 4, big), count > 0, count <= 64 else { return nil }
+            let is64 = magic == 0xcafebabf || magic == 0xbfbafeca
+            let stride = is64 ? 32 : 20
+            var found: [(Int, Int, Bool)] = []
+            for n in 0..<Int(count) {
+                let base = 8 + n * stride
+                let startAt = base + 8
+                let lengthAt = base + (is64 ? 16 : 12)
+                guard let start = number(data, startAt, is64 ? 8 : 4, big),
+                      let length = number(data, lengthAt, is64 ? 8 : 4, big),
+                      length >= 28, start <= UInt64(data.count),
+                      length <= UInt64(data.count) - start else { return nil }
+                found.append((Int(start), Int(length), true))
+            }
+            return found
+        }
+
+        func check(_ data: [UInt8], slice: (Int, Int, Bool), file: String) throws {
+            let base = slice.0, length = slice.1
+            guard let magic = number(data, base, 4, true) else { throw SigningServiceError.nativeSigningFailed("Mach-O 无效：" + file) }
+            let is64 = magic == 0xfeedfacf || magic == 0xcffaedfe
+            let big = magic == 0xfeedface || magic == 0xfeedfacf
+            guard is64 || magic == 0xfeedface || magic == 0xcefaedfe else {
+                throw SigningServiceError.nativeSigningFailed("Mach-O 架构无效：" + file)
+            }
+            let header = is64 ? 32 : 28
+            guard length >= header, let ncmd = number(data, base + 16, 4, big),
+                  let cmdsSize = number(data, base + 20, 4, big),
+                  ncmd <= 4096, cmdsSize <= UInt64(length - header) else {
+                throw SigningServiceError.nativeSigningFailed("Mach-O Load Commands 无效：" + file)
+            }
+            var cursor = base + header
+            let limit = cursor + Int(cmdsSize)
+            var found = false
+            for _ in 0..<Int(ncmd) {
+                guard cursor + 8 <= limit,
+                      let cmd = number(data, cursor, 4, big),
+                      let bytes = number(data, cursor + 4, 4, big),
+                      bytes >= 8, bytes <= UInt64(limit - cursor) else {
+                    throw SigningServiceError.nativeSigningFailed("Mach-O Load Command 损坏：" + file)
+                }
+                if cmd == 0x1d && bytes >= 16,
+                   let offset = number(data, cursor + 8, 4, big),
+                   let size = number(data, cursor + 12, 4, big),
+                   size > 0, offset <= UInt64(length),
+                   size <= UInt64(length) - offset { found = true }
+                cursor += Int(bytes)
+            }
+            if !found { throw SigningServiceError.nativeSigningFailed("嵌套 Mach-O 缺少签名区段：" + file) }
+        }
+
         for case let file as URL in enumerator {
             let relative = String(file.path.dropFirst(app.path.count))
-            guard relative.contains("/Frameworks/") || relative.contains("/PlugIns/") else { continue }
-            guard let attributes = try? fm.attributesOfItem(atPath: file.path),
-                  let size = attributes[.size] as? NSNumber, size.intValue >= 32 else { continue }
-            guard let handle = try? FileHandle(forReadingFrom: file) else { continue }
-            let data = handle.readData(ofLength: 64)
-            handle.closeFile()
-            guard data.count >= 28 else { continue }
+            guard relative.contains("/Frameworks/") || relative.contains("/PlugIns/") ||
+                  relative.contains("/Watch/") || relative.contains("/XPCServices/") else { continue }
+            guard let size = (try? fm.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.intValue,
+                  size >= 28, size <= 500 * 1024 * 1024 else { continue }
+            guard let data = try? Data(contentsOf: file, options: .mappedIfSafe) else { continue }
             let bytes = [UInt8](data)
-            let magic = UInt32(bytes[0]) | UInt32(bytes[1]) << 8 |
-                        UInt32(bytes[2]) << 16 | UInt32(bytes[3]) << 24
-            // Only inspect little-endian thin Mach-O. FAT slices require their own audit.
-            guard magic == 0xfeedface || magic == 0xfeedfacf else { continue }
-            let headerSize = magic == 0xfeedfacf ? 32 : 28
-            let commands = Int(UInt32(bytes[16]) | UInt32(bytes[17]) << 8 |
-                               UInt32(bytes[18]) << 16 | UInt32(bytes[19]) << 24)
-            let commandsSize = Int(UInt32(bytes[20]) | UInt32(bytes[21]) << 8 |
-                                   UInt32(bytes[22]) << 16 | UInt32(bytes[23]) << 24)
-            guard commands >= 0, commands < 4096, commandsSize >= 0,
-                  commandsSize <= size.intValue - headerSize else {
-                throw SigningServiceError.nativeSigningFailed("Mach-O 头损坏：" + relative)
+            guard let magic = number(bytes, 0, 4, true) else { continue }
+            let supported: Set<UInt64> = [0xfeedface, 0xfeedfacf, 0xcefaedfe, 0xcffaedfe,
+                                           0xcafebabe, 0xcafebabf, 0xbebafeca, 0xbfbafeca]
+            guard supported.contains(magic) else { continue }
+            guard let sections = slices(bytes) else {
+                throw SigningServiceError.nativeSigningFailed("Fat Mach-O 结构错误：" + relative)
             }
-            guard let reader = try? FileHandle(forReadingFrom: file) else { continue }
-            reader.seek(toFileOffset: UInt64(headerSize))
-            let commandData = [UInt8](reader.readData(ofLength: commandsSize))
-            reader.closeFile()
-            var offset = 0
-            var hasSignature = false
-            for _ in 0..<commands {
-                guard offset + 8 <= commandData.count else { break }
-                func read(_ n: Int) -> UInt32 {
-                    UInt32(commandData[n]) | UInt32(commandData[n+1]) << 8 |
-                    UInt32(commandData[n+2]) << 16 | UInt32(commandData[n+3]) << 24
-                }
-                let cmd = read(offset)
-                let length = Int(read(offset + 4))
-                guard length >= 8, offset + length <= commandData.count else { break }
-                if cmd == 0x1d && length >= 16 {
-                    let blobOffset = Int(read(offset + 8))
-                    let blobSize = Int(read(offset + 12))
-                    if blobSize > 0 && blobOffset >= headerSize && blobOffset <= size.intValue - blobSize {
-                        hasSignature = true
-                    }
-                }
-                offset += length
-            }
-            guard hasSignature else {
-                throw SigningServiceError.nativeSigningFailed("嵌套 Mach-O 缺少有效签名区段：" + relative)
-            }
+            for section in sections { try check(bytes, slice: section, file: relative) }
         }
     }
 

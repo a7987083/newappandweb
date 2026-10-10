@@ -91,6 +91,24 @@ jobs:
           set -euo pipefail
           APP_PATH="DerivedDataDevice/Build/Products/Debug-iphoneos/GameStore.app"
           test -d "$APP_PATH"
+          # Embed user-supplied icon in the unsigned device app before IPA packaging.
+          base64 --decode GameStore/Resources/AppIconSource.base64 > /tmp/gamestore-icon-source.png
+          sips -s format png -z 120 120 /tmp/gamestore-icon-source.png --out "$APP_PATH/GameStoreIcon120.png" >/dev/null
+          sips -s format png -z 180 180 /tmp/gamestore-icon-source.png --out "$APP_PATH/GameStoreIcon180.png" >/dev/null
+          sips -s format png -z 152 152 /tmp/gamestore-icon-source.png --out "$APP_PATH/GameStoreIcon152.png" >/dev/null
+          PLIST="$APP_PATH/Info.plist"
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleIcons" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleIcons~ipad" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons dict" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons:CFBundlePrimaryIcon dict" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles:0 string GameStoreIcon120" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles:1 string GameStoreIcon180" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons~ipad dict" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons~ipad:CFBundlePrimaryIcon dict" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons~ipad:CFBundlePrimaryIcon:CFBundleIconFiles array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons~ipad:CFBundlePrimaryIcon:CFBundleIconFiles:0 string GameStoreIcon152" "$PLIST"
+          test -s "$APP_PATH/GameStoreIcon180.png"
           test -s "$APP_PATH/Frameworks/OpenSSL.framework/OpenSSL"
           otool -L "$APP_PATH/GameStore" | grep -F "@rpath/OpenSSL.framework/OpenSSL"
           rm -rf ipa
@@ -98,18 +116,18 @@ jobs:
           cp -R "$APP_PATH" ipa/Payload/GameStore.app
           (
             cd ipa
-            /usr/bin/zip -qry ../GameStore-v0.2.12-dev-unsigned.ipa Payload
+            /usr/bin/zip -qry ../GameStore-v0.2.13-dev-unsigned.ipa Payload
           )
-          /usr/bin/unzip -l GameStore-v0.2.12-dev-unsigned.ipa | tee ipa-contents.log
-          test -s GameStore-v0.2.12-dev-unsigned.ipa
-          /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP_PATH/Info.plist" | grep -Fx "0.2.12"
-          /usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$APP_PATH/Info.plist" | grep -Fx "13"
+          /usr/bin/unzip -l GameStore-v0.2.13-dev-unsigned.ipa | tee ipa-contents.log
+          test -s GameStore-v0.2.13-dev-unsigned.ipa
+          /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP_PATH/Info.plist" | grep -Fx "0.2.13"
+          /usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$APP_PATH/Info.plist" | grep -Fx "14"
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: GameStore-v0.2.12-dev-unsigned-ipa
-          path: GameStore-v0.2.12-dev-unsigned.ipa
+          name: GameStore-v0.2.13-dev-unsigned-ipa
+          path: GameStore-v0.2.13-dev-unsigned.ipa
           if-no-files-found: error
 
       - name: Upload legacy build logs

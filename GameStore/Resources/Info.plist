@@ -27,7 +27,9 @@
             <string>com.zonoe.udid</string>
             <key>CFBundleURLSchemes</key>
             <array><string>zonoe</string></array>
-        </dict>
+            <key>NSPhotoLibraryUsageDescription</key>
+    <string>选择图片以替换正在重新签名的应用图标。</string>
+</dict>
     </array>
     <key>CFBundleDocumentTypes</key>
     <array>

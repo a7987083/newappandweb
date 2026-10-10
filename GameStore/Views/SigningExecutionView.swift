@@ -10,6 +10,8 @@ struct SigningExecutionView: View {
     @State private var selectedID = ""
     @State private var password = ""
     @State private var previewIcon: UIImage?
+    @State private var replacementIconPNG: Data?
+    @State private var showingIconPicker = false
     @State private var appName = ""
     @State private var bundleID = ""
     @State private var version = ""
@@ -163,6 +165,14 @@ struct SigningExecutionView: View {
                     version = inspection.version
                 }
             }
+            .sheet(isPresented: $showingIconPicker) {
+                GameStoreIconImagePicker { image in
+                    if let bytes = image.pngData() {
+                        replacementIconPNG = bytes
+                        previewIcon = image
+                    }
+                }
+            }
             .sheet(isPresented: $showShare) {
                 if let artifact = result { ActivityShareView(items: [artifact.ipaURL]) }
             }
@@ -172,6 +182,7 @@ struct SigningExecutionView: View {
 
     private var iconHeader: some View {
         VStack(spacing: 9) {
+            Button(action: { if !running { showingIconPicker = true } }) {
             Group {
                 if let icon = previewIcon {
                     Image(uiImage: icon)
@@ -185,11 +196,13 @@ struct SigningExecutionView: View {
             }
             .frame(width: 94, height: 94)
             .clipShape(RoundedRectangle(cornerRadius: 20))
+            }
+            .buttonStyle(PlainButtonStyle())
             Text(ipaURL.lastPathComponent)
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
-            Text(previewIcon == nil ? "未找到独立图标文件" : "应用图标预览")
+            Text(replacementIconPNG != nil ? "已选择新图标 · 点击重新选择" : "点击图标更换应用图标")
                 .foregroundColor(.secondary)
                 .font(.system(size: 14))
         }
@@ -282,7 +295,7 @@ struct SigningExecutionView: View {
         let storedPassword = temporary ? "" : CertificatePasswordKeychain.read(for: certificate.id)
         let effectivePassword = storedPassword ?? password
         let wasLegacy = storedPassword == nil
-        let editing = SigningAppEditing(displayName: appName, bundleIdentifier: bundleID, version: version, minimumOS: minimumOS, removeURLSchemes: removeURLSchemes, outputFormat: outputFormat)
+        let editing = SigningAppEditing(displayName: appName, bundleIdentifier: bundleID, version: version, minimumOS: minimumOS, removeURLSchemes: removeURLSchemes, outputFormat: outputFormat, replacementIconPNG: replacementIconPNG)
         let request = SigningRequest(ipaURL: ipaURL, certificate: certificate, password: effectivePassword, editing: editing)
         engine.sign(request: request, progress: { nextState in
             state = nextState
@@ -368,6 +381,37 @@ private enum IPAIconPreviewResolver {
             return nil
         } catch {
             return nil
+        }
+    }
+}
+
+private struct GameStoreIconImagePicker: UIViewControllerRepresentable {
+    let onSelect: (UIImage) -> Void
+    @Environment(\.presentationMode) private var presentation
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let controller = UIImagePickerController()
+        controller.sourceType = .photoLibrary
+        controller.delegate = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ controller: UIImagePickerController, context: Context) {}
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: GameStoreIconImagePicker
+        init(parent: GameStoreIconImagePicker) { self.parent = parent }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.presentation.wrappedValue.dismiss()
+        }
+
+        func imagePickerController(_ picker: UIImagePickerController,
+                                   didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let image = info[.originalImage] as? UIImage { parent.onSelect(image) }
+            parent.presentation.wrappedValue.dismiss()
         }
     }
 }

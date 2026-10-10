@@ -29,6 +29,7 @@
 		E10000000000000000000001 /* CertificateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000002 /* CertificateStore.swift */; };
 		E10000000000000000000003 /* CertificateManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000004 /* CertificateManagementView.swift */; };
 		E10000000000000000000005 /* SigningExecutionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000000000000000000006 /* SigningExecutionView.swift */; };
+		C0A100000000000000000001 /* IPAIconReplacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A100000000000000000002 /* IPAIconReplacement.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -54,6 +55,7 @@
 		E10000000000000000000002 /* CertificateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/CertificateStore.swift; sourceTree = "<group>"; };
 		E10000000000000000000004 /* CertificateManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/CertificateManagementView.swift; sourceTree = "<group>"; };
 		E10000000000000000000006 /* SigningExecutionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Views/SigningExecutionView.swift; sourceTree = "<group>"; };
+		C0A100000000000000000002 /* IPAIconReplacement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/IPAIconReplacement.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -72,6 +74,7 @@
 				5C7B6C50B8DB55809E70C1A6 /* DownloadCenter.swift */,
 				AABBCCDDEEFF001122334456 /* IPAInspector.swift */,
 				2A2B19A5F9D360CE0B83E05E /* AppSigningService.swift */,
+				C0A100000000000000000002 /* IPAIconReplacement.swift */,
 				02E35CD70AC65FE97C8641DF /* OTAInstallService.swift */,
 				12B16B85BE8CE3610553969D /* AppStoreViewModel.swift */,
 				74AEB0BA6E23EF274058A2EC /* ContentView.swift */,
@@ -113,6 +116,7 @@
 				20F3199E687E78DC28C17C9B /* DownloadCenter.swift in Sources */,
 				AABBCCDDEEFF001122334455 /* IPAInspector.swift in Sources */,
 				7F2B8AD34949855293397653 /* AppSigningService.swift in Sources */,
+				C0A100000000000000000001 /* IPAIconReplacement.swift in Sources */,
 				E10000000000000000000005 /* SigningExecutionView.swift in Sources */,
 				E10000000000000000000003 /* CertificateManagementView.swift in Sources */,
 				E10000000000000000000001 /* CertificateStore.swift in Sources */,

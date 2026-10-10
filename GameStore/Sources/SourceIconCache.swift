@@ -240,10 +240,17 @@ final class SourceIconCache {
                 entries.append((file, bytes, metadata.contentAccessDate ?? metadata.contentModificationDate ?? .distantPast))
             }
             guard total > self.diskLimit else { return }
-            for entry in entries.sorted(by: { $0.2 < $1.2 }) where !protected.contains(entry.0.lastPathComponent) {
-                try? fm.removeItem(at: entry.0)
-                total -= entry.1
+            let sorted = entries.sorted(by: { $0.2 < $1.2 })
+            // First evict orphaned icons, preserving the current source catalog.
+            for entry in sorted where !protected.contains(entry.0.lastPathComponent) {
                 if total <= self.diskLimit { break }
+                do { try fm.removeItem(at: entry.0); total -= entry.1 } catch { }
+            }
+            // A strict storage ceiling cannot guarantee every icon remains available offline.
+            // If the active catalog alone exceeds the limit, evict its oldest icons.
+            for entry in sorted where protected.contains(entry.0.lastPathComponent) {
+                if total <= self.diskLimit { break }
+                do { try fm.removeItem(at: entry.0); total -= entry.1 } catch { }
             }
         }
     }

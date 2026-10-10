@@ -36,6 +36,7 @@ struct SigningAppEditing {
     var minimumOS: String? = nil
     var removeURLSchemes = false
     var outputFormat: String = "ipa"
+    var replacementIconPNG: Data? = nil
 }
 
 struct SignedArtifact {

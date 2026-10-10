@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import ZIPFoundation
 
 struct SigningExecutionView: View {
     let ipaURL: URL
@@ -8,6 +9,7 @@ struct SigningExecutionView: View {
     @Environment(\.presentationMode) private var presentation
     @State private var selectedID = ""
     @State private var password = ""
+    @State private var previewIcon: UIImage?
     @State private var appName = ""
     @State private var bundleID = ""
     @State private var version = ""
@@ -153,6 +155,7 @@ struct SigningExecutionView: View {
             )
             .onAppear {
                 certificates.reload()
+                loadPreviewIcon()
                 if selectedID.isEmpty { selectedID = certificates.certificates.first?.id ?? "" }
                 if let inspection = try? IPAInspector.inspect(ipaURL) {
                     appName = inspection.displayName
@@ -169,16 +172,24 @@ struct SigningExecutionView: View {
 
     private var iconHeader: some View {
         VStack(spacing: 9) {
-            Image(systemName: "app.fill")
-                .resizable()
-                .foregroundColor(Color(red: 0.29, green: 0.48, blue: 0.88))
-                .frame(width: 94, height: 94)
-                .cornerRadius(20)
+            Group {
+                if let icon = previewIcon {
+                    Image(uiImage: icon)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    Image(systemName: "app.fill")
+                        .resizable()
+                        .foregroundColor(Color(red: 0.29, green: 0.48, blue: 0.88))
+                }
+            }
+            .frame(width: 94, height: 94)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
             Text(ipaURL.lastPathComponent)
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
-            Text("当前应用图标（更换能力待接入）")
+            Text(previewIcon == nil ? "未找到独立图标文件" : "应用图标预览")
                 .foregroundColor(.secondary)
                 .font(.system(size: 14))
         }
@@ -226,6 +237,14 @@ struct SigningExecutionView: View {
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.20)))
             .padding(.horizontal, 18)
             .padding(.bottom, 12)
+    }
+
+    private func loadPreviewIcon() {
+        let file = ipaURL
+        DispatchQueue.global(qos: .userInitiated).async {
+            let image = IPAIconPreviewResolver.load(file)
+            DispatchQueue.main.async { self.previewIcon = image }
+        }
     }
 
     private func optionBinding(_ key: WritableKeyPath<SigningOptions, Bool>) -> Binding<Bool> {
@@ -315,5 +334,40 @@ private struct SigningActivityIndicator: UIViewRepresentable {
     }
     func updateUIView(_ uiView: UIActivityIndicatorView, context: Context) {
         if !uiView.isAnimating { uiView.startAnimating() }
+    }
+}
+
+private enum IPAIconPreviewResolver {
+    static func load(_ ipa: URL) -> UIImage? {
+        let manager = FileManager.default
+        let work = manager.temporaryDirectory.appendingPathComponent("gamestore-icon-" + UUID().uuidString, isDirectory: true)
+        defer { try? manager.removeItem(at: work) }
+        do {
+            try manager.createDirectory(at: work, withIntermediateDirectories: true, attributes: nil)
+            try manager.unzipItem(at: ipa, to: work)
+            let payload = work.appendingPathComponent("Payload", isDirectory: true)
+            let apps = try manager.contentsOfDirectory(at: payload, includingPropertiesForKeys: nil)
+                .filter { $0.pathExtension.lowercased() == "app" }
+            guard apps.count == 1, let app = apps.first else { return nil }
+            let info = NSDictionary(contentsOf: app.appendingPathComponent("Info.plist")) as? [String: Any] ?? [:]
+            var candidates = [String]()
+            if let primary = info["CFBundleIcons"] as? [String: Any],
+               let icon = primary["CFBundlePrimaryIcon"] as? [String: Any] {
+                candidates += icon["CFBundleIconFiles"] as? [String] ?? []
+                if let name = icon["CFBundleIconName"] as? String { candidates.append(name) }
+            }
+            if let file = info["CFBundleIconFile"] as? String { candidates.append(file) }
+            // Prefer the largest declared icon. CgBI and Assets.car require separate decoders.
+            for name in candidates.reversed() {
+                let base = (name as NSString).lastPathComponent
+                for suffix in ["", ".png", "@3x.png", "@2x.png"] {
+                    let path = app.appendingPathComponent(base + suffix)
+                    if let image = UIImage(contentsOfFile: path.path) { return image }
+                }
+            }
+            return nil
+        } catch {
+            return nil
+        }
     }
 }

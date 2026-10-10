@@ -8,6 +8,7 @@ final class SourceIconCache {
     private let worker = OperationQueue()
     private let lock = NSLock()
     private var waiting = [String: [(UIImage?) -> Void]]()
+    private var pendingOperations = [String: Operation]()
     private let session: URLSession
     private let directory: URL
 
@@ -38,6 +39,10 @@ final class SourceIconCache {
     }
 
     func load(_ url: URL, completion: @escaping (UIImage?) -> Void) {
+        enqueue(url, priority: .veryHigh, completion: completion)
+    }
+
+    private func enqueue(_ url: URL, priority: Operation.QueuePriority, completion: @escaping (UIImage?) -> Void) {
         if let image = cachedMemoryImage(for: url) {
             DispatchQueue.main.async { completion(image) }
             return
@@ -46,12 +51,12 @@ final class SourceIconCache {
         lock.lock()
         if waiting[key] != nil {
             waiting[key]?.append(completion)
+            if priority == .veryHigh { pendingOperations[key]?.queuePriority = .veryHigh }
             lock.unlock()
             return
         }
         waiting[key] = [completion]
-        lock.unlock()
-        worker.addOperation { [weak self] in
+        let operation = BlockOperation { [weak self] in
             guard let self = self else { return }
             let file = self.path(for: url)
             var image: UIImage?
@@ -79,14 +84,19 @@ final class SourceIconCache {
             }
             self.lock.lock()
             let callbacks = self.waiting.removeValue(forKey: key) ?? []
+            self.pendingOperations.removeValue(forKey: key)
             self.lock.unlock()
             let result = image
             DispatchQueue.main.async { callbacks.forEach { $0(result) } }
         }
+        operation.queuePriority = priority
+        pendingOperations[key] = operation
+        lock.unlock()
+        worker.addOperation(operation)
     }
 
     func prefetch(_ urls: [URL]) {
         // Bounded concurrency; duplicate URL requests are merged by load().
-        for url in Set(urls) { load(url) { _ in } }
+        for url in Set(urls) { enqueue(url, priority: .veryLow) { _ in } }
     }
 }

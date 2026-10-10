@@ -17,6 +17,9 @@ struct ContentView: View {
                     ProfileView()
                 }
             }
+            // Keep scrolling content above the floating capsule (iOS 13 compatible).
+            // The capsule is ~75 pt tall plus 12 pt bottom spacing.
+            .padding(.bottom, 100)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             floatingTabBar

@@ -79,15 +79,12 @@ final class AppSigningService: AppSigning {
         guard apps.count == 1, let app = apps.first else { throw SigningServiceError.malformedPayload }
 
         let options = SigningOptionsStore.shared.options
+        try applyZonoeInfoOptions(options, editing: request.editing, to: app)
         if !options.temporarySigning {
         guard let p12 = request.certificate.p12URL,
               let provision = request.certificate.mobileProvisionURL else {
             throw SigningServiceError.missingCertificateFile
         }
-
-        }
-        try applyZonoeInfoOptions(options, editing: request.editing, to: app)
-        if !options.temporarySigning {
         emit(.signing)
         var callbackError: Error?
         let signed = Zsign.sign(

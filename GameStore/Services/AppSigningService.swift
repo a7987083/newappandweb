@@ -25,8 +25,7 @@ enum SigningServiceError: LocalizedError {
         switch self {
         case .missingCertificateFile: return "P12 证书不存在或不可读取"
         case .missingProvisionFile: return "mobileprovision 不存在或不可读取"
-        case .certificateInvalid(let status): return "P12 证书校验失败（Security 状态：\(status)）"
-        case .certificateIdentityMissing: return "P12 不包含可用的签名身份"
+        case .certificatePasswordRejected: return "Zsign 原生 P12 密码验证失败"
         case .provisionInvalid: return "mobileprovision 文件为空或无效"
         case .malformedPayload: return "IPA 解包后未找到唯一的 Payload/*.app"
         case .nativeSigningFailed(let detail): return "Zsign 签名失败：" + detail
@@ -145,9 +144,7 @@ final class AppSigningService: AppSigning {
             throw SigningServiceError.missingProvisionFile
         }
         // Revalidate using the same native OpenSSL path as certificate import.
-        password_check_fix_WHAT_THE_FUCK(provisionURL.path)
-        defer { password_check_fix_WHAT_THE_FUCK_free(provisionURL.path) }
-        guard p12_password_check(p12URL.path, password) else {
+        guard NativeP12Verifier.verify(p12: p12URL, provision: provisionURL, password: password) else {
             throw SigningServiceError.certificatePasswordRejected
         }
         // Provision CMS, entitlement consistency and Mach-O signatures are

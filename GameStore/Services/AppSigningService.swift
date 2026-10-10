@@ -83,6 +83,13 @@ final class AppSigningService: AppSigning {
         if let png = request.editing.replacementIconPNG {
             try IPAIconReplacement.apply(png: png, to: app)
         }
+        // Match zonoe300 pre-sign preparation: discard the old main-app seal
+        // and embedded profile before Zsign writes the new signing identity.
+        let oldSeal = app.appendingPathComponent("_CodeSignature", isDirectory: true)
+        let oldProfile = app.appendingPathComponent("embedded.mobileprovision")
+        if fm.fileExists(atPath: oldSeal.path) { try fm.removeItem(at: oldSeal) }
+        if fm.fileExists(atPath: oldProfile.path) { try fm.removeItem(at: oldProfile) }
+
         if options.temporarySigning {
             emit(.signing)
             var callbackError: Error?

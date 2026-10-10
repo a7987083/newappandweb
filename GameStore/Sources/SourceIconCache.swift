@@ -51,6 +51,7 @@ final class SourceIconCache {
     private func retryWhenOnline() {
         state.async {
             self.retryAfter.removeAll()
+            self.retries.removeAll()
             self.enqueueMissing(self.knownURLs)
         }
     }
@@ -155,7 +156,12 @@ final class SourceIconCache {
                         if image == nil {
                             let count = min((self.retries[key] ?? 0) + 1, 6)
                             self.retries[key] = count
-                            self.retryAfter[key] = Date().addingTimeInterval(min(300, pow(2.0, Double(count)) * 2.0))
+                            if count < 6 {
+                                self.retryAfter[key] = Date().addingTimeInterval(min(300, pow(2.0, Double(count)) * 2.0))
+                            } else {
+                                // Stop retrying until the next refresh or connectivity recovery.
+                                self.retryAfter.removeValue(forKey: key)
+                            }
                         } else {
                             self.retries.removeValue(forKey: key)
                             self.retryAfter.removeValue(forKey: key)
@@ -194,7 +200,8 @@ final class SourceIconCache {
                 guard generation == self.prefetchGeneration else { return }
                 for url in missing {
                     let key = url.absoluteString
-                    guard (self.retryAfter[key] ?? .distantPast) <= Date() else { continue }
+                    guard (self.retryAfter[key] ?? .distantPast) <= Date(),
+                          (self.retries[key] ?? 0) < 6 else { continue }
                     if self.memory.object(forKey: key as NSString) == nil &&
                        !self.active.contains(key) && !self.diskChecking.contains(key) &&
                        !self.foreground.contains(where: { $0.absoluteString == key }) {
@@ -209,6 +216,8 @@ final class SourceIconCache {
 
     func prefetch(_ urls: [URL]) {
         state.async {
+            self.retries.removeAll()
+            self.retryAfter.removeAll()
             self.knownURLs = Array(Dictionary(grouping: urls, by: { $0.absoluteString }).values.compactMap { $0.first })
             self.enqueueMissing(self.knownURLs)
             self.cleanDisk(protecting: Set(self.knownURLs.map { self.path(for: $0).lastPathComponent }))

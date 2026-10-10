@@ -66,7 +66,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		CAE6B993D1286674150732AC /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A12BC34DE56FA78BC90DE123 /* ZsignSwift in Frameworks */, B134AC980000000000000001 /* ZIPFoundation in Frameworks */,); runOnlyForDeploymentPostprocessing = 0; };
+		CAE6B993D1286674150732AC /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A12BC34DE56FA78BC90DE123 /* ZsignSwift in Frameworks */, B134AC980000000000000001 /* ZIPFoundation in Frameworks */, DDAA11000000000000000001 /* Zip in Frameworks */,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */

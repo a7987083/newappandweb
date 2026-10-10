@@ -84,7 +84,10 @@ final class AppSigningService: AppSigning {
         try fm.createDirectory(at: payloadRoot, withIntermediateDirectories: true, attributes: nil)
 
         emit(.extracting)
-        try fm.unzipItem(at: request.ipaURL, to: payloadRoot)
+        // IPAInspector has already validated every ZIP entry name as UTF-8.
+        // ZIPFoundation otherwise interprets names without GPBF bit 11 as CP437,
+        // corrupting UTF-8 .app and resource paths in some third-party IPAs.
+        try fm.unzipItem(at: request.ipaURL, to: payloadRoot, pathEncoding: .utf8)
         report("IPA 解压完成")
         let payload = payloadRoot.appendingPathComponent("Payload", isDirectory: true)
         let apps = (try fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: [.isDirectoryKey]))

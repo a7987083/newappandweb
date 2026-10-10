@@ -23,6 +23,8 @@ struct SigningExecutionView: View {
     @State private var result: SignedArtifact?
     @State private var errorMessage: String?
     @State private var showShare = false
+    @State private var installMode = IPAInstallMode.local
+    @State private var installing = false
     private let engine = AppSigningService()
 
 
@@ -61,7 +63,16 @@ struct SigningExecutionView: View {
                         sectionLabel("签名方式")
                         roundedToggle("Ad-hoc 伪签名", value: optionBinding(\.temporarySigning))
                         roundedToggle("注册 zonoe UDID 回调", value: optionBinding(\.registerCallback))
-                        roundedToggle("签名完成自动安装（未接入）", value: optionBinding(\.autoInstallAfterSigning))
+                        roundedToggle("签名完成自动安装", value: optionBinding(\.autoInstallAfterSigning))
+                        HStack {
+                            Text("安装方式")
+                            Spacer()
+                            Picker("安装方式", selection: $installMode) {
+                                Text("本地 OTA").tag(IPAInstallMode.local)
+                                Text("网络服务器").tag(IPAInstallMode.network)
+                            }.pickerStyle(SegmentedPickerStyle()).frame(width: 210)
+                        }.padding(14).background(Color.white).cornerRadius(12)
+                         .padding(.horizontal, 18).padding(.bottom, 12)
                         HStack {
                             Text("打包规则")
                             Spacer()
@@ -116,6 +127,8 @@ struct SigningExecutionView: View {
                                 Text(artifact.ipaURL.lastPathComponent)
                                     .font(.footnote)
                                 Button("分享 / 保存文件") { showShare = true }
+                                Button(installing ? "正在启动安装…" : "安装应用") { beginInstall(artifact) }
+                                    .disabled(installing)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -307,11 +320,31 @@ struct SigningExecutionView: View {
                 password = ""
                 result = artifact
                 state = .verifySignature
+                if signingOptions.options.autoInstallAfterSigning { beginInstall(artifact) }
             case .failure(let error):
                 state = .failed
                 errorMessage = error.localizedDescription
             }
         })
+    }
+
+    private func beginInstall(_ artifact: SignedArtifact) {
+        guard !installing else { return }
+        installing = true
+        errorMessage = nil
+        state = .waitingForSystemInstall
+        IPAInstallCoordinator.shared.begin(artifact: artifact, mode: installMode) { response in
+            DispatchQueue.main.async {
+                installing = false
+                switch response {
+                case .success(let accepted):
+                    if !accepted { errorMessage = "iOS 未接受安装链接，请检查安装环境与清单地址" }
+                    // Opening a URL does not establish that the app was installed.
+                case .failure(let error):
+                    errorMessage = error.localizedDescription
+                }
+            }
+        }
     }
 
     private func stageName(_ value: SigningState) -> String {

@@ -80,6 +80,9 @@ final class AppSigningService: AppSigning {
 
         let options = SigningOptionsStore.shared.options
         try applyZonoeInfoOptions(options, editing: request.editing, to: app)
+        if let png = request.editing.replacementIconPNG {
+            try IPAIconReplacement.apply(png: png, to: app)
+        }
         if options.temporarySigning {
             emit(.signing)
             var callbackError: Error?

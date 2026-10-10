@@ -140,7 +140,7 @@ private enum RegistrationError: LocalizedError {
 }
 
 
-struct SourceCatalogApp: Identifiable {
+struct SourceCatalogApp: Identifiable, Codable {
     let id: String
     let sourceURL: String
     let name: String

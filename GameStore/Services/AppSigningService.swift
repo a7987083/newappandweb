@@ -80,6 +80,8 @@ final class AppSigningService: AppSigning {
             throw SigningServiceError.missingCertificateFile
         }
 
+        let options = SigningOptionsStore.shared.options
+        try applyZonoeInfoOptions(options, to: app)
         emit(.signing)
         var callbackError: Error?
         let signed = Zsign.sign(
@@ -114,10 +116,15 @@ final class AppSigningService: AppSigning {
         let outDir = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Signed", isDirectory: true)
         try fm.createDirectory(at: outDir, withIntermediateDirectories: true, attributes: nil)
-        let output = outDir.appendingPathComponent(
-            request.ipaURL.deletingPathExtension().lastPathComponent + "-signed-" +
-            UUID().uuidString.prefix(8) + ".ipa")
+        let baseName = request.ipaURL.deletingPathExtension().lastPathComponent
+        let outputName: String
+        switch options.packagingRule {
+        case .preserveOriginalFilename: outputName = baseName + ".ipa"
+        case .standardIPA: outputName = baseName + "-signed-" + String(UUID().uuidString.prefix(8)) + ".ipa"
+        }
+        let output = outDir.appendingPathComponent(outputName)
         do {
+            if fm.fileExists(atPath: output.path) { try fm.removeItem(at: output) }
             try fm.zipItem(at: payloadRoot, to: output, shouldKeepParent: false, compressionMethod: .deflate)
             emit(.verifySignature)
             let inspected = try IPAInspector.inspect(output)
@@ -128,6 +135,22 @@ final class AppSigningService: AppSigning {
             try? fm.removeItem(at: output)
             throw error
         }
+    }
+
+    // Matches zonoe/Ksign SigningHandler._modifyDict for these five switches.
+    private func applyZonoeInfoOptions(_ options: SigningOptions, to app: URL) throws {
+        let url = app.appendingPathComponent("Info.plist")
+        let data = try Data(contentsOf: url)
+        guard var info = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else {
+            throw SigningServiceError.malformedPayload
+        }
+        if options.fileSharing { info["UISupportsDocumentBrowser"] = true }
+        if options.itunesFileSharing { info["UIFileSharingEnabled"] = true }
+        if options.proMotion { info["CADisableMinimumFrameDurationOnPhone"] = true }
+        if options.gameMode { info["GCSupportsGameMode"] = true }
+        if options.ipadFullscreen { info["UIRequiresFullScreen"] = true }
+        let modified = try PropertyListSerialization.data(fromPropertyList: info, format: .binary, options: 0)
+        try modified.write(to: url, options: .atomic)
     }
 
     private func validateCertificate(_ certificate: DeviceCertificate, password: String) throws {

@@ -67,13 +67,8 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             let newHeight = safeTop + 189
             let delta = newHeight - head.frame.height
             if abs(delta) > 0.5 || sizeChanged {
-                head.frame = CGRect(x: 0, y: 0, width: width, height: newHeight)
-                for item in head.subviews {
-                    if let title = item as? UILabel {
-                        title.frame = CGRect(x: 20, y: safeTop + 66, width: width - 40, height: 53)
-                    } else if let search = item as? UISearchBar {
-                        search.frame = CGRect(x: 12, y: safeTop + 127, width: width - 24, height: 52)
-                    }
+                if let shellHeader = head as? ShellHeaderView {
+                    shellHeader.updateLayout(width: width, safeTop: safeTop)
                 }
                 if index == 0 {
                     page.catalog?.setCatalogHeader(head, height: newHeight)
@@ -194,25 +189,13 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     }
 
     private func buildHeader(_ index: Int) -> UIView {
-        let w = view.bounds.width
-        let titleY = view.safeAreaInsets.top+66
-        let h = titleY+123
-        let panel = UIView(frame: CGRect(x: 0,y: 0,width: w,height: h))
-        panel.backgroundColor = bg
-        let title = UILabel(frame: CGRect(x: 20,y: titleY,width: w-40,height: 53))
-        title.text = ["应用","安装包","插件"][index]
-        title.font = .boldSystemFont(ofSize: 37)
-        panel.addSubview(title)
-        let search = UISearchBar(frame: CGRect(x: 12,y: titleY+61,width: w-24,height: 52))
-        search.searchBarStyle = .minimal
-        search.placeholder = "搜索"
-        search.searchTextField.backgroundColor = UIColor(red: 229/255,green: 229/255,blue: 234/255,alpha: 1)
-        search.searchTextField.layer.cornerRadius = 12
-        search.searchTextField.clipsToBounds = true
-        search.delegate = self
-        panel.addSubview(search)
-        searchBar = search
-        return panel
+        let head = ShellHeaderView(title: ["应用", "安装包", "插件"][index],
+                                   width: view.bounds.width,
+                                   safeTop: view.safeAreaInsets.top,
+                                   background: bg)
+        head.searchBar.delegate = self
+        searchBar = head.searchBar
+        return head
     }
 
     private func buildCompact(_ name: String) {

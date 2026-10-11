@@ -6,6 +6,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		EFAAB2000000000000000001 /* IPAArchivePackager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFAAB2000000000000000002 /* IPAArchivePackager.swift */; };
 		EFAAB1000000000000000001 /* IPAArchiveIntegrity.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFAAB1000000000000000002 /* IPAArchiveIntegrity.swift */; };
 		DDAA11000000000000000001 /* Zip in Frameworks */ = {isa = PBXBuildFile; productRef = DDAA11000000000000000002 /* Zip */; };
 		B134AC980000000000000001 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = B134AC980000000000000002 /* ZIPFoundation */; };
@@ -38,6 +39,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		EFAAB2000000000000000002 /* IPAArchivePackager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/IPAArchivePackager.swift; sourceTree = "<group>"; };
 		EFAAB1000000000000000002 /* IPAArchiveIntegrity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/IPAArchiveIntegrity.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4008 /* SoftwareSourceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Sources/SoftwareSourceStore.swift; sourceTree = "<group>"; };
 		B1A2C3D4E5F6012345678902 /* UDIDLocalServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/UDIDLocalServer.swift; sourceTree = "<group>"; };
@@ -86,6 +88,7 @@
 				AABBCCDDEEFF001122334456 /* IPAInspector.swift */,
 				2A2B19A5F9D360CE0B83E05E /* AppSigningService.swift */,
 				EFAAB1000000000000000002 /* IPAArchiveIntegrity.swift */,
+				EFAAB2000000000000000002 /* IPAArchivePackager.swift */,
 				F0F0AA110000000000000002 /* ZNZsignKit.swift */,
 				C0A100000000000000000002 /* IPAIconReplacement.swift */,
 				02E35CD70AC65FE97C8641DF /* OTAInstallService.swift */,
@@ -132,6 +135,7 @@
 				AABBCCDDEEFF001122334455 /* IPAInspector.swift in Sources */,
 				7F2B8AD34949855293397653 /* AppSigningService.swift in Sources */,
 				EFAAB1000000000000000001 /* IPAArchiveIntegrity.swift in Sources */,
+				EFAAB2000000000000000001 /* IPAArchivePackager.swift in Sources */,
 				F0F0AA110000000000000001 /* ZNZsignKit.swift in Sources */,
 				C0A100000000000000000001 /* IPAIconReplacement.swift in Sources */,
 				E10000000000000000000005 /* SigningExecutionView.swift in Sources */,

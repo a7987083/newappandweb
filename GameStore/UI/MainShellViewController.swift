@@ -247,6 +247,11 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         present(a,animated: true)
     }
 
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        guard selectedTab == 0 else { return }
+        catalog?.openDetail(atVisibleRow: indexPath.row)
+    }
+
     func tableView(_ tableView: UITableView,numberOfRowsInSection section: Int) -> Int { filtered.count }
     func tableView(_ tableView: UITableView,cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Demo",for: indexPath) as! ShellPlaceholderCell

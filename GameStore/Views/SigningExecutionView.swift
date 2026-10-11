@@ -125,7 +125,7 @@ struct SigningExecutionView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack {
                                 if running { SigningActivityIndicator().frame(width: 22, height: 22) }
-                                Text(stageName(state))
+                                Text(cancellationPending ? "正在取消并清理临时文件…" : stageName(state))
                             }
                             Button("查看签名详细报告（\(reportLines.count) 条）") { activeSheet = .report }
                                 .font(.footnote)
@@ -150,17 +150,24 @@ struct SigningExecutionView: View {
                 }
                 .background(pageColor)
 
-                Button(action: start) {
-                    Text(running ? "正在处理…" : "确认修改 / 打包")
+                Button(action: {
+                    if running {
+                        cancellationPending = true
+                        engine.cancel()
+                    } else {
+                        start()
+                    }
+                }) {
+                    Text(cancellationPending ? "正在取消…" : (running ? "取消签名" : "确认修改 / 打包"))
                         .font(.system(size: 18, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 54)
-                        .background(Color(red: 0.20, green: 0.47, blue: 0.97))
+                        .background(running ? Color(red: 0.76, green: 0.25, blue: 0.25) : Color(red: 0.20, green: 0.47, blue: 0.97))
                         .foregroundColor(.white)
                         .cornerRadius(17)
                 }
-                .disabled(running || result != nil ||
-                          (!signingOptions.options.temporarySigning &&
+                .disabled(cancellationPending || result != nil ||
+                          (!running && !signingOptions.options.temporarySigning &&
                            !certificates.certificates.contains(where: { $0.id == selectedID })))
                 .padding(.horizontal, 18)
                 .padding(.top, 14)
@@ -213,7 +220,7 @@ struct SigningExecutionView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(16)
                             }
-                            .navigationBarTitle(running ? "签名进行中" : "签名详细报告", displayMode: .inline)
+                            .navigationBarTitle(cancellationPending ? "正在取消" : (running ? "签名进行中" : "签名详细报告"), displayMode: .inline)
                             .navigationBarItems(
                                 leading: Button("复制") {
                                     UIPasteboard.general.string = reportLines.joined(separator: "\n")

@@ -15,6 +15,9 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     private var overlay: UIView?
     private var oldSearchFrame = CGRect.zero
     private var normalTableFrame = CGRect.zero
+    private var savedBrowseOffset: CGFloat = 0
+    private var savedBrowseRow: Int?
+    private var savedBrowseRowTopDelta: CGFloat = 0
     private var initialSize = CGSize.zero
     private var savedBottomInset: CGFloat = 100
     private var keyboardObserver: NSObjectProtocol?
@@ -222,6 +225,19 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         guard !searching,let table = currentTable else { return true }
         searching = true
         normalTableFrame = table.frame
+        // Preserve the browsing anchor before filtering, collapsing the header
+        // or changing the table viewport. Never use the search result offset.
+        table.layoutIfNeeded()
+        savedBrowseOffset = table.contentOffset.y
+        savedBrowseRow = table.indexPathsForVisibleRows?
+            .filter { $0.section == 0 }
+            .sorted { $0.row < $1.row }
+            .first?.row
+        if let row = savedBrowseRow {
+            savedBrowseRowTopDelta = table.rectForRow(at: IndexPath(row: row, section: 0)).minY - savedBrowseOffset
+        } else {
+            savedBrowseRowTopDelta = 0
+        }
         oldSearchFrame = bar.frame
         let origin = bar.superview?.convert(bar.frame,to: view) ?? bar.frame
         let safe = view.safeAreaInsets.top
@@ -276,7 +292,6 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     @objc private func cancelSearch() { closeSearch(animated: true) }
     private func closeSearch(animated: Bool) {
         guard searching,let bar = searchBar,let table = currentTable else { return }
-        let offset = table.contentOffset.y
         searching = false
         if let observer = keyboardObserver { NotificationCenter.default.removeObserver(observer); keyboardObserver = nil }
         table.contentInset.bottom = savedBottomInset
@@ -292,9 +307,22 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             if selectedTab == 0 { catalog?.setHeaderCollapsed(false) }
             else { table.tableHeaderView = h }
         }
-        let minimum = -table.adjustedContentInset.top
-        let maximum = max(minimum,table.contentSize.height-table.bounds.height+table.adjustedContentInset.bottom)
-        table.setContentOffset(CGPoint(x: 0,y: min(max(offset+headerHeight,minimum),maximum)),animated: false)
+        // The unfiltered row set and full header must be installed before
+        // resolving the pre-search browsing position.
+        table.layoutIfNeeded()
+        let restoreOffset: CGFloat
+        if let row = savedBrowseRow, row < table.numberOfRows(inSection: 0) {
+            restoreOffset = table.rectForRow(at: IndexPath(row: row, section: 0)).minY - savedBrowseRowTopDelta
+        } else {
+            restoreOffset = savedBrowseOffset
+        }
+        let restoreBrowsePosition = {
+            table.layoutIfNeeded()
+            let minimum = -table.adjustedContentInset.top
+            let maximum = max(minimum, table.contentSize.height - table.bounds.height + table.adjustedContentInset.bottom)
+            table.setContentOffset(CGPoint(x: 0, y: min(max(restoreOffset, minimum), maximum)), animated: false)
+        }
+        restoreBrowsePosition()
         let destination = header?.convert(oldSearchFrame,to: view) ?? oldSearchFrame
         dock.isHidden = false
         let finish = {
@@ -306,6 +334,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             self.overlay = nil
             self.compact.isHidden = false
             self.dock.alpha = 1
+            restoreBrowsePosition()
             self.scrollViewDidScroll(table)
         }
         if animated {

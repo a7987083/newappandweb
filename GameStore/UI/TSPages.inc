@@ -1,13 +1,11 @@
 - (void)build {
  if (self.tab == 3) {
   SettingsViewController *settings = [SettingsViewController new];
-  UINavigationController *settingsNavigation = [[UINavigationController alloc] initWithRootViewController:settings];
-  settingsNavigation.navigationBarHidden = YES;
-  [self addChildViewController:settingsNavigation];
-  settingsNavigation.view.frame = self.view.bounds;
-  settingsNavigation.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-  [self.view addSubview:settingsNavigation.view];
-  [settingsNavigation didMoveToParentViewController:self];
+  [self addChildViewController:settings];
+  settings.view.frame = self.view.bounds;
+  settings.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+  [self.view addSubview:settings.view];
+  [settings didMoveToParentViewController:self];
   [self tabs];
   return;
  }

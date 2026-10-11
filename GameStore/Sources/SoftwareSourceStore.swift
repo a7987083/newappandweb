@@ -479,33 +479,40 @@ final class SourceUnlockService {
             guard message == "ok，解锁成功" else {
                 completion(.failure(Failure.invalid(message.isEmpty ? "解锁失败" : message))); return
             }
-            self.verify(app: app, udid: device, completion: completion)
+            self.verifyAuthorization(udid: device) { result in
+                switch result {
+                case .success: completion(.success(()))
+                case .failure(let error): completion(.failure(error))
+                }
+            }
         }.resume()
     }
-    private func verify(app: SourceCatalogApp, udid: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let endpoint = URL(string: "https://app.zonoeios.xyz/index/index/apiface"),
-              let target = query(endpoint, [URLQueryItem(name: "udid", value: udid)]) else {
-            completion(.failure(Failure.invalid("校验地址无效"))); return
+    // Authorization is always read from the server, never from persistent grants.
+    func verifyAuthorization(udid: String, completion: @escaping (Result<Date, Error>) -> Void) {
+        let device = udid.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !device.isEmpty,
+              let endpoint = URL(string: "https://app.zonoeios.xyz/index/index/apiface"),
+              let target = query(endpoint, [URLQueryItem(name: "udid", value: device)]) else {
+            completion(.failure(Failure.invalid("UDID 或校验地址无效")))
+            return
         }
         URLSession.shared.dataTask(with: target) { data, response, error in
             if let error = error { completion(.failure(error)); return }
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
-                  let data = data, let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                completion(.failure(Failure.invalid("授权状态响应无效"))); return
+                  let data = data,
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                completion(.failure(Failure.invalid("授权状态响应无效")))
+                return
             }
             let code = (object["code"] as? NSNumber)?.intValue ?? (object["code"] as? String).flatMap(Int.init)
             let expiry = (object["expire"] as? NSNumber)?.doubleValue ?? (object["expire"] as? String).flatMap(Double.init)
-            guard code == 1, object["msg"] as? String == "ok", let expires = expiry,
-                  expires > Date().timeIntervalSince1970 else {
-                completion(.failure(Failure.invalid("授权无效或已过期"))); return
+            guard code == 1, object["msg"] as? String == "ok",
+                  let expires = expiry, expires > Date().timeIntervalSince1970 else {
+                completion(.failure(Failure.invalid("授权无效或已过期")))
+                return
             }
-            UserDefaults.standard.set(expires, forKey: self.grantKey(app: app, udid: udid))
-            completion(.success(()))
+            completion(.success(Date(timeIntervalSince1970: expires)))
         }.resume()
-    }
-    func isUnlocked(_ app: SourceCatalogApp, udid: String?) -> Bool {
-        guard let udid = udid, !udid.isEmpty else { return false }
-        return UserDefaults.standard.double(forKey: grantKey(app: app, udid: udid)) > Date().timeIntervalSince1970
     }
     private func grantKey(app: SourceCatalogApp, udid: String) -> String {
         let identity = app.bundleIdentifier.isEmpty ? app.name : app.bundleIdentifier

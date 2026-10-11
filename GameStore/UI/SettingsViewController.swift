@@ -246,6 +246,12 @@ private final class DeviceAuthDetailController: UIViewController {
         UDIDService.shared.requestProfileConfiguration()
     }
 
+    @objc private func copyUDID() {
+        guard let value = UDIDService.shared.udid,
+              UDIDLocalServer.validUDID(value) else { return }
+        UIPasteboard.general.string = value
+    }
+
     private func infoRow(_ title: String, value: String, symbol: String? = nil, valueColor: UIColor = SettingsStyle.secondary) -> UIView {
         let row = UIView()
         row.heightAnchor.constraint(equalToConstant: 54).isActive = true
@@ -271,6 +277,11 @@ private final class DeviceAuthDetailController: UIViewController {
             icon.tintColor = SettingsStyle.blue
             icon.translatesAutoresizingMaskIntoConstraints = false
             row.addSubview(icon)
+            if title == "UDID" {
+                let tap = UITapGestureRecognizer(target: self, action: #selector(copyUDID))
+                row.addGestureRecognizer(tap)
+                row.isUserInteractionEnabled = true
+            }
             NSLayoutConstraint.activate([
                 icon.trailingAnchor.constraint(equalTo: row.trailingAnchor),
                 icon.centerYAnchor.constraint(equalTo: row.centerYAnchor),

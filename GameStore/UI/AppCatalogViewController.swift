@@ -167,8 +167,8 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
             date = "—"
         }
         cell.configure(name: app.name,
-                       version: app.version.isEmpty ? "—" : app.version,
-                       metadata: "\(size) · \(date)",
+                       metadata: "\(app.version.isEmpty ? "—" : app.version) · \(size) · \(date)",
+                       descriptionText: app.description,
                        iconURL: app.iconURL?.absoluteString ?? "")
         return cell
     }

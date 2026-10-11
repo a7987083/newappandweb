@@ -7,8 +7,8 @@ final class AppCatalogCell: UITableViewCell {
     private let placeholder = UIImageView(image: UIImage(systemName: "square.grid.2x2.fill"))
     private let iconView = UIImageView()
     private let nameLabel = UILabel()
-    private let versionLabel = UILabel()
     private let metadataLabel = UILabel()
+    private let descriptionLabel = UILabel()
     private let downloadButton = UIButton(type: .system)
     private var representedIconURL = ""
 
@@ -32,13 +32,14 @@ final class AppCatalogCell: UITableViewCell {
         nameLabel.font = .boldSystemFont(ofSize: 15)
         nameLabel.textColor = .black
         nameLabel.lineBreakMode = .byTruncatingTail
-        versionLabel.font = .systemFont(ofSize: 11)
-        versionLabel.textColor = .secondaryLabel
-        metadataLabel.font = .systemFont(ofSize: 10)
+        metadataLabel.font = .systemFont(ofSize: 11)
         metadataLabel.textColor = .secondaryLabel
         metadataLabel.adjustsFontSizeToFitWidth = true
         metadataLabel.minimumScaleFactor = 0.8
-        [nameLabel, versionLabel, metadataLabel].forEach(card.addSubview)
+        descriptionLabel.font = .systemFont(ofSize: 10)
+        descriptionLabel.textColor = .secondaryLabel
+        descriptionLabel.lineBreakMode = .byTruncatingTail
+        [nameLabel, metadataLabel, descriptionLabel].forEach(card.addSubview)
         downloadButton.setTitle("下载", for: .normal)
         downloadButton.titleLabel?.font = .boldSystemFont(ofSize: 12)
         downloadButton.setTitleColor(.white, for: .normal)
@@ -59,8 +60,8 @@ final class AppCatalogCell: UITableViewCell {
         iconView.frame = iconBacking.bounds
         let textWidth = max(0, card.bounds.width - 72 - 88)
         nameLabel.frame = CGRect(x: 72, y: 10, width: textWidth, height: 23)
-        versionLabel.frame = CGRect(x: 72, y: 34, width: textWidth, height: 17)
-        metadataLabel.frame = CGRect(x: 72, y: 55, width: max(0, card.bounds.width - 85), height: 17)
+        metadataLabel.frame = CGRect(x: 72, y: 34, width: textWidth, height: 17)
+        descriptionLabel.frame = CGRect(x: 72, y: 55, width: max(0, card.bounds.width - 85), height: 17)
         downloadButton.frame = CGRect(x: max(72, card.bounds.width - 80), y: 20, width: 68, height: 30)
     }
 
@@ -70,11 +71,11 @@ final class AppCatalogCell: UITableViewCell {
         iconView.image = nil
     }
 
-    @objc(configureWithName:version:metadata:iconURL:)
-    func configure(name: String, version: String, metadata: String, iconURL: String) {
+    @objc(configureWithName:metadata:descriptionText:iconURL:)
+    func configure(name: String, metadata: String, descriptionText: String, iconURL: String) {
         nameLabel.text = name
-        versionLabel.text = version
         metadataLabel.text = metadata
+        descriptionLabel.text = descriptionText
         representedIconURL = iconURL
         iconView.image = nil
         guard let url = URL(string: iconURL),

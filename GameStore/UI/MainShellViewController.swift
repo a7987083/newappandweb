@@ -15,6 +15,8 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     private var overlay: UIView?
     private var oldSearchFrame = CGRect.zero
     private var initialSize = CGSize.zero
+    private var savedBottomInset: CGFloat = 100
+    private var keyboardObserver: NSObjectProtocol?
     private let blue = UIColor(red: 51/255, green: 124/255, blue: 250/255, alpha: 1)
     private let bg = UIColor(red: 242/255, green: 242/255, blue: 247/255, alpha: 1)
     private var rows: [(String,String,String)] = []
@@ -29,6 +31,8 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             SoftwareSourceStore.shared.refreshCatalog()
         }
     }
+
+    deinit { if let keyboardObserver = keyboardObserver { NotificationCenter.default.removeObserver(keyboardObserver) } }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
@@ -233,12 +237,24 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         cancel.addTarget(self,action: #selector(cancelSearch),for: .touchUpInside)
         panel.addSubview(cancel)
         compact.isHidden = true
+        header?.clipsToBounds = true
+        header?.subviews.forEach { $0.isHidden = true }
         if let h = header {
             var f = h.frame
             f.size.height = 0
             h.frame = f
             if selectedTab == 0 { catalog?.setHeaderCollapsed(true) }
             else { table.tableHeaderView = h }
+        }
+        table.setContentOffset(CGPoint(x: 0, y: 0), animated: false)
+        savedBottomInset = table.contentInset.bottom
+        keyboardObserver = NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification, object: nil, queue: .main) { [weak self] note in
+            guard let self = self, self.searching, let table = self.currentTable,
+                  let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            let local = self.view.convert(frame, from: nil)
+            let overlap = max(0, self.view.bounds.maxY - max(self.view.bounds.minY, local.minY))
+            table.contentInset.bottom = max(self.savedBottomInset, overlap + 12)
+            table.scrollIndicatorInsets.bottom = table.contentInset.bottom
         }
         UIView.animate(withDuration: 0.28) {
             panel.alpha = 1
@@ -253,6 +269,9 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         guard searching,let bar = searchBar,let table = currentTable else { return }
         let offset = table.contentOffset.y
         searching = false
+        if let observer = keyboardObserver { NotificationCenter.default.removeObserver(observer); keyboardObserver = nil }
+        table.contentInset.bottom = savedBottomInset
+        table.scrollIndicatorInsets.bottom = savedBottomInset
         bar.resignFirstResponder()
         bar.text = ""
         searchBar(bar,textDidChange: "")
@@ -272,6 +291,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             bar.removeFromSuperview()
             bar.frame = self.oldSearchFrame
             self.header?.addSubview(bar)
+            self.header?.subviews.forEach { $0.isHidden = false }
             self.overlay?.removeFromSuperview()
             self.overlay = nil
             self.compact.isHidden = false

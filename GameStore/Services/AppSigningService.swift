@@ -141,7 +141,7 @@ final class AppSigningService: AppSigning {
         compareNestedSnapshots(before: beforeNested, after: afterNested)
         try IPAArchiveIntegrity.checkFilesystem(root: payloadRoot, baseline: archiveBaseline.specialEntries)
         emit(.repacking)
-        report("开始压缩输出 IPA")
+        report("开始压缩输出 IPA：\(request.editing.compressionPreset.title)")
         let outDir = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Signed", isDirectory: true)
         try fm.createDirectory(at: outDir, withIntermediateDirectories: true, attributes: nil)
@@ -156,7 +156,7 @@ final class AppSigningService: AppSigning {
         let output = outDir.appendingPathComponent(destinationName)
         do {
             if fm.fileExists(atPath: output.path) { try fm.removeItem(at: output) }
-            try fm.zipItem(at: payloadRoot, to: output, shouldKeepParent: false, compressionMethod: .deflate)
+            try IPAArchivePackager.pack(root: payloadRoot, output: output, preset: request.editing.compressionPreset)
             try IPAArchiveIntegrity.verifyOutput(output, baseline: archiveBaseline)
             emit(.verifySignature)
             let inspected = try IPAInspector.inspect(output)

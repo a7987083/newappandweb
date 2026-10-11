@@ -110,8 +110,16 @@ final class AppSigningService: AppSigning {
         // Do not reject nonstandard SC_Info directory metadata before unpacking.
         Zip.addCustomFileExtension("ipa")
         Zip.addCustomFileExtension("tipa")
-        try Zip.unzipFile(request.ipaURL, destination: payloadRoot, overwrite: true, password: nil)
-        report("IPA 解压完成（Zip/minizip）")
+        if let prepared = try DownloadIPAExtractor.preparedDirectory(for: request.ipaURL) {
+            // All signing mutations happen on a private tmp copy.
+            try fm.removeItem(at: payloadRoot)
+            try fm.copyItem(at: prepared, to: payloadRoot)
+            report("已复制预解压 IPA 至临时签名目录：" + prepared.lastPathComponent)
+        } else {
+            // Keep imported/unprepared IPA compatibility.
+            try Zip.unzipFile(request.ipaURL, destination: payloadRoot, overwrite: true, password: nil)
+            report("IPA 解压完成（Zip/minizip，非预解压来源）")
+        }
         try checkCancellation()
         let payload = payloadRoot.appendingPathComponent("Payload", isDirectory: true)
         let apps = (try fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: [.isDirectoryKey]))

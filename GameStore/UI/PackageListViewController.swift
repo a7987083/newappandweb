@@ -37,6 +37,10 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
                 self?.items = active + completed + terminal
                 self?.applyFilter()
             }.store(in: &subscriptions)
+        center.$extractionStatus
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.tableView.reloadData() }
+            .store(in: &subscriptions)
         center.reloadDownloadedItems()
     }
 
@@ -87,7 +91,14 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
         case .queued: status = "等待下载"; action = nil
         case .downloading: status = "\(Int(min(1, max(0, item.progress)) * 100))% · 下载中"; action = "暂停"
         case .paused: status = "已暂停"; action = "继续"
-        case .completed: status = "已下载"; action = "检查"
+        case .completed:
+            let extraction = center.extractionStatus[item.localURL?.lastPathComponent ?? ""]
+            if let extraction = extraction {
+                status = "已下载 · " + extraction
+                action = extraction.hasPrefix("解压失败") ? "重新解压" : "检查"
+            } else {
+                status = "已下载"; action = "检查"
+            }
         case .failed: status = item.errorDescription ?? "下载失败"; action = "重试"
         case .cancelled: status = "已取消"; action = "重试"
         }
@@ -105,7 +116,11 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
         case .failed, .cancelled: center.enqueue(item.sourceURL)
         case .completed:
             guard let url = item.localURL else { return }
-            inspect(url)
+            if center.extractionStatus[url.lastPathComponent]?.hasPrefix("解压失败") == true {
+                center.retryExtraction(for: item)
+            } else {
+                inspect(url)
+            }
         case .queued: break
         }
     }

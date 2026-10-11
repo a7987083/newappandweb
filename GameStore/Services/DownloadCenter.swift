@@ -337,6 +337,32 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         }
     }
 
+    func retryExtraction(for item: Item) {
+        guard Thread.isMainThread, item.state == .completed,
+              let url = item.localURL,
+              completedItems.contains(where: { $0.id == item.id }) else { return }
+        scheduleExtraction(url)
+    }
+
+    private func scheduleExtraction(_ url: URL) {
+        let name = url.lastPathComponent
+        guard extractionStatus[name] != "正在解压" else { return }
+        extractionStatus[name] = "正在解压"
+        archiveQueue.async { [weak self] in
+            do {
+                try DownloadIPAExtractor.extract(url)
+                DispatchQueue.main.async {
+                    self?.extractionStatus[name] = "解压完成"
+                }
+            } catch {
+                NSLog("DownloadCenter: extraction failed for %@: %@", name, error.localizedDescription)
+                DispatchQueue.main.async {
+                    self?.extractionStatus[name] = "解压失败：" + error.localizedDescription
+                }
+            }
+        }
+    }
+
     func reloadDownloadedItems() {
         let fileManager = FileManager.default
         let directory = Self.downloadsDirectory(fileManager: fileManager)
@@ -405,6 +431,20 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                         taskIdentifier: nil
                     )
                 }
+                // Recover downloads after app restart; skip already verified extractions.
+                for file in files where self.extractionStatus[file.lastPathComponent] == nil {
+                    self.archiveQueue.async { [weak self] in
+                        let ready = (try? DownloadIPAExtractor.preparedDirectory(for: file)) != nil
+                        DispatchQueue.main.async {
+                            guard let self = self else { return }
+                            if ready {
+                                self.extractionStatus[file.lastPathComponent] = "解压完成"
+                            } else {
+                                self.scheduleExtraction(file)
+                            }
+                        }
+                    }
+                }
             }
         } catch {
             DispatchQueue.main.async {
@@ -470,17 +510,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             // a unique filename; moveItem fails safely if another writer wins.
             try FileManager.default.moveItem(at: location, to: destination)
             DispatchQueue.main.async {
-                self.extractionStatus[destination.lastPathComponent] = "正在解压"
-            }
-            archiveQueue.async {
-                do {
-                    try DownloadIPAExtractor.extract(destination)
-                    DispatchQueue.main.async { self.extractionStatus[destination.lastPathComponent] = "解压完成" }
-                } catch {
-                    DispatchQueue.main.async {
-                        self.extractionStatus[destination.lastPathComponent] = "解压失败：" + error.localizedDescription
-                    }
-                }
+                self.scheduleExtraction(destination)
             }
             let originalSource = downloadTask.originalRequest?.url
             DispatchQueue.main.async {

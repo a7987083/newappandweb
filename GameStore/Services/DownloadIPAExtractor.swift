@@ -30,6 +30,25 @@ enum DownloadIPAExtractor {
         }
     }
 
+    static func preparedDirectory(for ipa: URL) throws -> URL? {
+        let fm = FileManager.default
+        let downloads = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("zonoeDownloads", isDirectory: true)
+        guard ipa.standardizedFileURL.deletingLastPathComponent() == downloads.standardizedFileURL else { return nil }
+        let mapping = try loadMap()
+        guard let identifier = mapping[ipa.lastPathComponent], validIdentifier(identifier) else { return nil }
+        let directory = downloads.deletingLastPathComponent()
+            .appendingPathComponent("zonoeunzipIPa", isDirectory: true)
+            .appendingPathComponent(identifier, isDirectory: true)
+        let attributes = try? directory.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard attributes?.isDirectory == true, attributes?.isSymbolicLink != true else { return nil }
+        let payload = directory.appendingPathComponent("Payload", isDirectory: true)
+        let apps = (try? fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        guard apps.filter({ $0.pathExtension.lowercased() == "app" &&
+            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }).count == 1 else { return nil }
+        return directory
+    }
+
     static func extract(_ ipa: URL) throws {
         let fm = FileManager.default
         let root = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -47,8 +66,9 @@ enum DownloadIPAExtractor {
         }
         let destination = root.appendingPathComponent(identifier, isDirectory: true)
         if mapping[filename] == identifier && fm.fileExists(atPath: destination.path) {
-            // Idempotent retry: keep the original folder and mapping.
-            return
+            if try preparedDirectory(for: ipa) != nil { return }
+            // An incomplete mapped directory must not be reused.
+            try fm.removeItem(at: destination)
         }
         let staging = root.appendingPathComponent(".staging-" + UUID().uuidString, isDirectory: true)
         try fm.createDirectory(at: staging, withIntermediateDirectories: true)

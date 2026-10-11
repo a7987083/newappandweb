@@ -76,6 +76,11 @@ final class SettingsViewController: UIViewController {
         ] {
             stack.addArrangedSubview(placeholder(title, icon: symbol))
         }
+        SettingsStyle.section("软件源", in: stack)
+        let source = placeholder("软件源", icon: "tray.full.fill")
+        source.removeTarget(self, action: #selector(placeholderTapped(_:)), for: .touchUpInside)
+        source.addTarget(self, action: #selector(openSources), for: .touchUpInside)
+        stack.addArrangedSubview(source)
         SettingsStyle.section("签名工具 (LDID)", in: stack)
         stack.addArrangedSubview(placeholder("ldid 状态（演示占位）", icon: "checkmark.seal.fill"))
         SettingsStyle.section("持久性助手", in: stack)
@@ -115,11 +120,186 @@ final class SettingsViewController: UIViewController {
         present(alert, animated: true)
     }
 
+    @objc private func openSources() {
+        let controller = SoftwareSourcesSettingsController()
+        controller.modalPresentationStyle = .fullScreen
+        present(controller, animated: true)
+    }
+
     @objc private func openDeviceAuth() {
         let detail = DeviceAuthDetailController()
         detail.modalPresentationStyle = .fullScreen
         present(detail, animated: true)
     }
+}
+
+
+// Software sources settings: private UIKit screen, deliberately kept in this UI file.
+// Source validation, persistence and network decoding remain in SoftwareSourceStore.
+private final class SoftwareSourcesSettingsController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+    private let store = SoftwareSourceStore.shared
+    private let table = UITableView(frame: .zero, style: .grouped)
+    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let emptyLabel = SettingsStyle.text("暂无软件源\n点击右上角 + 添加 HTTP/HTTPS 软件源地址", size: 15, color: SettingsStyle.secondary)
+    private var activeRequest = false
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = SettingsStyle.background
+        let header = UIView()
+        header.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(header)
+        let back = UIButton(type: .system)
+        back.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+        back.tintColor = SettingsStyle.blue
+        back.addTarget(self, action: #selector(close), for: .touchUpInside)
+        back.translatesAutoresizingMaskIntoConstraints = false
+        header.addSubview(back)
+        let title = SettingsStyle.text("软件源", size: 19, bold: true)
+        title.translatesAutoresizingMaskIntoConstraints = false
+        header.addSubview(title)
+        let add = UIButton(type: .system)
+        add.setImage(UIImage(systemName: "plus"), for: .normal)
+        add.tintColor = SettingsStyle.blue
+        add.addTarget(self, action: #selector(addSource), for: .touchUpInside)
+        add.translatesAutoresizingMaskIntoConstraints = false
+        header.addSubview(add)
+        NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            header.heightAnchor.constraint(equalToConstant: 50),
+            back.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 12),
+            back.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            back.widthAnchor.constraint(equalToConstant: 40),
+            back.heightAnchor.constraint(equalToConstant: 40),
+            title.centerXAnchor.constraint(equalTo: header.centerXAnchor),
+            title.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            add.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -12),
+            add.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            add.widthAnchor.constraint(equalToConstant: 40),
+            add.heightAnchor.constraint(equalToConstant: 40)
+        ])
+        table.translatesAutoresizingMaskIntoConstraints = false
+        table.backgroundColor = SettingsStyle.background
+        table.dataSource = self
+        table.delegate = self
+        table.rowHeight = UITableView.automaticDimension
+        table.estimatedRowHeight = 76
+        view.addSubview(table)
+        NSLayoutConstraint.activate([
+            table.topAnchor.constraint(equalTo: header.bottomAnchor),
+            table.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            table.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            table.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        emptyLabel.textAlignment = .center
+        emptyLabel.numberOfLines = 0
+        spinner.hidesWhenStopped = true
+        navigationItem.rightBarButtonItem?.isEnabled = true
+        refreshList()
+    }
+
+    private func refreshList() {
+        table.reloadData()
+        if store.sources.isEmpty {
+            let empty = UIView(frame: CGRect(x: 0, y: 0, width: max(view.bounds.width, 280), height: 210))
+            emptyLabel.frame = CGRect(x: 20, y: 40, width: empty.bounds.width - 40, height: 100)
+            empty.addSubview(emptyLabel)
+            table.backgroundView = empty
+        } else {
+            table.backgroundView = nil
+        }
+    }
+
+    func numberOfSections(in tableView: UITableView) -> Int { 1 }
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { store.sources.count }
+    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        store.sources.isEmpty ? nil : "已添加"
+    }
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "source")
+            ?? UITableViewCell(style: .subtitle, reuseIdentifier: "source")
+        let address = store.sources[indexPath.row]
+        cell.textLabel?.text = store.sourceNames[address] ?? URL(string: address)?.host ?? "软件源"
+        cell.textLabel?.font = UIFont.preferredFont(forTextStyle: .headline)
+        cell.detailTextLabel?.text = address
+        cell.detailTextLabel?.numberOfLines = 2
+        cell.detailTextLabel?.textColor = SettingsStyle.secondary
+        cell.selectionStyle = .none
+        return cell
+    }
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        guard store.sources.indices.contains(indexPath.row) else { return nil }
+        let address = store.sources[indexPath.row]
+        let copy = UIContextualAction(style: .normal, title: "复制") { _, _, done in
+            UIPasteboard.general.string = address
+            done(true)
+        }
+        copy.backgroundColor = SettingsStyle.blue
+        let delete = UIContextualAction(style: .destructive, title: "删除") { [weak self] _, _, done in
+            self?.store.remove(address)
+            self?.refreshList()
+            done(true)
+        }
+        let actions = UISwipeActionsConfiguration(actions: [delete, copy])
+        actions.performsFirstActionWithFullSwipe = false
+        return actions
+    }
+
+    @objc private func addSource() {
+        guard !activeRequest else { return }
+        let alert = UIAlertController(title: "添加软件源", message: "请输入 HTTP 或 HTTPS 软件源地址", preferredStyle: .alert)
+        alert.addTextField { field in
+            field.placeholder = "https://example.com/repo.json"
+            field.keyboardType = .URL
+            field.autocapitalizationType = .none
+            field.autocorrectionType = .no
+            field.clearButtonMode = .whileEditing
+        }
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "添加", style: .default) { [weak self, weak alert] _ in
+            self?.register(alert?.textFields?.first?.text ?? "")
+        })
+        present(alert, animated: true)
+    }
+
+    private func register(_ input: String) {
+        let value = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: value),
+              let scheme = url.scheme?.lowercased(), (scheme == "http" || scheme == "https"),
+              let host = url.host, !host.isEmpty else {
+            showError("请输入有效的 HTTP 或 HTTPS 软件源地址。")
+            return
+        }
+        guard !store.sources.contains(url.absoluteString) else {
+            showError("该软件源已经添加。")
+            return
+        }
+        activeRequest = true
+        let loading = UIAlertController(title: "正在添加软件源", message: "正在请求并解析软件源…", preferredStyle: .alert)
+        present(loading, animated: true)
+        store.add(url) { [weak self, weak loading] result in
+            DispatchQueue.main.async {
+                self?.activeRequest = false
+                loading?.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success: self.refreshList()
+                    case .failure(let error): self.showError(error.localizedDescription)
+                    }
+                }
+            }
+        }
+    }
+
+    private func showError(_ message: String) {
+        let alert = UIAlertController(title: "添加软件源失败", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确定", style: .default))
+        present(alert, animated: true)
+    }
+
+    @objc private func close() { dismiss(animated: true) }
 }
 
 // Local presentation-only detail controller; intentionally not registered as a separate source file.

@@ -28,6 +28,10 @@ final class SoftwareSourceStore: ObservableObject {
         sourceNames = UserDefaults.standard.dictionary(forKey: Self.namesKey) as? [String: String] ?? [:]
         catalogsBySource = SourceCatalogCache.load().filter { sources.contains($0.key) }
         catalogApps = catalogsBySource.values.flatMap { $0 }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        // Migrate the v1 JSON snapshot even when launching offline.
+        if !catalogsBySource.isEmpty && SourceCatalogCache.needsMigration {
+            SourceCatalogCache.saveAsync(catalogsBySource) { _ in }
+        }
     }
 
     func remove(_ value: String) {
@@ -232,7 +236,7 @@ extension SoftwareSourceStore {
             self.catalogError = failures.isEmpty ? nil : "刷新部分失败，已保留旧数据"
             self.isCatalogLoading = false
             SourceCatalogCache.saveAsync(next) { [weak self] error in
-                guard let self = self, let error = error else { return }
+                guard let self = self, let error = error, generation == self.refreshGeneration else { return }
                 // The screen remains usable even when offline persistence fails.
                 self.catalogError = "本地缓存保存失败：" + error.localizedDescription
             }

@@ -232,7 +232,7 @@ extension SoftwareSourceStore {
             self.catalogApps = next.values.flatMap { $0 }.sorted {
                 $0.name.localizedStandardCompare($1.name) == .orderedAscending
             }
-            SourceIconCache.shared.prefetch(self.catalogApps.compactMap { $0.iconURL })
+            // Icon fetching is driven by visible cells; never enqueue an entire catalog.
             self.catalogError = failures.isEmpty ? nil : "刷新部分失败，已保留旧数据"
             self.isCatalogLoading = false
             SourceCatalogCache.saveAsync(next) { [weak self] error in

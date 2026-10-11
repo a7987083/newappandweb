@@ -4,67 +4,65 @@ import UIKit
 struct ProfileView: View {
     @EnvironmentObject private var store: AppStoreViewModel
     @ObservedObject private var udidService = UDIDService.shared
+    private let surface = Color(red: 0.11, green: 0.14, blue: 0.19)
 
     var body: some View {
         NavigationView {
-            List {
-                Section {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
                     HStack(spacing: 14) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.accentColor.opacity(0.14))
-                                .frame(width: 58, height: 58)
-                            Image(systemName: udidService.udid == nil ? "iphone.slash" : "checkmark.seal.fill")
-                                .font(.system(size: 27))
-                                .foregroundColor(.accentColor)
-                        }
-
-                        VStack(alignment: .leading, spacing: 5) {
+                        Image(systemName: udidService.udid == nil ? "iphone.slash" : "checkmark.shield.fill")
+                            .font(.system(size: 27))
+                            .foregroundColor(.accentColor)
+                            .frame(width: 57, height: 57)
+                            .background(Color.accentColor.opacity(0.12))
+                            .cornerRadius(16)
+                        VStack(alignment: .leading, spacing: 6) {
                             Text(udidService.udid == nil ? "设备未认证" : "已认证设备")
                                 .font(.headline)
+                            Text(udidService.udid ?? "获取设备认证后可使用证书与安装功能")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                    .padding(17)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(surface).cornerRadius(20)
 
-                            if let udid = udidService.udid {
-                                Text(udid)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                            } else {
-                                Text("获取设备认证后可使用证书与安装功能")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                    Text("常用功能")
+                        .font(.system(size: 18, weight: .bold))
+                        .padding(.top, 8)
+
+                    VStack(spacing: 0) {
+                        if udidService.udid == nil {
+                            Button(action: { udidService.requestProfileConfiguration() }) {
+                                ProfileRow(icon: "checkmark.shield", title: "获取认证", subtitle: "安装描述文件并验证设备")
                             }
+                            .buttonStyle(PlainButtonStyle())
+                            Divider().padding(.leading, 50)
+                        }
+                        NavigationLink(destination: SourcesView()) {
+                            ProfileRow(icon: "tray.full", title: "软件源", subtitle: "添加软件源")
+                        }
+                        Divider().padding(.leading, 50)
+                        NavigationLink(destination: SigningSettingsView()) {
+                            ProfileRow(icon: "signature", title: "签名设置", subtitle: "配置签名与打包行为")
+                        }
+                        Divider().padding(.leading, 50)
+                        NavigationLink(destination: AboutView()) {
+                            ProfileRow(icon: "info.circle", title: "关于我们", subtitle: nil)
                         }
                     }
-                    .padding(.vertical, 5)
+                    .padding(.horizontal, 16)
+                    .background(surface)
+                    .cornerRadius(18)
                 }
-
-                Section(header: Text("功能")) {
-                    if udidService.udid == nil {
-                        Button(action: {
-                            udidService.requestProfileConfiguration()
-                        }) {
-                            ProfileRow(icon: "checkmark.shield", title: "获取认证", subtitle: "安装描述文件并验证设备")
-                        }
-                    }
-
-                    NavigationLink(destination: SourcesView()) {
-                        ProfileRow(icon: "tray.full", title: "软件源", subtitle: "添加软件源")
-                    }
-
-                    NavigationLink(destination: SigningSettingsView()) {
-                        ProfileRow(icon: "signature", title: "签名设置", subtitle: "配置签名与打包行为")
-                    }
-
-                }
-
-                Section {
-                    NavigationLink(destination: AboutView()) {
-                        ProfileRow(icon: "info.circle", title: "关于我们", subtitle: nil)
-                    }
-                }
+                .padding(.horizontal, 18)
+                .padding(.top, 16)
             }
-            .listStyle(GroupedListStyle())
-            .navigationBarTitle("个人中心")
+            .background(Color(red: 0.055, green: 0.070, blue: 0.095).edgesIgnoringSafeArea(.all))
+            .navigationBarTitle("我的")
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }

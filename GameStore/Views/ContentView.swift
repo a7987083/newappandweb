@@ -1,11 +1,17 @@
 import SwiftUI
 
-/// Floating capsule navigation. Existing feature views remain unchanged.
+/// TrollSkin-inspired presentation shell. Feature services and view models stay untouched.
+/// Uses only SwiftUI APIs available on iOS 13.
 struct ContentView: View {
     @State private var selectedTab = 0
 
+    private let canvas = Color(red: 0.055, green: 0.070, blue: 0.095)
+    private let panel = Color(red: 0.11, green: 0.14, blue: 0.19)
+    private let highlight = Color(red: 0.38, green: 0.79, blue: 0.98)
+
     var body: some View {
         ZStack(alignment: .bottom) {
+            canvas.edgesIgnoringSafeArea(.all)
             Group {
                 if selectedTab == 0 {
                     SoftwareView()
@@ -17,48 +23,51 @@ struct ContentView: View {
                     ProfileView()
                 }
             }
-            // Keep scrolling content above the floating capsule (iOS 13 compatible).
-            // The capsule is ~75 pt tall plus 12 pt bottom spacing.
-            .padding(.bottom, 100)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.bottom, 78)
 
-            floatingTabBar
-                .padding(.horizontal, 36)
-                .padding(.bottom, 12)
+            navigationBar
+                .padding(.horizontal, 18)
+                .padding(.bottom, 9)
         }
+        .environment(\.colorScheme, .dark)
+        .accentColor(highlight)
     }
 
-    private var floatingTabBar: some View {
-        HStack(spacing: 0) {
-            tabButton(index: 0, label: "应用", symbol: "square.grid.3x3.fill")
-            tabButton(index: 1, label: "搜索", symbol: "magnifyingglass")
-            tabButton(index: 2, label: "下载", symbol: "puzzlepiece.extension.fill")
-            tabButton(index: 3, label: "设置", symbol: "gearshape.fill")
+    private var navigationBar: some View {
+        HStack(spacing: 2) {
+            tab(index: 0, title: "应用", icon: "square.grid.2x2.fill")
+            tab(index: 1, title: "搜索", icon: "magnifyingglass")
+            tab(index: 2, title: "下载", icon: "arrow.down.circle.fill")
+            tab(index: 3, title: "我的", icon: "person.crop.circle.fill")
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, 9)
+        .padding(.horizontal, 5)
         .background(
-            Capsule()
-                .fill(Color(red: 0.95, green: 0.95, blue: 0.96))
-                .overlay(Capsule().stroke(Color.gray.opacity(0.30), lineWidth: 0.8))
-                .shadow(color: Color.black.opacity(0.10), radius: 18, x: 0, y: 7)
+            RoundedRectangle(cornerRadius: 21)
+                .fill(panel)
+                .overlay(RoundedRectangle(cornerRadius: 21)
+                    .stroke(Color.white.opacity(0.09), lineWidth: 1))
+                .shadow(color: Color.black.opacity(0.30), radius: 16, x: 0, y: 6)
         )
     }
 
-    private func tabButton(index: Int, label: String, symbol: String) -> some View {
-        let active = selectedTab == index
+    private func tab(index: Int, title: String, icon: String) -> some View {
+        let selected = selectedTab == index
         return Button(action: { selectedTab = index }) {
-            VStack(spacing: 5) {
-                Image(systemName: symbol)
-                    .font(.system(size: 27, weight: .semibold))
-                    .frame(height: 32)
-                Text(label)
-                    .font(.system(size: 12, weight: active ? .semibold : .medium))
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .semibold))
+                    .frame(height: 24)
+                Text(title).font(.system(size: 10, weight: .semibold))
             }
-            .foregroundColor(active ? Color.blue : Color.gray)
+            .foregroundColor(selected ? highlight : Color.white.opacity(0.50))
             .frame(maxWidth: .infinity)
+            .padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 15)
+                .fill(selected ? highlight.opacity(0.11) : Color.clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
-
     }
 }

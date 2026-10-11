@@ -155,6 +155,17 @@ final class UDIDLocalServer {
         reply(fd, "301 Moved Permanently", ["Location": location, "Cache-Control": "no-store"], Data())
     }
 
+    // Accept common legacy (40 hex) and modern hyphenated device identifiers,
+    // while rejecting whitespace, URLs, control characters and arbitrary payloads.
+    static func validUDID(_ value: String) -> Bool {
+        let count = value.utf8.count
+        guard (16...128).contains(count) else { return false }
+        return value.utf8.allSatisfy {
+            (48...57).contains($0) || (65...90).contains($0) ||
+            (97...122).contains($0) || $0 == 45
+        }
+    }
+
     static func validNonce(_ value: String) -> Bool {
         guard (16...128).contains(value.utf8.count) else { return false }
         return value.utf8.allSatisfy {
@@ -250,7 +261,7 @@ final class UDIDLocalServer {
     private static func searchUDID(_ value: Any) -> String? {
         if let dict = value as? [String: Any] {
             if let entry = dict.first(where: { $0.key.lowercased() == "udid" })?.value as? String,
-               !entry.isEmpty { return entry }
+               validUDID(entry) { return entry }
             for child in dict.values {
                 if let found = searchUDID(child) { return found }
             }

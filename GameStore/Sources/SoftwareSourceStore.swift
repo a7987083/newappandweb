@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CryptoKit
 
 /// Registration-only source manager. Validation must succeed before persistence.
 final class SoftwareSourceStore: ObservableObject {
@@ -132,8 +133,11 @@ final class SoftwareSourceStore: ObservableObject {
                 UserDefaults.standard.set(self.sources, forKey: Self.storageKey)
                 UserDefaults.standard.set(self.registeredIdentities, forKey: Self.identitiesKey)
                 UserDefaults.standard.set(self.sourceNames, forKey: Self.namesKey)
-                self.refreshCatalog()
-                completion(.success(()))
+                self.refreshCatalog {
+                    // Registration is already persisted; a catalog/network failure
+                    // must not be reported as a failed source registration.
+                    completion(.success(()))
+                }
             }
         }
     }
@@ -166,15 +170,19 @@ struct SourceCatalogApp: Identifiable, Codable {
     let sizeBytes: Int64?
     let updatedAt: Date?
     let releaseNotes: String
+    let requiresUnlock: Bool?
+    let unlockURL: URL?
 }
 
 extension SoftwareSourceStore {
     // Decode and publish complete catalogs, not just registration metadata.
-    func refreshCatalog() {
+    func refreshCatalog(completion: (() -> Void)? = nil) {
         let registered = sources
         guard !registered.isEmpty else {
             catalogApps = []
             catalogError = nil
+            isCatalogLoading = false
+            completion?()
             return
         }
         refreshGeneration += 1
@@ -222,7 +230,7 @@ extension SoftwareSourceStore {
         }
         group.notify(queue: .main) { [weak self] in
             guard let self = self else { return }
-            guard generation == self.refreshGeneration else { return }
+            guard generation == self.refreshGeneration else { completion?(); return }
             var next = self.catalogsBySource.filter { registered.contains($0.key) }
             for (source, apps) in collected where registered.contains(source) {
                 next[source] = apps
@@ -232,9 +240,10 @@ extension SoftwareSourceStore {
             self.catalogApps = next.values.flatMap { $0 }.sorted {
                 $0.name.localizedStandardCompare($1.name) == .orderedAscending
             }
-            SourceIconCache.shared.prefetch(self.catalogApps.compactMap { $0.iconURL })
+            // Icon fetching is driven by visible cells; never enqueue an entire catalog.
             self.catalogError = failures.isEmpty ? nil : "刷新部分失败，已保留旧数据"
             self.isCatalogLoading = false
+            completion?()
             SourceCatalogCache.saveAsync(next) { [weak self] error in
                 guard let self = self, let error = error, generation == self.refreshGeneration else { return }
                 // The screen remains usable even when offline persistence fails.
@@ -281,6 +290,21 @@ extension SoftwareSourceStore {
             let nestedDownload = latest.map { value($0, urlKeys) } ?? ""
             let topDownload = value(app, urlKeys)
             let download = resolvedURL(nestedDownload) ?? resolvedURL(topDownload)
+            let legacy = root["unlock"] as? [String: Any] ?? [:]
+            let primary = value(root, ["unlockURL", "unlockUrl"])
+            let unlockURL = resolvedURL(primary.isEmpty ? value(legacy, ["url"]) : primary)
+            let lockRaw = app["isNeedlock"] ?? app["isNeedLock"] ?? app["lock"]
+            let requiresUnlock: Bool? = {
+                if let n = lockRaw as? NSNumber { return n.boolValue }
+                if let text = lockRaw as? String {
+                    switch text.lowercased() {
+                    case "1", "true", "yes": return true
+                    case "0", "false", "no": return false
+                    default: return nil
+                    }
+                }
+                return nil
+            }()
             let name = value(app, ["name", "title", "appName"])
             guard !name.isEmpty else { return nil }
             let bundle = value(app, ["bundleIdentifier", "bundleID", "bundleId", "identifier"])
@@ -315,7 +339,9 @@ extension SoftwareSourceStore {
                 developer: value(app, ["developerName", "developer", "author", "sellerName"]),
                 sizeBytes: bytes,
                 updatedAt: date,
-                releaseNotes: value(app, ["versionDescription", "releaseNotes"])
+                releaseNotes: value(app, ["versionDescription", "releaseNotes"]),
+                requiresUnlock: requiresUnlock,
+                unlockURL: unlockURL
             )
         }
     }
@@ -426,5 +452,78 @@ private enum ZonoeSourceURLNormalizer {
             index = next
         }
         return result
+    }
+}
+
+final class SourceUnlockService {
+    static let shared = SourceUnlockService()
+    private init() {}
+    enum Failure: LocalizedError {
+        case invalid(String)
+        var errorDescription: String? { if case .invalid(let message) = self { return message }; return nil }
+    }
+    func unlock(app: SourceCatalogApp, udid: String, code: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        let device = udid.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !device.isEmpty, !clean.isEmpty, let endpoint = app.unlockURL,
+              let requestURL = query(endpoint, [URLQueryItem(name: "udid", value: device), URLQueryItem(name: "code", value: clean)]) else {
+            completion(.failure(Failure.invalid("UDID、解锁码或接口无效"))); return
+        }
+        URLSession.shared.dataTask(with: requestURL) { data, response, error in
+            if let error = error { completion(.failure(error)); return }
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                  let data = data, let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                completion(.failure(Failure.invalid("解锁服务器响应无效"))); return
+            }
+            let message = (object["msg"] as? String) ?? (object["message"] as? String) ?? ""
+            guard message == "ok，解锁成功" else {
+                completion(.failure(Failure.invalid(message.isEmpty ? "解锁失败" : message))); return
+            }
+            self.verify(app: app, udid: device, completion: completion)
+        }.resume()
+    }
+    private func verify(app: SourceCatalogApp, udid: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let endpoint = URL(string: "https://app.zonoeios.xyz/index/index/apiface"),
+              let target = query(endpoint, [URLQueryItem(name: "udid", value: udid)]) else {
+            completion(.failure(Failure.invalid("校验地址无效"))); return
+        }
+        URLSession.shared.dataTask(with: target) { data, response, error in
+            if let error = error { completion(.failure(error)); return }
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                  let data = data, let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                completion(.failure(Failure.invalid("授权状态响应无效"))); return
+            }
+            let code = (object["code"] as? NSNumber)?.intValue ?? (object["code"] as? String).flatMap(Int.init)
+            let expiry = (object["expire"] as? NSNumber)?.doubleValue ?? (object["expire"] as? String).flatMap(Double.init)
+            guard code == 1, object["msg"] as? String == "ok", let expires = expiry,
+                  expires > Date().timeIntervalSince1970 else {
+                completion(.failure(Failure.invalid("授权无效或已过期"))); return
+            }
+            UserDefaults.standard.set(expires, forKey: self.grantKey(app: app, udid: udid))
+            completion(.success(()))
+        }.resume()
+    }
+    func isUnlocked(_ app: SourceCatalogApp, udid: String?) -> Bool {
+        guard let udid = udid, !udid.isEmpty else { return false }
+        return UserDefaults.standard.double(forKey: grantKey(app: app, udid: udid)) > Date().timeIntervalSince1970
+    }
+    private func grantKey(app: SourceCatalogApp, udid: String) -> String {
+        let identity = app.bundleIdentifier.isEmpty ? app.name : app.bundleIdentifier
+        let source = URLComponents(string: app.sourceURL).map { components -> String in
+            var clean = components
+            clean.queryItems = (clean.queryItems ?? []).filter { $0.name.lowercased() != "udid" }
+            return clean.url?.absoluteString ?? app.sourceURL
+        } ?? app.sourceURL
+        let raw = "\(source)\n\(udid)\n\(identity)"
+        let digest = SHA256.hash(data: Data(raw.utf8)).map { String(format: "%02x", $0) }.joined()
+        return "zonoe.sourceUnlock.\(digest)"
+    }
+    private func query(_ url: URL, _ items: [URLQueryItem]) -> URL? {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              ["http", "https"].contains(components.scheme?.lowercased() ?? ""),
+              components.host != nil else { return nil }
+        let names = Set(items.map { $0.name.lowercased() })
+        components.queryItems = (components.queryItems ?? []).filter { !names.contains($0.name.lowercased()) } + items
+        return components.url
     }
 }

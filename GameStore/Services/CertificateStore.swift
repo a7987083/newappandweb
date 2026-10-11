@@ -27,6 +27,21 @@ final class CertificateStore: ObservableObject {
         }
     }
 
+    // Display metadata only: never use the prefix as certificate identity or signing trust.
+    private static func displayName(profileData: Data, fallback: String) -> String {
+        guard let bytes = ProvisioningPayload.extract(from: profileData),
+              let plist = try? PropertyListSerialization.propertyList(from: bytes, format: nil),
+              let info = plist as? [String: Any] else { return fallback }
+        func first(_ key: String) -> String? {
+            let value = (info[key] as? [String])?.first ??
+                (info[key] as? String)
+            guard let clean = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !clean.isEmpty else { return nil }
+            return clean
+        }
+        return first("TeamIdentifier") ?? first("ApplicationIdentifierPrefix") ?? fallback
+    }
+
     func add(p12 sourceP12: URL, provision sourceProvision: URL, password: String) throws {
         guard sourceP12.pathExtension.lowercased() == "p12",
               sourceProvision.pathExtension.lowercased() == "mobileprovision" else {
@@ -59,7 +74,7 @@ final class CertificateStore: ObservableObject {
             values.isExcludedFromBackup = true
             var folder = dir
             try folder.setResourceValues(values)
-            let name = sourceP12.deletingPathExtension().lastPathComponent
+            let name = Self.displayName(profileData: profile, fallback: sourceP12.deletingPathExtension().lastPathComponent)
             let item = DeviceCertificate(id: id, name: name, p12URL: p12URL, mobileProvisionURL: profileURL)
             try CertificatePasswordKeychain.save(password, for: id)
             certificates.append(item)
@@ -87,6 +102,74 @@ final class CertificateStore: ObservableObject {
     private func persist() throws {
         let data = try JSONEncoder().encode(certificates)
         try data.write(to: manifest, options: .atomic)
+    }
+}
+
+
+// Narrow ASN.1 DER reader for the encapsulated content of CMS SignedData.
+// Used only to read display metadata, never to establish signature validity.
+// The imported P12/profile pair is still validated by NativeP12Verifier.
+private enum ProvisioningPayload {
+    private struct Field {
+        let tag: UInt8
+        let content: Range<Int>
+        let end: Int
+    }
+
+    private static func field(_ data: Data, at start: Int, within limit: Int) -> Field? {
+        guard start >= 0, start < limit, limit <= data.count else { return nil }
+        let tag = data[start]
+        let lengthByteAt = start + 1
+        guard lengthByteAt < limit else { return nil }
+        let marker = data[lengthByteAt]
+        var length = 0
+        var cursor = lengthByteAt + 1
+        if marker & 0x80 == 0 {
+            length = Int(marker)
+        } else {
+            let width = Int(marker & 0x7f)
+            guard width > 0, width <= 4, width <= limit - cursor else { return nil }
+            for _ in 0..<width {
+                guard length <= (Int.max >> 8) else { return nil }
+                length = (length << 8) | Int(data[cursor])
+                cursor += 1
+            }
+        }
+        guard length <= limit - cursor else { return nil }
+        return Field(tag: tag, content: cursor..<(cursor + length), end: cursor + length)
+    }
+
+    private static func children(_ data: Data, of parent: Field) -> [Field]? {
+        var result: [Field] = []
+        var cursor = parent.content.lowerBound
+        while cursor < parent.content.upperBound {
+            guard result.count < 16,
+                  let child = field(data, at: cursor, within: parent.content.upperBound) else { return nil }
+            result.append(child)
+            cursor = child.end
+        }
+        return result
+    }
+
+    static func extract(from data: Data) -> Data? {
+        guard data.count >= 32, data.count <= 8 * 1024 * 1024,
+              let outer = field(data, at: 0, within: data.count),
+              outer.tag == 0x30, outer.end == data.count,
+              let contentInfo = children(data, of: outer), contentInfo.count == 2,
+              contentInfo[0].tag == 0x06,
+              // CMS signedData: 1.2.840.113549.1.7.2
+              Data(data[contentInfo[0].content]) == Data([0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x07, 0x02]),
+              contentInfo[1].tag == 0xa0,
+              let signedContainer = children(data, of: contentInfo[1]),
+              signedContainer.count == 1, signedContainer[0].tag == 0x30,
+              let signed = children(data, of: signedContainer[0]), signed.count >= 3,
+              signed[2].tag == 0x30,
+              let encapsulated = children(data, of: signed[2]),
+              encapsulated.count == 2, encapsulated[0].tag == 0x06,
+              encapsulated[1].tag == 0xa0,
+              let payloadContainer = children(data, of: encapsulated[1]),
+              payloadContainer.count == 1, payloadContainer[0].tag == 0x04 else { return nil }
+        return Data(data[payloadContainer[0].content])
     }
 }
 

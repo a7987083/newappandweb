@@ -12,9 +12,7 @@ final class GameStoreAppDelegate: UIResponder, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         let window = UIWindow(frame: UIScreen.main.bounds)
-        let rootView = ContentView()
-            .environmentObject(store)
-        window.rootViewController = UIHostingController(rootView: rootView)
+        window.rootViewController = MainShellViewController()
         window.makeKeyAndVisible()
         self.window = window
         return true

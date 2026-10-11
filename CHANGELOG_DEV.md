@@ -1,3 +1,28 @@
+## 2026-10-11 — TrollSkin UIKit source integration
+
+- Commit: `7abe60d0e1bbad86f6123e95eaa596979b5758fb` on `refactor/headless-ui-foundation`.
+- Imported the five UIKit library source/header/include files from `lajixiang1/feature/trollstore-ui-replica` under `GameStore/UI` plus the Swift bridging header.
+- Registered `TrollSkinUI.m` in Xcode Sources and installed the controller as UIWindow root; excluded demo `main.m` to retain the existing GameStore app delegate and URL handling.
+- Services, Sources, Models and ViewModels remain unmodified. The imported screens contain demo placeholder actions, so business UI bindings are not yet implemented.
+- Dual toolchain CI run `38143302141` queued at recording time; no claim of build/runtime/device validation.
+
+## 2026-10-11 — Remove legacy UI, retain backend and minimal bootstrap
+
+- Branch: `refactor/headless-ui-foundation`, based on `ca20bc6748d5ed9aba481ba385c76606cf402800`.
+- Deleted seven old page sources (software, search, download, profile, signing settings/execution, certificate management).
+- Replaced `ContentView` with a minimal iOS 13-compatible bootstrap displaying GameStore; removed deleted views from Xcode project references.
+- Preserved `GameStore/App`, `Models`, `Services`, `Sources`, `ViewModels`, including URL-scheme routing, signing and icon cache logic.
+- All screen interactions are deliberately unavailable until a new UI is integrated. Build, runtime and physical-device verification pending.
+
+## 2026-10-11 — TrollSkin-inspired UI migration (draft)
+
+- Branch: `refactor/trollskin-ui-v1`, based on `9bb51ab9b53e95f8d3d4d37cd85cb6348a2b0147`.
+- Replaced root navigation, catalog, search, and profile presentation; restyled download manager list.
+- Services, Sources, ViewModels, signing, UDID, OTA, and image cache implementation unchanged.
+- iOS 13 remains the minimum supported OS; used VStack instead of iOS 14+ LazyVStack.
+- **Incomplete:** app detail, download content, certificate/signing/settings subviews still need full visual migration.
+- CI workflow Run 38141847717 started; runtime, device, and visual comparison are not verified.
+
 # CHANGELOG_DEV
 
 ## 2026-09-23 — v0.1 bootstrap

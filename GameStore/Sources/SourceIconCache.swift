@@ -90,7 +90,12 @@ final class SourceIconCache {
         let remaining = prepare("SELECT COUNT(*) FROM manifest WHERE filename IS NOT NULL")
         let hasPending = remaining != nil && sqlite3_step(remaining) == SQLITE_ROW && sqlite3_column_int(remaining, 0) > 0
         sqlite3_finalize(remaining)
-        if !hasPending { try? FileManager.default.removeItem(at: fileDirectory) }
+        if !hasPending {
+            try? FileManager.default.removeItem(at: fileDirectory)
+            // The original URL-hash cache is no longer read after the SQLite upgrade.
+            let legacy = root.deletingLastPathComponent().appendingPathComponent("Icons", isDirectory: true)
+            try? FileManager.default.removeItem(at: legacy)
+        }
     }
 
     private func exec(_ sql: String) {

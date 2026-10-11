@@ -175,7 +175,8 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
         } else {
             date = "—"
         }
-        cell.configureUnlock(app.requiresUnlock == true, available: app.unlockURL != nil)
+        let unlocked = SourceUnlockService.shared.isUnlocked(app, udid: UDIDService.shared.udid)
+        cell.configureUnlock(app.requiresUnlock == true && !unlocked, available: app.unlockURL != nil)
         cell.onUnlock = { [weak self] in self?.presentUnlock(for: app) }
         cell.configure(name: app.name,
                        metadata: "\(app.version.isEmpty ? "—" : app.version) · \(size) · \(date)",
@@ -201,6 +202,7 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
                     case .success:
                         self.showRefreshMessage("解锁成功", "已通过服务器授权校验，正在刷新软件源")
                         SoftwareSourceStore.shared.refreshCatalog()
+                        self.tableView.reloadData()
                     case .failure(let error):
                         self.showRefreshMessage("解锁失败", error.localizedDescription)
                     }

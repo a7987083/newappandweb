@@ -1,8 +1,8 @@
 import UIKit
 
-/// Unified four-tab Swift/UIKit shell. The dock stays fixed above each tab's scroll view.
+/// Unified four-selectedTab Swift/UIKit shell. The dock stays fixed above each selectedTab's scroll view.
 final class MainShellViewController: UIViewController, UISearchBarDelegate, UIScrollViewDelegate, UITableViewDataSource, UITableViewDelegate {
-    private var tab = 0
+    private var selectedTab = 0
     private var child: UIViewController?
     private var currentTable: UITableView?
     private var catalog: AppCatalogViewController?
@@ -34,7 +34,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         super.viewDidLayoutSubviews()
         if initialSize != view.bounds.size && !searching {
             initialSize = view.bounds.size
-            showTab(tab)
+            showTab(selectedTab)
         }
     }
 
@@ -45,7 +45,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         child?.removeFromParent()
         child = nil
         view.subviews.forEach { $0.removeFromSuperview() }
-        tab = index
+        selectedTab = index
         currentTable = nil
         catalog = nil
         searchBar = nil
@@ -178,7 +178,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             let b = UIButton(type: .system)
             b.tag = i
             b.frame = CGRect(x: CGFloat(i)*col,y: 2,width: col,height: 38)
-            b.tintColor = i == tab ? blue : .gray
+            b.tintColor = i == selectedTab ? blue : .gray
             b.setImage(UIImage(systemName: icons[i],withConfiguration: UIImage.SymbolConfiguration(pointSize: 19)),for: .normal)
             b.addTarget(self,action: #selector(tapTab(_:)),for: .touchUpInside)
             dock.addSubview(b)
@@ -186,7 +186,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             label.text = titles[i]
             label.textAlignment = .center
             label.textColor = b.tintColor
-            label.font = i == tab ? .boldSystemFont(ofSize: 10) : .systemFont(ofSize: 10)
+            label.font = i == selectedTab ? .boldSystemFont(ofSize: 10) : .systemFont(ofSize: 10)
             dock.addSubview(label)
         }
     }
@@ -237,7 +237,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             var f = h.frame
             f.size.height = 0
             h.frame = f
-            if tab == 0 { catalog?.setHeaderCollapsed(true) }
+            if selectedTab == 0 { catalog?.setHeaderCollapsed(true) }
             else { table.tableHeaderView = h }
         }
         UIView.animate(withDuration: 0.28) {
@@ -260,7 +260,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             var f = h.frame
             f.size.height = headerHeight
             h.frame = f
-            if tab == 0 { catalog?.setHeaderCollapsed(false) }
+            if selectedTab == 0 { catalog?.setHeaderCollapsed(false) }
             else { table.tableHeaderView = h }
         }
         let minimum = -table.adjustedContentInset.top
@@ -288,7 +288,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     }
 
     func searchBar(_ searchBar: UISearchBar,textDidChange value: String) {
-        if tab == 0 {
+        if selectedTab == 0 {
             catalog?.filter(query: value)
         } else {
             let q = value.trimmingCharacters(in: .whitespacesAndNewlines)

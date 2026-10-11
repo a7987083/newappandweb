@@ -1,4 +1,5 @@
 import UIKit
+import Combine
 
 /// Standalone secondary page; the catalog and its scroll position stay mounted behind it.
 final class AppDetailViewController: UIViewController {
@@ -7,6 +8,8 @@ final class AppDetailViewController: UIViewController {
     private let content = UIStackView()
     private let iconView = UIImageView()
     private let actionButton = UIButton(type: .system)
+    private let progress = UIProgressView(progressViewStyle: .default)
+    private var downloadSubscription: AnyCancellable?
     var onAction: (() -> Void)?
     var onClose: (() -> Void)?
     private let blue = UIColor(red: 51/255, green: 124/255, blue: 250/255, alpha: 1)
@@ -101,6 +104,14 @@ final class AppDetailViewController: UIViewController {
         actionButton.addTarget(self, action: #selector(performAction), for: .touchUpInside)
         actionButton.translatesAutoresizingMaskIntoConstraints = false
         summary.addSubview(actionButton)
+        progress.translatesAutoresizingMaskIntoConstraints = false
+        summary.addSubview(progress)
+        downloadSubscription = AppStoreViewModel.shared.downloadCenter.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.refreshDownloadStatus() }
+            }
+        refreshDownloadStatus()
 
         content.addArrangedSubview(section("应用介绍", text: app.description))
         content.addArrangedSubview(section("更新日志", text: app.releaseNotes))
@@ -145,7 +156,10 @@ final class AppDetailViewController: UIViewController {
             actionButton.leadingAnchor.constraint(equalTo: summary.leadingAnchor, constant: 18),
             actionButton.trailingAnchor.constraint(equalTo: summary.trailingAnchor, constant: -18),
             actionButton.heightAnchor.constraint(equalToConstant: 44),
-            actionButton.bottomAnchor.constraint(equalTo: summary.bottomAnchor, constant: -18)
+            progress.topAnchor.constraint(equalTo: actionButton.bottomAnchor, constant: 8),
+            progress.leadingAnchor.constraint(equalTo: actionButton.leadingAnchor),
+            progress.trailingAnchor.constraint(equalTo: actionButton.trailingAnchor),
+            progress.bottomAnchor.constraint(equalTo: summary.bottomAnchor, constant: -18)
         ])
     }
 
@@ -170,6 +184,25 @@ final class AppDetailViewController: UIViewController {
         body.numberOfLines = 0
         card.addArrangedSubview(body)
         return card
+    }
+
+    private func refreshDownloadStatus() {
+        guard let url = app.downloadURL,
+              let item = AppStoreViewModel.shared.downloadCenter.item(for: url) else {
+            progress.isHidden = true
+            return
+        }
+        switch item.state {
+        case .queued: actionButton.setTitle("等待下载", for: .normal); actionButton.isEnabled = false
+        case .downloading:
+            actionButton.setTitle("\(Int(item.progress * 100))% · 下载中", for: .normal)
+            actionButton.isEnabled = false
+        case .paused: actionButton.setTitle("继续", for: .normal); actionButton.isEnabled = true
+        case .completed: actionButton.setTitle("已下载", for: .normal); actionButton.isEnabled = false
+        case .failed, .cancelled: actionButton.setTitle("重试", for: .normal); actionButton.isEnabled = true
+        }
+        progress.isHidden = item.state == .completed
+        progress.progress = Float(min(1, max(0, item.progress)))
     }
 
     @objc private func performAction() { onAction?() }

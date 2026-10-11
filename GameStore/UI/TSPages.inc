@@ -36,14 +36,23 @@
  self.searchRowsTop=y;
  self.normalSearchRowsTop=y;
  if(self.tab==0){
- NSArray<NSDictionary<NSString *,NSString *> *> *entries=[SourceCatalogUIBridge entries];
- if(entries.count==0){
-   NSString *tip=[SourceCatalogUIBridge hasSources] ? @"暂无软件源应用，点击右上角刷新" : @"尚未添加软件源，请前往「设置 → 软件源」添加";
-   y=[self line:tip y:y x:30 color:C(0x8E8E93) size:15 bold:NO height:72]+10;
- }else{
-   for(NSDictionary<NSString *,NSString *> *app in entries){
-     y=[self card:app[@"name"] detail:app[@"detail"] symbol:@"square.grid.2x2.fill" badge:app[@"category"] y:y];
-   }
+ self.catalogItems=[SourceCatalogUIBridge entries];
+ self.visibleCatalogItems=self.catalogItems;
+ UITableView *table=[[UITableView alloc]initWithFrame:CGRectMake(0,y,w,self.view.bounds.size.height-y) style:UITableViewStylePlain];
+ table.backgroundColor=UIColor.clearColor;
+ table.separatorStyle=UITableViewCellSeparatorStyleNone;
+ table.dataSource=self;
+ table.delegate=self;
+ table.contentInset=UIEdgeInsetsMake(0,0,100,0);
+ table.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
+ self.catalogTable=table;
+ [self.view addSubview:table];
+ if (self.catalogItems.count==0) {
+  UILabel *empty=L([SourceCatalogUIBridge hasSources]?@"暂无软件源应用":@"尚未添加软件源，请前往「设置 → 软件源」添加",15,NO,C(0x8E8E93));
+  empty.textAlignment=NSTextAlignmentCenter;
+  empty.numberOfLines=0;
+  empty.frame=CGRectMake(20,60,w-40,90);
+  table.backgroundView=empty;
  }
  } else if(self.tab==1){
  y=[self card:@"1" detail:@"文件夹 · 2026-10-11 09:21（演示）" symbol:@"folder.fill" badge:nil y:y];
@@ -67,6 +76,7 @@
  }
  if(self.tab==1 || self.tab==2){UIButton *edit=[UIButton buttonWithType:UIButtonTypeSystem];edit.frame=CGRectMake(w-108,actionY,42,34);[edit setTitle:@"编辑" forState:UIControlStateNormal];edit.titleLabel.font=[UIFont systemFontOfSize:16];[edit addTarget:self action:@selector(demo) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:edit];}
  if(self.tab!=3){UIButton *plus=[UIButton buttonWithType:UIButtonTypeSystem];plus.frame=CGRectMake(w-53,actionY,42,42);[plus setImage:[UIImage systemImageNamed:@"plus.circle.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:29]] forState:UIControlStateNormal];plus.tintColor=C(0x337CFA);[plus addTarget:self action:@selector(demo) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:plus];}
+ if (self.tab==0) { [self.view bringSubviewToFront:self.compactHeader]; }
  [self tabs];
 }
 - (void)change:(UIButton*)sender {TSSkinScreen *s=[TSSkinScreen new];s.tab=sender.tag;self.view.window.rootViewController=s;}

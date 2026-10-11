@@ -38,7 +38,8 @@ enum DownloadIPAExtractor {
         try fm.createDirectory(at: root, withIntermediateDirectories: true)
         var mapping = try loadMap()
         let filename = ipa.lastPathComponent
-        let occupied = Set(mapping.values)
+        let existing = (try? fm.contentsOfDirectory(atPath: root.path)) ?? []
+        let occupied = Set(mapping.values).union(existing)
         let identifier: String
         if let previous = mapping[filename], validIdentifier(previous) {
             identifier = previous

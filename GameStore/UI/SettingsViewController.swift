@@ -12,8 +12,6 @@ final class SettingsViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         updateAuthSummary()
-        // Keep the interactive pop scoped to the settings navigation stack.
-        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
     }
 
     private func updateAuthSummary() {
@@ -113,17 +111,21 @@ final class SettingsViewController: UIViewController {
     }
 
     @objc private func openSigningSettings() {
-        navigationController?.pushViewController(SigningSettingsController(), animated: true)
+        let detail = SigningSettingsController()
+        detail.modalPresentationStyle = .fullScreen
+        present(detail, animated: true)
     }
 
     @objc private func openSources() {
         let controller = SoftwareSourcesSettingsController()
-        navigationController?.pushViewController(controller, animated: true)
+        controller.modalPresentationStyle = .fullScreen
+        present(controller, animated: true)
     }
 
     @objc private func openDeviceAuth() {
         let detail = DeviceAuthDetailController()
-        navigationController?.pushViewController(detail, animated: true)
+        detail.modalPresentationStyle = .fullScreen
+        present(detail, animated: true)
     }
 }
 
@@ -292,7 +294,7 @@ private final class SoftwareSourcesSettingsController: UIViewController, UITable
         present(alert, animated: true)
     }
 
-    @objc private func close() { navigationController?.popViewController(animated: true) }
+    @objc private func close() { dismiss(animated: true) }
 }
 
 // Local presentation-only detail controller; intentionally not registered as a separate source file.
@@ -484,7 +486,7 @@ private final class DeviceAuthDetailController: UIViewController {
         present(alert, animated: true)
     }
 
-    @objc private func close() { navigationController?.popViewController(animated: true) }
+    @objc private func close() { dismiss(animated: true) }
 }
 
 
@@ -662,7 +664,7 @@ private final class SigningSettingsController: UIViewController {
         present(alert, animated: true)
     }
 
-    @objc private func close() { navigationController?.popViewController(animated: true) }
+    @objc private func close() { dismiss(animated: true) }
 }
 
 private enum SettingsStyle {

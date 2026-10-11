@@ -57,10 +57,19 @@ jobs:
       - name: Xcode version
         run: xcodebuild -version
 
+      - name: Restore SwiftPM source cache (Xcode 15.4)
+        uses: actions/cache@v4
+        with:
+          path: .spm-source-packages
+          key: spm-${{ runner.os }}-${{ runner.arch }}-xcode15.4-${{ hashFiles('GameStore.xcodeproj/project.pbxproj') }}-v1
+          restore-keys: |
+            spm-${{ runner.os }}-${{ runner.arch }}-xcode15.4-
+
       - name: Build GameStore for iOS 13 deployment target
         run: |
           set -o pipefail
           xcodebuild \
+            -clonedSourcePackagesDirPath .spm-source-packages \
             -skipPackagePluginValidation \
             -project GameStore.xcodeproj \
             -scheme GameStore \
@@ -75,6 +84,7 @@ jobs:
           set -o pipefail
           rm -rf DerivedDataDevice
           xcodebuild \
+            -clonedSourcePackagesDirPath .spm-source-packages \
             -skipPackagePluginValidation \
             -project GameStore.xcodeproj \
             -scheme GameStore \

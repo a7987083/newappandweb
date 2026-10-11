@@ -1,3 +1,11 @@
+## 2026-10-11 — Remove legacy UI, retain backend and minimal bootstrap
+
+- Branch: `refactor/headless-ui-foundation`, based on `ca20bc6748d5ed9aba481ba385c76606cf402800`.
+- Deleted seven old page sources (software, search, download, profile, signing settings/execution, certificate management).
+- Replaced `ContentView` with a minimal iOS 13-compatible bootstrap displaying GameStore; removed deleted views from Xcode project references.
+- Preserved `GameStore/App`, `Models`, `Services`, `Sources`, `ViewModels`, including URL-scheme routing, signing and icon cache logic.
+- All screen interactions are deliberately unavailable until a new UI is integrated. Build, runtime and physical-device verification pending.
+
 ## 2026-10-11 — TrollSkin-inspired UI migration (draft)
 
 - Branch: `refactor/trollskin-ui-v1`, based on `9bb51ab9b53e95f8d3d4d37cd85cb6348a2b0147`.

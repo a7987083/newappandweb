@@ -67,25 +67,15 @@ final class SettingsViewController: UIViewController {
         stack.addArrangedSubview(auth)
         updateAuthSummary()
 
-        for (title, symbol) in [
-            ("自定义清理", "trash.circle.fill"),
-            ("切换 App Store 账户", "person.2.circle.fill"),
-            ("允许所有 App 粘贴", "doc.on.doc.fill"),
-            ("屏蔽 / 恢复 系统更新", "shield.slash.fill"),
-            ("直降应用", "arrow.down.to.line")
-        ] {
-            stack.addArrangedSubview(placeholder(title, icon: symbol))
-        }
-        SettingsStyle.section("软件源", in: stack)
+        SettingsStyle.section("功能", in: stack)
         let source = placeholder("软件源", icon: "tray.full.fill")
         source.removeTarget(self, action: #selector(placeholderTapped(_:)), for: .touchUpInside)
         source.addTarget(self, action: #selector(openSources), for: .touchUpInside)
         stack.addArrangedSubview(source)
-        SettingsStyle.section("签名工具 (LDID)", in: stack)
-        stack.addArrangedSubview(placeholder("ldid 状态（演示占位）", icon: "checkmark.seal.fill"))
-        SettingsStyle.section("持久性助手", in: stack)
-        stack.addArrangedSubview(placeholder("助手状态（演示占位）", icon: "checkmark.square.fill"))
-        stack.addArrangedSubview(placeholder("卸载持久化助手", icon: "trash", tint: .systemRed))
+        let signing = placeholder("签名设置", icon: "signature")
+        signing.removeTarget(self, action: #selector(placeholderTapped(_:)), for: .touchUpInside)
+        signing.addTarget(self, action: #selector(openSigningSettings), for: .touchUpInside)
+        stack.addArrangedSubview(signing)
     }
 
     private func placeholder(_ title: String, icon: String, tint: UIColor = SettingsStyle.blue) -> UIButton {
@@ -120,16 +110,18 @@ final class SettingsViewController: UIViewController {
         present(alert, animated: true)
     }
 
+    @objc private func openSigningSettings() {
+        navigationController?.pushViewController(SigningSettingsController(), animated: true)
+    }
+
     @objc private func openSources() {
         let controller = SoftwareSourcesSettingsController()
-        controller.modalPresentationStyle = .fullScreen
-        present(controller, animated: true)
+        navigationController?.pushViewController(controller, animated: true)
     }
 
     @objc private func openDeviceAuth() {
         let detail = DeviceAuthDetailController()
-        detail.modalPresentationStyle = .fullScreen
-        present(detail, animated: true)
+        navigationController?.pushViewController(detail, animated: true)
     }
 }
 
@@ -196,7 +188,6 @@ private final class SoftwareSourcesSettingsController: UIViewController, UITable
         emptyLabel.textAlignment = .center
         emptyLabel.numberOfLines = 0
         spinner.hidesWhenStopped = true
-        navigationItem.rightBarButtonItem?.isEnabled = true
         refreshList()
     }
 
@@ -299,7 +290,7 @@ private final class SoftwareSourcesSettingsController: UIViewController, UITable
         present(alert, animated: true)
     }
 
-    @objc private func close() { dismiss(animated: true) }
+    @objc private func close() { navigationController?.popViewController(animated: true) }
 }
 
 // Local presentation-only detail controller; intentionally not registered as a separate source file.
@@ -491,7 +482,169 @@ private final class DeviceAuthDetailController: UIViewController {
         present(alert, animated: true)
     }
 
-    @objc private func close() { dismiss(animated: true) }
+    @objc private func close() { navigationController?.popViewController(animated: true) }
+}
+
+
+private final class SigningSettingsController: UIViewController {
+    private let store = SigningOptionsStore.shared
+    private let scroll = UIScrollView()
+    private let stack = UIStackView()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = SettingsStyle.background
+        let header = UIView()
+        header.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(header)
+        let back = UIButton(type: .system)
+        back.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+        back.tintColor = SettingsStyle.blue
+        back.translatesAutoresizingMaskIntoConstraints = false
+        back.addTarget(self, action: #selector(close), for: .touchUpInside)
+        header.addSubview(back)
+        let title = SettingsStyle.text("签名设置", size: 19, bold: true)
+        title.translatesAutoresizingMaskIntoConstraints = false
+        header.addSubview(title)
+        NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            header.heightAnchor.constraint(equalToConstant: 50),
+            back.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 12),
+            back.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            back.widthAnchor.constraint(equalToConstant: 40),
+            back.heightAnchor.constraint(equalToConstant: 40),
+            title.centerXAnchor.constraint(equalTo: header.centerXAnchor),
+            title.centerYAnchor.constraint(equalTo: header.centerYAnchor)
+        ])
+        SettingsStyle.embed(scroll: scroll, stack: stack, in: view, top: header.bottomAnchor, bottomInset: 22)
+
+        SettingsStyle.section("证书管理", in: stack)
+        let certificate = UIButton(type: .system)
+        certificate.backgroundColor = .white
+        certificate.layer.cornerRadius = 16
+        certificate.heightAnchor.constraint(equalToConstant: 54).isActive = true
+        certificate.setTitle("导入证书 ›", for: .normal)
+        certificate.setTitleColor(SettingsStyle.blue, for: .normal)
+        certificate.addTarget(self, action: #selector(certificateInfo), for: .touchUpInside)
+        stack.addArrangedSubview(certificate)
+        stack.addArrangedSubview(SettingsStyle.text("支持 P12 与 mobileprovision。证书导入界面暂未迁移。", size: 13, color: SettingsStyle.secondary))
+
+        SettingsStyle.section("应用能力", in: stack)
+        addSwitch("强制本地化", key: 0, value: store.options.forceLocalization)
+        addSwitch("文件共享", key: 1, value: store.options.fileSharing)
+        addSwitch("iTunes 文件共享", key: 2, value: store.options.itunesFileSharing)
+        addSwitch("ProMotion", key: 3, value: store.options.proMotion)
+        addSwitch("游戏模式", key: 4, value: store.options.gameMode)
+        addSwitch("iPad 全屏", key: 5, value: store.options.ipadFullscreen)
+
+        SettingsStyle.section("签名行为", in: stack)
+        addSwitch("Ad-hoc 伪签名", key: 6, value: store.options.temporarySigning)
+        addSwitch("签名完成自动安装", key: 7, value: store.options.autoInstallAfterSigning)
+        addSwitch("注册回调", key: 8, value: store.options.registerCallback)
+        stack.addArrangedSubview(SettingsStyle.text("临时签署使用 Zsign Ad-hoc 伪签名；注册回调用于向目标 App 注册 UDID URL Scheme。", size: 12, color: SettingsStyle.secondary))
+
+        SettingsStyle.section("打包规则", in: stack)
+        let packaging = UIButton(type: .system)
+        packaging.backgroundColor = .white
+        packaging.layer.cornerRadius = 16
+        packaging.heightAnchor.constraint(equalToConstant: 54).isActive = true
+        packaging.setTitle("打包规则：\(store.options.packagingRule.title)  ›", for: .normal)
+        packaging.setTitleColor(.black, for: .normal)
+        packaging.addTarget(self, action: #selector(selectPackaging(_:)), for: .touchUpInside)
+        stack.addArrangedSubview(packaging)
+
+        let reset = UIButton(type: .system)
+        reset.backgroundColor = .white
+        reset.layer.cornerRadius = 16
+        reset.heightAnchor.constraint(equalToConstant: 54).isActive = true
+        reset.setTitle("恢复默认设置", for: .normal)
+        reset.setTitleColor(.systemRed, for: .normal)
+        reset.addTarget(self, action: #selector(resetSettings), for: .touchUpInside)
+        stack.addArrangedSubview(reset)
+    }
+
+    private func addSwitch(_ title: String, key: Int, value: Bool) {
+        let row = UIView()
+        row.backgroundColor = .white
+        row.layer.cornerRadius = 16
+        row.heightAnchor.constraint(equalToConstant: 54).isActive = true
+        let label = SettingsStyle.text(title, size: 15)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(label)
+        let toggle = UISwitch()
+        toggle.isOn = value
+        toggle.tag = key
+        toggle.translatesAutoresizingMaskIntoConstraints = false
+        toggle.addTarget(self, action: #selector(changeOption(_:)), for: .valueChanged)
+        row.addSubview(toggle)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 17),
+            label.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            toggle.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -17),
+            toggle.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: toggle.leadingAnchor, constant: -8)
+        ])
+        stack.addArrangedSubview(row)
+    }
+
+    @objc private func changeOption(_ sender: UISwitch) {
+        var options = store.options
+        switch sender.tag {
+        case 0: options.forceLocalization = sender.isOn
+        case 1: options.fileSharing = sender.isOn
+        case 2: options.itunesFileSharing = sender.isOn
+        case 3: options.proMotion = sender.isOn
+        case 4: options.gameMode = sender.isOn
+        case 5: options.ipadFullscreen = sender.isOn
+        case 6: options.temporarySigning = sender.isOn
+        case 7: options.autoInstallAfterSigning = sender.isOn
+        case 8: options.registerCallback = sender.isOn
+        default: return
+        }
+        store.options = options
+    }
+
+    @objc private func selectPackaging(_ sender: UIButton) {
+        let sheet = UIAlertController(title: "打包规则", message: nil, preferredStyle: .actionSheet)
+        for rule in SigningPackagingRule.allCases {
+            sheet.addAction(UIAlertAction(title: rule.title, style: .default) { [weak self, weak sender] _ in
+                guard let self = self else { return }
+                var options = self.store.options
+                options.packagingRule = rule
+                self.store.options = options
+                sender?.setTitle("打包规则：\(rule.title)  ›", for: .normal)
+            })
+        }
+        sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = sender
+            popover.sourceRect = sender.bounds
+        }
+        present(sheet, animated: true)
+    }
+
+    @objc private func resetSettings() {
+        let alert = UIAlertController(title: "恢复默认设置", message: "确定恢复所有签名设置？", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "恢复", style: .destructive) { [weak self] _ in
+            self?.store.resetToDefaults()
+            self?.loadViewIfNeeded()
+            self?.stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+            self?.view.subviews.forEach { $0.removeFromSuperview() }
+            self?.viewDidLoad()
+        })
+        present(alert, animated: true)
+    }
+
+    @objc private func certificateInfo() {
+        let alert = UIAlertController(title: "证书管理", message: "原有证书存储服务仍保留，证书导入 UI 暂未迁移。", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "知道了", style: .default))
+        present(alert, animated: true)
+    }
+
+    @objc private func close() { navigationController?.popViewController(animated: true) }
 }
 
 private enum SettingsStyle {

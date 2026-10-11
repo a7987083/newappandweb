@@ -19,6 +19,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
     @Published private(set) var activeItems: [Item] = []
     @Published private(set) var completedItems: [Item] = []
     @Published private(set) var terminalItems: [Item] = []
+    @Published private(set) var extractionStatus: [String: String] = [:]
 
     private var resumeDataByURL: [URL: Data] = [:]
     private var pausingTaskIDs = Set<Int>()
@@ -279,6 +280,8 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         if fileManager.fileExists(atPath: localURL.path) {
             try fileManager.removeItem(at: localURL)
         }
+        try DownloadIPAExtractor.removeExtraction(for: localURL)
+        extractionStatus.removeValue(forKey: localURL.lastPathComponent)
 
         Self.updateCompletedSource(filename: localURL.lastPathComponent, source: nil)
         let path = localURL.standardizedFileURL.path
@@ -419,6 +422,19 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             // Never delete an existing IPA. downloadDestination already chooses
             // a unique filename; moveItem fails safely if another writer wins.
             try FileManager.default.moveItem(at: location, to: destination)
+            DispatchQueue.main.async {
+                self.extractionStatus[destination.lastPathComponent] = "正在解压"
+            }
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    try DownloadIPAExtractor.extract(destination)
+                    DispatchQueue.main.async { self.extractionStatus[destination.lastPathComponent] = "解压完成" }
+                } catch {
+                    DispatchQueue.main.async {
+                        self.extractionStatus[destination.lastPathComponent] = "解压失败：" + error.localizedDescription
+                    }
+                }
+            }
             let originalSource = downloadTask.originalRequest?.url
             DispatchQueue.main.async {
                 // Publish the source map and the completed item in one main-queue
@@ -547,7 +563,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         ).first!
 
         return documents.appendingPathComponent(
-            "Downloads",
+            "zonoeDownloads",
             isDirectory: true
         )
     }

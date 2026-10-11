@@ -27,7 +27,7 @@ struct SigningExecutionView: View {
     @State private var result: SignedArtifact?
     @State private var errorMessage: String?
     @State private var reportLines: [String] = []
-    @State private var installMode = IPAInstallMode.local
+    private let installMode = IPAInstallMode.network
     @State private var installing = false
     private let engine = AppSigningService()
 
@@ -68,15 +68,6 @@ struct SigningExecutionView: View {
                         roundedToggle("Ad-hoc 伪签名", value: optionBinding(\.temporarySigning))
                         roundedToggle("注册 zonoe UDID 回调", value: optionBinding(\.registerCallback))
                         roundedToggle("签名完成自动安装", value: optionBinding(\.autoInstallAfterSigning))
-                        HStack {
-                            Text("安装方式")
-                            Spacer()
-                            Picker("安装方式", selection: $installMode) {
-                                Text("本地 OTA").tag(IPAInstallMode.local)
-                                Text("网络服务器").tag(IPAInstallMode.network)
-                            }.pickerStyle(SegmentedPickerStyle()).frame(width: 210)
-                        }.padding(14).background(Color.white).cornerRadius(12)
-                         .padding(.horizontal, 18).padding(.bottom, 12)
                         HStack {
                             Text("打包规则")
                             Spacer()

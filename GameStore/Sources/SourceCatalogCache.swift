@@ -122,7 +122,8 @@ enum SourceCatalogCache {
                 bundleIdentifier: string(statement, 3), version: string(statement, 4),
                 category: string(statement, 5), description: string(statement, 6),
                 iconURL: icon, downloadURL: download, developer: string(statement, 9),
-                sizeBytes: size, updatedAt: updated, releaseNotes: string(statement, 12)
+                sizeBytes: size, updatedAt: updated, releaseNotes: string(statement, 12),
+                requiresUnlock: nil, unlockURL: nil
             ))
         }
         // Preserve registered-but-empty catalogs.

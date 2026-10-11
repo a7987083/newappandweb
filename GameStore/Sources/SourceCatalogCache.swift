@@ -23,6 +23,11 @@ enum SourceCatalogCache {
         directory.appendingPathComponent("SourceCatalog-v1.json")
     }
 
+    static var needsMigration: Bool {
+        !FileManager.default.fileExists(atPath: location.path) &&
+        FileManager.default.fileExists(atPath: legacyLocation.path)
+    }
+
     static func load() -> [String: [SourceCatalogApp]] {
         if let data = try? Data(contentsOf: location),
            let snapshot = try? PropertyListDecoder().decode(Snapshot.self, from: data),

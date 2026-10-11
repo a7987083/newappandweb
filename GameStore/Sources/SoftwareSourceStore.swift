@@ -132,8 +132,13 @@ final class SoftwareSourceStore: ObservableObject {
                 UserDefaults.standard.set(self.sources, forKey: Self.storageKey)
                 UserDefaults.standard.set(self.registeredIdentities, forKey: Self.identitiesKey)
                 UserDefaults.standard.set(self.sourceNames, forKey: Self.namesKey)
-                self.refreshCatalog()
-                completion(.success(()))
+                self.refreshCatalog {
+                    if let error = self.catalogError {
+                        completion(.failure(NSError(domain: "SoftwareSourceCatalog", code: 1, userInfo: [NSLocalizedDescriptionKey: error])))
+                    } else {
+                        completion(.success(()))
+                    }
+                }
             }
         }
     }
@@ -170,11 +175,13 @@ struct SourceCatalogApp: Identifiable, Codable {
 
 extension SoftwareSourceStore {
     // Decode and publish complete catalogs, not just registration metadata.
-    func refreshCatalog() {
+    func refreshCatalog(completion: (() -> Void)? = nil) {
         let registered = sources
         guard !registered.isEmpty else {
             catalogApps = []
             catalogError = nil
+            isCatalogLoading = false
+            completion?()
             return
         }
         refreshGeneration += 1
@@ -222,7 +229,7 @@ extension SoftwareSourceStore {
         }
         group.notify(queue: .main) { [weak self] in
             guard let self = self else { return }
-            guard generation == self.refreshGeneration else { return }
+            guard generation == self.refreshGeneration else { completion?(); return }
             var next = self.catalogsBySource.filter { registered.contains($0.key) }
             for (source, apps) in collected where registered.contains(source) {
                 next[source] = apps
@@ -235,6 +242,7 @@ extension SoftwareSourceStore {
             // Icon fetching is driven by visible cells; never enqueue an entire catalog.
             self.catalogError = failures.isEmpty ? nil : "刷新部分失败，已保留旧数据"
             self.isCatalogLoading = false
+            completion?()
             SourceCatalogCache.saveAsync(next) { [weak self] error in
                 guard let self = self, let error = error, generation == self.refreshGeneration else { return }
                 // The screen remains usable even when offline persistence fails.

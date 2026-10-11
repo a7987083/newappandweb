@@ -3,6 +3,20 @@ import UIKit
 /// Unified four-selectedTab Swift/UIKit shell. The dock stays fixed above each selectedTab's scroll view.
 final class MainShellViewController: UIViewController, UISearchBarDelegate, UIScrollViewDelegate, UITableViewDataSource, UITableViewDelegate {
     private var selectedTab = 0
+    private struct TabPage {
+        let controller: UIViewController
+        let views: [UIView]
+        let table: UITableView?
+        let catalog: AppCatalogViewController?
+        let searchBar: UISearchBar?
+        let header: UIView?
+        let headerHeight: CGFloat
+        let compact: UIView
+        let dock: UIView
+        let rows: [(String,String,String)]
+        let filtered: [(String,String,String)]
+    }
+    private var pages = [Int: TabPage]()
     private var child: UIViewController?
     private var currentTable: UITableView?
     private var catalog: AppCatalogViewController?
@@ -40,36 +54,69 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        if initialSize != view.bounds.size && !searching {
+        if initialSize != view.bounds.size {
             initialSize = view.bounds.size
-            showTab(selectedTab)
+            // Resize cached pages without replacing controllers or search state.
+            for page in pages.values {
+                page.controller.view.frame = view.bounds
+                page.dock.frame.origin.y = view.bounds.height - view.safeAreaInsets.bottom - 72
+                page.dock.center.x = view.bounds.midX
+            }
         }
     }
 
     private func showTab(_ index: Int) {
+        guard (0..<4).contains(index) else { return }
         if searching { closeSearch(animated: false) }
-        child?.willMove(toParent: nil)
-        child?.view.removeFromSuperview()
-        child?.removeFromParent()
-        child = nil
-        view.subviews.forEach { $0.removeFromSuperview() }
+        if let current = pages[selectedTab] {
+            pages[selectedTab] = TabPage(
+                controller: current.controller, views: current.views,
+                table: currentTable, catalog: catalog, searchBar: searchBar,
+                header: header, headerHeight: headerHeight, compact: compact,
+                dock: dock, rows: rows, filtered: filtered)
+        }
+        for page in pages.values {
+            page.views.forEach { $0.isHidden = true }
+        }
         selectedTab = index
+        if let existing = pages[index] {
+            child = existing.controller
+            currentTable = existing.table
+            catalog = existing.catalog
+            searchBar = existing.searchBar
+            header = existing.header
+            headerHeight = existing.headerHeight
+            compact = existing.compact
+            dock = existing.dock
+            rows = existing.rows
+            filtered = existing.filtered
+            existing.views.forEach { $0.isHidden = false }
+            if let table = currentTable { scrollViewDidScroll(table) }
+            return
+        }
+        let previousViews = Set(view.subviews.map(ObjectIdentifier.init))
         currentTable = nil
         catalog = nil
         searchBar = nil
         header = nil
+        rows = []
+        filtered = []
         compact = UIView()
+        let controller: UIViewController
         if index == 3 {
-            install(SettingsViewController())
+            controller = SettingsViewController()
+            install(controller)
         } else {
             let table: UITableView
             if index == 0 {
                 let c = AppCatalogViewController()
+                controller = c
                 install(c)
                 catalog = c
                 table = c.tableView
             } else {
                 let c = UIViewController()
+                controller = c
                 c.view.backgroundColor = bg
                 install(c)
                 table = UITableView(frame: c.view.bounds, style: .plain)
@@ -100,6 +147,12 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             buildActions(index)
         }
         buildDock()
+        let ownedViews = view.subviews.filter { !previousViews.contains(ObjectIdentifier($0)) }
+        pages[index] = TabPage(controller: controller, views: ownedViews,
+                               table: currentTable, catalog: catalog,
+                               searchBar: searchBar, header: header,
+                               headerHeight: headerHeight, compact: compact,
+                               dock: dock, rows: rows, filtered: filtered)
     }
 
     private func install(_ controller: UIViewController) {
@@ -303,6 +356,8 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         let searchDelta = searchRow.map {
             table.rectForRow(at: IndexPath(row: $0, section: 0)).minY - searchOffset
         } ?? 0
+        // The search viewport is below the fixed bar; normal mode starts at y=0.
+        let screenDelta = searchDelta + table.frame.minY - normalTableFrame.minY
         let searchAppID = searchRow.flatMap { selectedTab == 0 ? catalog?.appID(atVisibleRow: $0) : nil }
         let searchDemoName = searchRow.flatMap { selectedTab != 0 && $0 < filtered.count ? filtered[$0].0 : nil }
         searching = false
@@ -330,9 +385,9 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         }()
         let restoreOffset: CGFloat
         if let row = targetRow, row < table.numberOfRows(inSection: 0) {
-            restoreOffset = table.rectForRow(at: IndexPath(row: row, section: 0)).minY - searchDelta
+            restoreOffset = table.rectForRow(at: IndexPath(row: row, section: 0)).minY - screenDelta
         } else {
-            restoreOffset = searchOffset + headerHeight
+            restoreOffset = savedBrowseOffset
         }
         let restoreBrowsePosition = {
             table.layoutIfNeeded()

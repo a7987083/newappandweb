@@ -18,6 +18,11 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
     private var verifiedUDID: String?
     private var authorizationExpiry: Date?
     private var authorizationGeneration = 0
+    private var pendingRequests = Set<String>()
+    private var lastRequestAt = [String: Date]()
+    private func downloadKey(_ app: SourceCatalogApp) -> String {
+        app.sourceURL.absoluteString + "#" + app.id
+    }
 
     override func loadView() {
         view = UIView()
@@ -183,14 +188,27 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
 
     private func requestGet(for app: SourceCatalogApp) {
         guard let current = latestApp(matching: app) else { return }
+        let key = downloadKey(current)
+        guard !pendingRequests.contains(key),
+              Date().timeIntervalSince(lastRequestAt[key] ?? .distantPast) >= 2 else { return }
+        let center = AppStoreViewModel.shared.downloadCenter
+        if let url = validDownloadURL(current.downloadURL),
+           let existing = center.item(for: url),
+           existing.state == .completed || existing.state == .downloading ||
+           existing.state == .queued || existing.state == .paused { return }
+        lastRequestAt[key] = Date()
+        pendingRequests.insert(key)
+        tableView.reloadData()
         if current.requiresUnlock == true {
             guard let udid = UDIDService.shared.udid, UDIDLocalServer.validUDID(udid) else {
+                pendingRequests.remove(key)
                 promptForUDID()
                 return
             }
             SourceUnlockService.shared.verifyAuthorization(udid: udid) { [weak self] result in
                 DispatchQueue.main.async {
                     guard let self = self, UDIDService.shared.udid == udid else { return }
+                    defer { self.pendingRequests.remove(key); self.tableView.reloadData() }
                     switch result {
                     case .success(let expiry):
                         self.verifiedUDID = udid
@@ -203,6 +221,7 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
                                 self.showRefreshMessage("暂不可获取", "软件源未返回最新可用下载地址")
                                 return
                             }
+                            self.pendingRequests.remove(key)
                             AppStoreViewModel.shared.downloadCenter.enqueue(url)
                         }
                     case .failure:
@@ -217,9 +236,11 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
         }
         guard current.requiresUnlock == false,
               let url = validDownloadURL(current.downloadURL) else {
+            pendingRequests.remove(key)
             showRefreshMessage("暂不可获取", "请刷新软件源确认应用权限及下载地址")
             return
         }
+        pendingRequests.remove(key)
         AppStoreViewModel.shared.downloadCenter.enqueue(url)
     }
 
@@ -281,7 +302,10 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
             date = "—"
         }
         let hasDownload = validDownloadURL(app.downloadURL) != nil
-        if let state = downloadPresentation(for: app) {
+        let pending = pendingRequests.contains(downloadKey(app))
+        if pending {
+            cell.configureAction(title: "等待中", enabled: false)
+        } else if let state = downloadPresentation(for: app) {
             cell.configureAction(title: state.0, enabled: state.1)
         } else { switch app.requiresUnlock {
         case .none:

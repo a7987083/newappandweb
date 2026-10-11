@@ -9,19 +9,15 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
     private var visible: [DownloadCenter.Item] = []
     private var query = ""
     private var subscriptions = Set<AnyCancellable>()
-    private var inspected = [String: String]()
-    private var inspecting = Set<String>()
-
     override func loadView() {
         view = UIView()
-        view.backgroundColor = .clear
         tableView.frame = view.bounds
         tableView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         tableView.backgroundColor = .clear
         tableView.separatorStyle = .none
         tableView.contentInsetAdjustmentBehavior = .never
         tableView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 100, right: 0)
-        tableView.rowHeight = 106
+        tableView.rowHeight = 96
         tableView.dataSource = self
         tableView.delegate = self
         tableView.register(PackageDownloadCell.self, forCellReuseIdentifier: "Package")
@@ -30,15 +26,13 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Subscribe to all three published arrays, not just active transfers.
         Publishers.CombineLatest3(center.$activeItems, center.$completedItems, center.$terminalItems)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] active, completed, terminal in
                 self?.items = active + completed + terminal
                 self?.applyFilter()
             }.store(in: &subscriptions)
-        center.$extractionStatus
-            .receive(on: DispatchQueue.main)
+        center.$extractionStatus.receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.tableView.reloadData() }
             .store(in: &subscriptions)
         center.reloadDownloadedItems()
@@ -56,116 +50,108 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
 
     private func applyFilter() {
         visible = query.isEmpty ? items : items.filter {
-            displayName($0).localizedCaseInsensitiveContains(query)
+            ($0.localURL?.lastPathComponent ?? $0.sourceURL.lastPathComponent)
+                .localizedCaseInsensitiveContains(query)
         }
         tableView.reloadData()
         if visible.isEmpty {
-            let holder = UIView(frame: tableView.bounds)
-            let label = UILabel(frame: CGRect(x: 20, y: 62, width: max(0, tableView.bounds.width - 40), height: 90))
-            label.text = query.isEmpty ? "暂无安装包\n在应用页面点击「获取」后，下载任务会显示在这里" : "没有匹配的安装包"
-            label.font = .systemFont(ofSize: 15)
-            label.textColor = .secondaryLabel
+            let label = UILabel(frame: tableView.bounds.insetBy(dx: 24, dy: 0))
+            label.text = query.isEmpty ? "暂无安装包" : "没有匹配的安装包"
             label.textAlignment = .center
-            label.numberOfLines = 0
-            holder.addSubview(label)
-            tableView.backgroundView = holder
-        } else {
-            tableView.backgroundView = nil
-        }
+            label.textColor = .secondaryLabel
+            tableView.backgroundView = label
+        } else { tableView.backgroundView = nil }
     }
 
-    private func displayName(_ item: DownloadCenter.Item) -> String {
+    private func title(_ item: DownloadCenter.Item) -> String {
         item.localURL?.lastPathComponent ?? item.sourceURL.lastPathComponent
     }
 
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        visible.count
-    }
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { visible.count }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Package", for: indexPath) as! PackageDownloadCell
         let item = visible[indexPath.row]
-        let status: String
-        let action: String?
+        let state: String
+        let failure: Bool
         switch item.state {
-        case .queued: status = "等待下载"; action = nil
-        case .downloading: status = "\(Int(min(1, max(0, item.progress)) * 100))% · 下载中"; action = "暂停"
-        case .paused: status = "已暂停"; action = "继续"
+        case .queued: state = "等待下载"; failure = false
+        case .downloading: state = "\(Int(min(1, max(0, item.progress)) * 100))% · 下载中"; failure = false
+        case .paused: state = "已暂停"; failure = false
         case .completed:
-            let extraction = center.extractionStatus[item.localURL?.lastPathComponent ?? ""]
-            if let extraction = extraction {
-                status = "已下载 · " + extraction
-                action = extraction.hasPrefix("解压失败") ? "重新解压" : "检查"
-            } else {
-                status = "已下载"; action = "检查"
-            }
-        case .failed: status = item.errorDescription ?? "下载失败"; action = "重试"
-        case .cancelled: status = "已取消"; action = "重试"
+            state = "已下载 · " + (center.extractionStatus[item.localURL?.lastPathComponent ?? ""] ?? "等待解压")
+            failure = state.contains("解压失败")
+        case .failed: state = "下载失败 · 点击重试或删除"; failure = true
+        case .cancelled: state = "已取消 · 点击重试或删除"; failure = true
         }
-        cell.configure(name: displayName(item), status: status, progress: item.progress,
-                       action: action, completed: item.state == .completed)
-        cell.onAction = { [weak self] in self?.performAction(item) }
-        cell.onDelete = { [weak self] in self?.confirmDelete(item) }
+        cell.configure(name: title(item), status: state, progress: item.progress,
+                       failed: failure, showProgress: item.state == .downloading)
         return cell
     }
 
-    private func performAction(_ item: DownloadCenter.Item) {
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        let item = visible[indexPath.row]
+        let sheet = UIAlertController(title: title(item), message: nil, preferredStyle: .actionSheet)
+        func add(_ title: String, style: UIAlertAction.Style = .default, _ handler: @escaping () -> Void) {
+            sheet.addAction(UIAlertAction(title: title, style: style) { _ in handler() })
+        }
         switch item.state {
-        case .downloading: center.pause(item)
-        case .paused: center.resume(item)
-        case .failed, .cancelled: center.enqueue(item.sourceURL)
+        case .queued, .downloading:
+            if item.state == .downloading { add("暂停下载") { [weak self] in self?.center.pause(item) } }
+            add("取消下载", style: .destructive) { [weak self] in self?.center.cancel(item) }
+        case .paused:
+            add("继续下载") { [weak self] in self?.center.resume(item) }
+            add("删除任务", style: .destructive) { [weak self] in self?.center.removePausedItem(item) }
+        case .failed, .cancelled:
+            add("重试下载") { [weak self] in self?.center.enqueue(item.sourceURL) }
+            add("删除失败记录", style: .destructive) { [weak self] in self?.center.removeTerminalItem(item) }
         case .completed:
             guard let url = item.localURL else { return }
-            if center.extractionStatus[url.lastPathComponent]?.hasPrefix("解压失败") == true {
-                center.retryExtraction(for: item)
-            } else {
-                inspect(url)
+            // No signing entry until a certificate-selection UI exists.
+            if center.extractionStatus[url.lastPathComponent]?.hasPrefix("解压失败") == true ||
+                center.extractionStatus[url.lastPathComponent] == "缓存已删除" {
+                add("重新解压") { [weak self] in self?.center.retryExtraction(for: item) }
             }
-        case .queued: break
-        }
-    }
-
-    private func inspect(_ url: URL) {
-        let path = url.standardizedFileURL.path
-        guard !inspecting.contains(path) else { return }
-        inspecting.insert(path)
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let message: String
-            do {
-                let result = try IPAInspector.inspect(url)
-                message = "\(result.displayName) · \(result.version) · \(result.bundleID)\nSHA-256: \(result.sha256)"
-            } catch {
-                message = "IPA 校验失败：\(error.localizedDescription)"
-            }
-            DispatchQueue.main.async {
+            add("分享 IPA") { [weak self] in
                 guard let self = self else { return }
-                self.inspecting.remove(path)
-                self.inspected[path] = message
-                let alert = UIAlertController(title: "安装包检查", message: message, preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: "确定", style: .default))
-                self.present(alert, animated: true)
+                let activity = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+                if let popover = activity.popoverPresentationController {
+                    popover.sourceView = self.tableView
+                    popover.sourceRect = self.tableView.rectForRow(at: indexPath)
+                }
+                self.present(activity, animated: true)
             }
-        }
-    }
-
-    private func confirmDelete(_ item: DownloadCenter.Item) {
-        guard item.state == .completed else { return }
-        let alert = UIAlertController(title: "删除安装包", message: "确定删除「\(displayName(item))」？", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
-        alert.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
-            guard let self = self else { return }
-            self.center.deleteDownloadedItem(item) { [weak self] error in
-                guard let self = self else { return }
-                if let error = error {
-                    let failure = UIAlertController(title: "删除失败", message: error.localizedDescription, preferredStyle: .alert)
-                    failure.addAction(UIAlertAction(title: "确定", style: .default))
-                    self.present(failure, animated: true)
-                } else {
-                    self.items = self.center.items
-                    self.applyFilter()
+            add("删除解压缓存", style: .destructive) { [weak self] in
+                self?.confirm("删除解压缓存", detail: "只删除解压目录，保留 IPA。") {
+                    self?.center.removeExtractionCache(for: item) { [weak self] error in self?.showError(error) }
                 }
             }
-        })
+            add("删除 IPA", style: .destructive) { [weak self] in
+                self?.confirm("删除 IPA", detail: "同时删除关联的解压缓存。") {
+                    self?.center.deleteDownloadedItem(item) { [weak self] error in self?.showError(error) }
+                }
+            }
+        }
+        sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = tableView
+            popover.sourceRect = tableView.rectForRow(at: indexPath)
+        }
+        present(sheet, animated: true)
+    }
+
+    private func confirm(_ title: String, detail: String, work: @escaping () -> Void) {
+        let alert = UIAlertController(title: title, message: detail, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "删除", style: .destructive) { _ in work() })
+        present(alert, animated: true)
+    }
+
+    private func showError(_ error: Error?) {
+        guard let error = error else { return }
+        let alert = UIAlertController(title: "操作失败", message: error.localizedDescription, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确定", style: .default))
         present(alert, animated: true)
     }
 }
@@ -175,14 +161,10 @@ private final class PackageDownloadCell: UITableViewCell {
     private let nameLabel = UILabel()
     private let statusLabel = UILabel()
     private let progressView = UIProgressView(progressViewStyle: .default)
-    private let actionButton = UIButton(type: .system)
-    private let deleteButton = UIButton(type: .system)
-    var onAction: (() -> Void)?
-    var onDelete: (() -> Void)?
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
-        selectionStyle = .none
+        accessoryType = .none
         backgroundColor = .clear
         card.backgroundColor = .white
         card.layer.cornerRadius = 16
@@ -190,44 +172,24 @@ private final class PackageDownloadCell: UITableViewCell {
         nameLabel.font = .boldSystemFont(ofSize: 14)
         nameLabel.lineBreakMode = .byTruncatingMiddle
         statusLabel.font = .systemFont(ofSize: 12)
-        statusLabel.textColor = .secondaryLabel
-        actionButton.titleLabel?.font = .boldSystemFont(ofSize: 12)
-        actionButton.addTarget(self, action: #selector(act), for: .touchUpInside)
-        deleteButton.setImage(UIImage(systemName: "trash"), for: .normal)
-        deleteButton.tintColor = .systemRed
-        deleteButton.addTarget(self, action: #selector(remove), for: .touchUpInside)
-        [nameLabel, statusLabel, progressView, actionButton, deleteButton].forEach(card.addSubview)
+        [nameLabel, statusLabel, progressView].forEach { card.addSubview($0) }
     }
 
     required init?(coder: NSCoder) { fatalError("Programmatic only") }
 
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        onAction = nil
-        onDelete = nil
-    }
-
     override func layoutSubviews() {
         super.layoutSubviews()
-        card.frame = CGRect(x: 18, y: 0, width: max(0, contentView.bounds.width - 36), height: 98)
-        let width = max(0, card.bounds.width - 104)
-        nameLabel.frame = CGRect(x: 14, y: 13, width: width, height: 23)
-        statusLabel.frame = CGRect(x: 14, y: 40, width: width, height: 19)
-        progressView.frame = CGRect(x: 14, y: 75, width: max(0, card.bounds.width - 28), height: 4)
-        actionButton.frame = CGRect(x: card.bounds.width - 83, y: 14, width: 64, height: 32)
-        deleteButton.frame = CGRect(x: card.bounds.width - 49, y: 49, width: 30, height: 30)
+        card.frame = CGRect(x: 18, y: 0, width: max(0, contentView.bounds.width - 36), height: 88)
+        nameLabel.frame = CGRect(x: 14, y: 11, width: max(0, card.bounds.width - 28), height: 23)
+        statusLabel.frame = CGRect(x: 14, y: 40, width: max(0, card.bounds.width - 28), height: 21)
+        progressView.frame = CGRect(x: 14, y: 71, width: max(0, card.bounds.width - 28), height: 4)
     }
 
-    func configure(name: String, status: String, progress: Double, action: String?, completed: Bool) {
+    func configure(name: String, status: String, progress: Double, failed: Bool, showProgress: Bool) {
         nameLabel.text = name
         statusLabel.text = status
+        statusLabel.textColor = failed ? .systemRed : .secondaryLabel
         progressView.progress = Float(min(1, max(0, progress)))
-        progressView.isHidden = completed
-        actionButton.setTitle(action, for: .normal)
-        actionButton.isHidden = action == nil
-        deleteButton.isHidden = !completed
+        progressView.isHidden = !showProgress
     }
-
-    @objc private func act() { onAction?() }
-    @objc private func remove() { onDelete?() }
 }

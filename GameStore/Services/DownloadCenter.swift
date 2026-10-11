@@ -133,6 +133,34 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         )
     }()
 
+    func removeTerminalItem(_ item: Item) {
+        precondition(Thread.isMainThread)
+        guard item.state == .failed || item.state == .cancelled else { return }
+        terminalItems.removeAll { $0.id == item.id }
+    }
+
+    func removePausedItem(_ item: Item) {
+        precondition(Thread.isMainThread)
+        guard item.state == .paused else { return }
+        activeItems.removeAll { $0.id == item.id }
+        resumeDataByURL.removeValue(forKey: item.sourceURL)
+        savePausedRecords()
+    }
+
+    func removeExtractionCache(for item: Item, completion: @escaping (Error?) -> Void) {
+        precondition(Thread.isMainThread)
+        guard item.state == .completed, let url = item.localURL else { return }
+        archiveQueue.async { [weak self] in
+            let failure: Error?
+            do { try DownloadIPAExtractor.removeExtraction(for: url); failure = nil }
+            catch { failure = error }
+            DispatchQueue.main.async {
+                if failure == nil { self?.extractionStatus[url.lastPathComponent] = "缓存已删除" }
+                completion(failure)
+            }
+        }
+    }
+
     func enqueue(_ url: URL) {
         guard let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https" else {
@@ -145,7 +173,8 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             return
         }
 
-        guard !activeItems.contains(where: { $0.sourceURL == url }) else {
+        guard !activeItems.contains(where: { $0.sourceURL == url }),
+              !completedItems.contains(where: { $0.sourceURL == url }) else {
             return
         }
 

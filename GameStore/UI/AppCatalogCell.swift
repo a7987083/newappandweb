@@ -79,6 +79,8 @@ final class AppCatalogCell: UITableViewCell {
     func configureAction(title: String, enabled: Bool) {
         downloadButton.setTitle(title, for: .normal)
         downloadButton.isEnabled = enabled
+        downloadButton.backgroundColor = title == "重试" ? .systemOrange :
+            (enabled ? UIColor(red: 51/255, green: 124/255, blue: 250/255, alpha: 1) : .systemGray3)
     }
 
     @objc(configureWithName:metadata:descriptionText:iconURL:)

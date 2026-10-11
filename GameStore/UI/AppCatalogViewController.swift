@@ -21,6 +21,7 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
         tableView.frame = view.bounds
         tableView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         tableView.backgroundColor = .clear
+        tableView.contentInsetAdjustmentBehavior = .never
         tableView.separatorStyle = .none
         tableView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 100, right: 0)
         tableView.dataSource = self

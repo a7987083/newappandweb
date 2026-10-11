@@ -29,6 +29,22 @@ struct SigningRequest {
     var editing: SigningAppEditing = SigningAppEditing()
 }
 
+enum IPACompressionPreset: String, CaseIterable, Identifiable {
+    case fast
+    case balanced
+    case maximum
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .fast: return "快速"
+        case .balanced: return "标准"
+        case .maximum: return "极限"
+        }
+    }
+}
+
 struct SigningAppEditing {
     var displayName: String? = nil
     var bundleIdentifier: String? = nil
@@ -36,6 +52,7 @@ struct SigningAppEditing {
     var minimumOS: String? = nil
     var removeURLSchemes = false
     var outputFormat: String = "ipa"
+    var compressionPreset: IPACompressionPreset = .balanced
     var replacementIconPNG: Data? = nil
 }
 

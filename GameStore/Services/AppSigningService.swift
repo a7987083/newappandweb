@@ -1,7 +1,6 @@
 import Foundation
-import ZsignSwift
-import Zsign
 import ZIPFoundation
+import Zip
 import CryptoKit
 
 protocol AppSigning {
@@ -20,6 +19,7 @@ enum SigningServiceError: LocalizedError {
     case malformedPayload
     case nativeSigningFailed(String)
     case outputValidationFailed
+    case cancelled
     case implementationPending
 
     var errorDescription: String? {
@@ -31,12 +31,35 @@ enum SigningServiceError: LocalizedError {
         case .malformedPayload: return "IPA 解包后未找到唯一的 Payload/*.app"
         case .nativeSigningFailed(let detail): return "Zsign 签名失败：" + detail
         case .outputValidationFailed: return "签名产物检查失败，未生成有效 IPA"
+        case .cancelled: return "已取消签名，临时解压目录已清理"
         case .implementationPending: return "签名引擎未完成初始化"
         }
     }
 }
 
 final class AppSigningService: AppSigning {
+    private let cancellationLock = NSLock()
+    private var cancellationRequested = false
+
+    func cancel() {
+        cancellationLock.lock()
+        cancellationRequested = true
+        cancellationLock.unlock()
+    }
+
+    private func resetCancellation() {
+        cancellationLock.lock()
+        cancellationRequested = false
+        cancellationLock.unlock()
+    }
+
+    private func checkCancellation() throws {
+        cancellationLock.lock()
+        let cancelled = cancellationRequested
+        cancellationLock.unlock()
+        if cancelled { throw SigningServiceError.cancelled }
+    }
+
     /// User-visible diagnostics. Never include passwords, private keys or certificate bytes.
     var onReport: ((String) -> Void)?
 
@@ -48,6 +71,7 @@ final class AppSigningService: AppSigning {
         progress: @escaping (SigningState) -> Void,
         completion: @escaping (Result<SignedArtifact, Error>) -> Void
     ) {
+        resetCancellation()
         DispatchQueue.global(qos: .userInitiated).async {
             let emit: (SigningState) -> Void = { state in
                 DispatchQueue.main.async { progress(state) }
@@ -55,16 +79,9 @@ final class AppSigningService: AppSigning {
             emit(.prepareContext)
             self.report("开始处理 IPA：" + request.ipaURL.lastPathComponent)
             do {
-                let options = SigningOptionsStore.shared.options
-                if !options.temporarySigning {
-                    emit(.verifyCertificate)
-                    self.report("验证 P12 与描述文件是否可读取")
-                    try self.validateCertificate(request.certificate, password: request.password)
-                }
-                emit(.prepareIPA)
-                let source = try IPAInspector.inspect(request.ipaURL)
-                self.report("原始 IPA 解析成功：\(source.bundleID) · \(source.version)")
+                try self.checkCancellation()
                 let result = try self.signIPA(request: request, emit: emit)
+                try self.checkCancellation()
                 self.report("签名与打包流程完成；注意：尚未验证 iOS 系统能否安装")
                 DispatchQueue.main.async { completion(.success(result)) }
             } catch {
@@ -84,14 +101,25 @@ final class AppSigningService: AppSigning {
         try fm.createDirectory(at: payloadRoot, withIntermediateDirectories: true, attributes: nil)
 
         emit(.extracting)
-        try fm.unzipItem(at: request.ipaURL, to: payloadRoot)
-        report("IPA 解压完成")
+        report("开始解压 IPA")
+        // The existing IPAInspector provides path and CRC checks, but
+        // IPAArchiveIntegrity's strict SC_Info preflight is intentionally removed.
+        let source = try IPAInspector.inspect(request.ipaURL)
+        report("原始 IPA 解析成功：\(source.bundleID) · \(source.version)")
+        try checkCancellation()
+        // Do not reject nonstandard SC_Info directory metadata before unpacking.
+        Zip.addCustomFileExtension("ipa")
+        Zip.addCustomFileExtension("tipa")
+        try Zip.unzipFile(request.ipaURL, destination: payloadRoot, overwrite: true, password: nil)
+        report("IPA 解压完成（Zip/minizip）")
+        try checkCancellation()
         let payload = payloadRoot.appendingPathComponent("Payload", isDirectory: true)
         let apps = (try fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: [.isDirectoryKey]))
             .filter { $0.pathExtension.lowercased() == "app" }
         guard apps.count == 1, let app = apps.first else { throw SigningServiceError.malformedPayload }
         report("定位主 App：" + app.lastPathComponent)
 
+        try checkCancellation()
         let options = SigningOptionsStore.shared.options
         try applyZonoeInfoOptions(options, editing: request.editing, to: app)
         report("Info.plist 选项已处理")
@@ -114,72 +142,44 @@ final class AppSigningService: AppSigning {
 
         let beforeNested = nestedDiagnosticSnapshot(in: app, phase: "签名前")
 
+        try checkCancellation()
+        if !options.temporarySigning {
+            emit(.verifyCertificate)
+            report("验证 P12 与描述文件是否可读取")
+            try validateCertificate(request.certificate, password: request.password)
+        }
+        try checkCancellation()
+        emit(.signing)
+        let mode: ZNZsignKit.Mode
         if options.temporarySigning {
-            emit(.signing)
-            report("调用 Zsign：Ad-hoc 模式")
-            var callbackError: Error?
-            let signed = Zsign.sign(
-                appPath: app.path,
-                entitlementsPath: "",
-                customIdentifier: request.editing.bundleIdentifier ?? "",
-                customName: request.editing.displayName ?? "",
-                customVersion: request.editing.version ?? "",
-                adhoc: true,
-                removeProvision: false,
-                completion: { _, error in callbackError = error }
-            )
-            if let error = callbackError {
-                throw SigningServiceError.nativeSigningFailed(error.localizedDescription)
+            mode = .adhoc
+        } else {
+            guard let p12 = request.certificate.p12URL,
+                  let provision = request.certificate.mobileProvisionURL else {
+                throw SigningServiceError.missingCertificateFile
             }
-            guard signed else { throw SigningServiceError.nativeSigningFailed("Zsign 未成功完成 Ad-hoc 重签名") }
-            report("Zsign 返回成功（Ad-hoc）；这不等于系统验签通过")
-            let signature = app.appendingPathComponent("_CodeSignature/CodeResources")
-            guard fm.fileExists(atPath: signature.path) else {
+            mode = .certificate(p12: p12, provision: provision, password: request.password)
+        }
+        try ZNZsignKit.sign(.init(
+            app: app,
+            mode: mode,
+            bundleIdentifier: request.editing.bundleIdentifier,
+            displayName: request.editing.displayName,
+            version: request.editing.version,
+            entitlements: nil
+        ), report: report)
+        if !options.temporarySigning {
+            let embedded = app.appendingPathComponent("embedded.mobileprovision")
+            guard fm.fileExists(atPath: embedded.path) else {
                 throw SigningServiceError.outputValidationFailed
             }
-        } else {
-        guard let p12 = request.certificate.p12URL,
-              let provision = request.certificate.mobileProvisionURL else {
-            throw SigningServiceError.missingCertificateFile
         }
-        emit(.signing)
-        report("调用 Zsign：P12 + provisioning profile；开始签署整个 App")
-        var callbackError: Error?
-        let signed = Zsign.sign(
-            appPath: app.path,
-            provisionPath: provision.path,
-            p12Path: p12.path,
-            p12Password: request.password,
-            entitlementsPath: "",
-            customIdentifier: request.editing.bundleIdentifier ?? "",
-            customName: request.editing.displayName ?? "",
-            customVersion: request.editing.version ?? "",
-            removeProvision: false,
-            completion: { _, error in
-                callbackError = error
-            }
-        )
-        if let error = callbackError {
-            throw SigningServiceError.nativeSigningFailed(error.localizedDescription)
-        }
-
-        guard signed else { throw SigningServiceError.nativeSigningFailed("Zsign 未成功完成证书重签名") }
-        report("Zsign 返回成功（证书模式）；待检查嵌套 Mach-O")
-
-        // Do not report success unless the app has both a signature resource
-        // and the embedded provisioning profile required for installation.
-        let signature = app.appendingPathComponent("_CodeSignature/CodeResources")
-        let embedded = app.appendingPathComponent("embedded.mobileprovision")
-        guard fm.fileExists(atPath: signature.path),
-              fm.fileExists(atPath: embedded.path) else {
-            throw SigningServiceError.outputValidationFailed
-        }
-
-        }
+        try checkCancellation()
         let afterNested = nestedDiagnosticSnapshot(in: app, phase: "签名后")
         compareNestedSnapshots(before: beforeNested, after: afterNested)
+        try checkCancellation()
         emit(.repacking)
-        report("开始压缩输出 IPA")
+        report("开始压缩输出 IPA：\(request.editing.compressionPreset.title)")
         let outDir = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Signed", isDirectory: true)
         try fm.createDirectory(at: outDir, withIntermediateDirectories: true, attributes: nil)
@@ -194,7 +194,8 @@ final class AppSigningService: AppSigning {
         let output = outDir.appendingPathComponent(destinationName)
         do {
             if fm.fileExists(atPath: output.path) { try fm.removeItem(at: output) }
-            try fm.zipItem(at: payloadRoot, to: output, shouldKeepParent: false, compressionMethod: .deflate)
+            try IPAArchivePackager.pack(root: payloadRoot, output: output, preset: request.editing.compressionPreset)
+            try checkCancellation()
             emit(.verifySignature)
             let inspected = try IPAInspector.inspect(output)
             report("输出 IPA 结构解析成功：" + output.lastPathComponent)

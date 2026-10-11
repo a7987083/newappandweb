@@ -83,9 +83,12 @@ struct SourceAppRow: View {
 struct SourceAppIcon: View {
     let url: URL?
     @State private var loadedImage: UIImage?
+    @State private var loadedKey: String?
+
     var body: some View {
         Group {
-            if let image = loadedImage ?? url.flatMap({ SourceIconCache.shared.cachedMemoryImage(for: $0) }) {
+            if let image = (loadedKey == url?.absoluteString ? loadedImage : nil)
+                ?? url.flatMap({ SourceIconCache.shared.cachedMemoryImage(for: $0) }) {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
                 Image(systemName: "app").resizable().scaledToFit().padding(10)
@@ -97,10 +100,16 @@ struct SourceAppIcon: View {
         .clipped()
         .onAppear { fetch() }
     }
+
     private func fetch() {
-        guard let url = url else { return }
-        SourceIconCache.shared.load(url) { image in
-            if self.url == url { self.loadedImage = image }
+        let requestedKey = url?.absoluteString
+        loadedKey = requestedKey
+        loadedImage = nil
+        guard let requestedURL = url else { return }
+        SourceIconCache.shared.load(requestedURL) { image in
+            guard self.url?.absoluteString == requestedKey else { return }
+            self.loadedKey = requestedKey
+            self.loadedImage = image
         }
     }
 }

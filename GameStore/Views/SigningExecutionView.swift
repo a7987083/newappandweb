@@ -21,13 +21,15 @@ struct SigningExecutionView: View {
     @State private var version = ""
     @State private var minimumOS = ""
     @State private var outputFormat = "ipa"
+    @State private var compressionPreset: IPACompressionPreset = .balanced
     @State private var removeURLSchemes = false
     @State private var state: SigningState = .idle
     @State private var running = false
+    @State private var cancellationPending = false
     @State private var result: SignedArtifact?
     @State private var errorMessage: String?
     @State private var reportLines: [String] = []
-    @State private var installMode = IPAInstallMode.local
+    private let installMode = IPAInstallMode.network
     @State private var installing = false
     private let engine = AppSigningService()
 
@@ -53,6 +55,16 @@ struct SigningExecutionView: View {
                         }
                         .pickerStyle(SegmentedPickerStyle())
                         .padding(.horizontal, 18)
+                        .padding(.bottom, 12)
+
+                        sectionLabel("压缩模式")
+                        Picker("压缩模式", selection: $compressionPreset) {
+                            ForEach(IPACompressionPreset.allCases) { preset in
+                                Text(preset.title).tag(preset)
+                            }
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                        .padding(.horizontal, 18)
                         .padding(.bottom, 28)
 
                         sectionLabel("打包选项")
@@ -68,15 +80,6 @@ struct SigningExecutionView: View {
                         roundedToggle("Ad-hoc 伪签名", value: optionBinding(\.temporarySigning))
                         roundedToggle("注册 zonoe UDID 回调", value: optionBinding(\.registerCallback))
                         roundedToggle("签名完成自动安装", value: optionBinding(\.autoInstallAfterSigning))
-                        HStack {
-                            Text("安装方式")
-                            Spacer()
-                            Picker("安装方式", selection: $installMode) {
-                                Text("本地 OTA").tag(IPAInstallMode.local)
-                                Text("网络服务器").tag(IPAInstallMode.network)
-                            }.pickerStyle(SegmentedPickerStyle()).frame(width: 210)
-                        }.padding(14).background(Color.white).cornerRadius(12)
-                         .padding(.horizontal, 18).padding(.bottom, 12)
                         HStack {
                             Text("打包规则")
                             Spacer()
@@ -122,7 +125,7 @@ struct SigningExecutionView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack {
                                 if running { SigningActivityIndicator().frame(width: 22, height: 22) }
-                                Text(stageName(state))
+                                Text(cancellationPending ? "正在取消并清理临时文件…" : stageName(state))
                             }
                             Button("查看签名详细报告（\(reportLines.count) 条）") { activeSheet = .report }
                                 .font(.footnote)
@@ -147,17 +150,24 @@ struct SigningExecutionView: View {
                 }
                 .background(pageColor)
 
-                Button(action: start) {
-                    Text(running ? "正在处理…" : "确认修改 / 打包")
+                Button(action: {
+                    if running {
+                        cancellationPending = true
+                        engine.cancel()
+                    } else {
+                        start()
+                    }
+                }) {
+                    Text(cancellationPending ? "正在取消…" : (running ? "取消签名" : "确认修改 / 打包"))
                         .font(.system(size: 18, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 54)
-                        .background(Color(red: 0.20, green: 0.47, blue: 0.97))
+                        .background(running ? Color(red: 0.76, green: 0.25, blue: 0.25) : Color(red: 0.20, green: 0.47, blue: 0.97))
                         .foregroundColor(.white)
                         .cornerRadius(17)
                 }
-                .disabled(running || result != nil ||
-                          (!signingOptions.options.temporarySigning &&
+                .disabled(cancellationPending || result != nil ||
+                          (!running && !signingOptions.options.temporarySigning &&
                            !certificates.certificates.contains(where: { $0.id == selectedID })))
                 .padding(.horizontal, 18)
                 .padding(.top, 14)
@@ -166,7 +176,14 @@ struct SigningExecutionView: View {
             }
             .navigationBarTitle("修改应用信息", displayMode: .inline)
             .navigationBarItems(
-                leading: Button("取消") { presentation.wrappedValue.dismiss() }.disabled(running),
+                leading: Button(cancellationPending ? "取消中…" : "取消") {
+                    if running {
+                        cancellationPending = true
+                        engine.cancel()
+                    } else {
+                        presentation.wrappedValue.dismiss()
+                    }
+                }.disabled(cancellationPending),
                 trailing: Button(action: {
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
                                                     to: nil, from: nil, for: nil)
@@ -203,7 +220,7 @@ struct SigningExecutionView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(16)
                             }
-                            .navigationBarTitle(running ? "签名进行中" : "签名详细报告", displayMode: .inline)
+                            .navigationBarTitle(cancellationPending ? "正在取消" : (running ? "签名进行中" : "签名详细报告"), displayMode: .inline)
                             .navigationBarItems(
                                 leading: Button("复制") {
                                     UIPasteboard.general.string = reportLines.joined(separator: "\n")
@@ -328,6 +345,7 @@ struct SigningExecutionView: View {
         }
         let certificate = certificates.certificates.first(where: { $0.id == selectedID }) ?? DeviceCertificate(id: "modify-only", name: "仅修改", p12URL: nil, mobileProvisionURL: nil)
         running = true
+        cancellationPending = false
         result = nil
         errorMessage = nil
         state = .prepareContext
@@ -341,12 +359,22 @@ struct SigningExecutionView: View {
         let storedPassword = temporary ? "" : CertificatePasswordKeychain.read(for: certificate.id)
         let effectivePassword = storedPassword ?? password
         let wasLegacy = storedPassword == nil
-        let editing = SigningAppEditing(displayName: appName, bundleIdentifier: bundleID, version: version, minimumOS: minimumOS, removeURLSchemes: removeURLSchemes, outputFormat: outputFormat, replacementIconPNG: replacementIconPNG)
+        let editing = SigningAppEditing(displayName: appName, bundleIdentifier: bundleID, version: version, minimumOS: minimumOS, removeURLSchemes: removeURLSchemes, outputFormat: outputFormat, compressionPreset: compressionPreset, replacementIconPNG: replacementIconPNG)
         let request = SigningRequest(ipaURL: ipaURL, certificate: certificate, password: effectivePassword, editing: editing)
         engine.sign(request: request, progress: { nextState in
             state = nextState
         }, completion: { response in
             running = false
+            let wasCancelled = cancellationPending
+            cancellationPending = false
+            if wasCancelled {
+                result = nil
+                errorMessage = nil
+                state = .idle
+                activeSheet = nil
+                presentation.wrappedValue.dismiss()
+                return
+            }
             switch response {
             case .success(let artifact):
                 if wasLegacy && !temporary { try? CertificatePasswordKeychain.save(effectivePassword, for: certificate.id) }

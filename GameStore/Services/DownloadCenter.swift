@@ -411,7 +411,9 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
 
             let destination = try Self.downloadDestination(
                 suggestedFilename: downloadTask.response?.suggestedFilename,
-                sourceURL: downloadTask.originalRequest?.url
+                sourceURL: downloadTask.originalRequest?.url,
+                contentDisposition: (downloadTask.response as? HTTPURLResponse)?
+                    .value(forHTTPHeaderField: "Content-Disposition")
             )
 
             // Never delete an existing IPA. downloadDestination already chooses
@@ -550,9 +552,29 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         )
     }
 
+    // RFC 5987 filename*=UTF-8''... takes precedence over legacy filename=.
+    // '+' is literal in URL paths and RFC Content-Disposition; never globally replace it.
+    private static func dispositionFilename(_ header: String?) -> String? {
+        guard let header = header else { return nil }
+        let fields = header.split(separator: ";", omittingEmptySubsequences: false)
+        for field in fields.dropFirst() {
+            let pair = field.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard pair.lowercased().hasPrefix("filename*=") else { continue }
+            let encoded = String(pair.dropFirst("filename*=".count))
+                .trimmingCharacters(in: CharacterSet(charactersIn: " \""))
+            let parts = encoded.split(separator: "'", maxSplits: 2, omittingEmptySubsequences: false)
+            guard parts.count == 3, parts[0].lowercased() == "utf-8",
+                  let decoded = String(parts[2]).removingPercentEncoding,
+                  !decoded.isEmpty else { continue }
+            return decoded
+        }
+        return nil
+    }
+
     private static func downloadDestination(
         suggestedFilename: String?,
-        sourceURL: URL?
+        sourceURL: URL?,
+        contentDisposition: String?
     ) throws -> URL {
         let fileManager = FileManager.default
         let directory = downloadsDirectory(fileManager: fileManager)
@@ -564,8 +586,19 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         )
 
         let fallback = sourceURL?.lastPathComponent
-        var fileName = suggestedFilename?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let advertised = suggestedFilename?.trimmingCharacters(in: .whitespacesAndNewlines)
+        var fileName = dispositionFilename(contentDisposition) ?? advertised
+
+        // URLSession sometimes exposes an encoded fallback name. Prefer a
+        // decoded IPA path when the suggested name still contains percent escapes,
+        // or has '+' in place of spaces from a legacy form-encoded server.
+        if let pathName = fallback, !pathName.isEmpty,
+           pathName.lowercased().hasSuffix(".ipa"),
+           let current = fileName,
+           (current.contains("%") || (current.contains("+") && pathName.contains(" "))),
+           pathName != current {
+            fileName = pathName
+        }
 
         if fileName == nil || fileName?.isEmpty == true {
             fileName = fallback

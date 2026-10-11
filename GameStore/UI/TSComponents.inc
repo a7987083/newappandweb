@@ -18,5 +18,5 @@
  CGFloat w=self.view.bounds.size.width;UIView *v=[[UIView alloc]initWithFrame:CGRectMake(18,y,w-36,50)];v.backgroundColor=UIColor.whiteColor;v.layer.cornerRadius=19;[self.content addSubview:v];
  UIImageView *iv=[[UIImageView alloc]initWithImage:[UIImage systemImageNamed:icon]];iv.frame=CGRectMake(23,13,24,24);iv.tintColor=color;iv.contentMode=UIViewContentModeScaleAspectFit;[v addSubview:iv];
  UILabel *lab=L(name,16,NO,color);lab.frame=CGRectMake(63,6,w-107,38);lab.adjustsFontSizeToFitWidth=YES;lab.minimumScaleFactor=.7;[v addSubview:lab];
- UIButton *tap=[UIButton buttonWithType:UIButtonTypeCustom];tap.frame=v.bounds;[tap addTarget:self action:[name isEqualToString:@"设备认证"] ? @selector(openDeviceAuthentication) : @selector(demo) forControlEvents:UIControlEventTouchUpInside];[v addSubview:tap];return y+59;
+ UIButton *tap=[UIButton buttonWithType:UIButtonTypeCustom];tap.frame=v.bounds;[tap addTarget:self action:@selector(demo) forControlEvents:UIControlEventTouchUpInside];[v addSubview:tap];return y+59;
 }

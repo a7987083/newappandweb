@@ -57,7 +57,6 @@
  y=[self card:@"Random Dice 2.ipa" detail:@"273.6 MB · 2026-10-10 02:35（演示）" symbol:@"doc.fill" badge:nil y:y];
  y=[self card:@"test.ipa" detail:@"960 KB · 2026-10-11 06:42（演示）" symbol:@"doc.fill" badge:nil y:y];
  }else{y=self.searchRowsTop;}
- }
  CGFloat contentHeight=MAX(y,self.scroll.bounds.size.height-self.scroll.contentInset.bottom);
  self.content.frame=CGRectMake(0,0,w,contentHeight);
  self.scroll.contentSize=CGSizeMake(w,contentHeight);

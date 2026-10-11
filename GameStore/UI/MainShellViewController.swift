@@ -1,6 +1,6 @@
 import UIKit
 
-/// Unified four-selectedTab Swift/UIKit shell. The dock stays fixed above each selectedTab's scroll view.
+/// Four-tab UIKit shell: retains page controllers and coordinates shared UI.
 final class MainShellViewController: UIViewController, UISearchBarDelegate, UIScrollViewDelegate, UITableViewDataSource, UITableViewDelegate {
     private var selectedTab = 0
     private struct TabPage {
@@ -17,7 +17,6 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         let filtered: [(String,String,String)]
     }
     private var pages = [Int: TabPage]()
-    private var child: UIViewController?
     private var currentTable: UITableView?
     private var catalog: AppCatalogViewController?
     private var searchBar: UISearchBar?
@@ -105,7 +104,6 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         }
         selectedTab = index
         if let existing = pages[index] {
-            child = existing.controller
             currentTable = existing.table
             catalog = existing.catalog
             searchBar = existing.searchBar
@@ -186,7 +184,6 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         controller.view.autoresizingMask = [.flexibleWidth,.flexibleHeight]
         view.addSubview(controller.view)
         controller.didMove(toParent: self)
-        child = controller
     }
 
     private func buildHeader(_ index: Int) -> UIView {
@@ -266,7 +263,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
 
     func searchBarShouldBeginEditing(_ bar: UISearchBar) -> Bool {
         guard let table = currentTable, searchPhase.begin() else { return false }
-        searchSession.begin(on: table, in: view, safeTop: view.safeAreaInsets.top)
+        searchSession.begin(on: table)
         oldSearchFrame = bar.frame
         let origin = bar.superview?.convert(bar.frame,to: view) ?? bar.frame
         let safe = view.safeAreaInsets.top
@@ -372,8 +369,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) { searchBar.resignFirstResponder() }
 }
 
-/// Owns the transient search viewport, keyboard observer and scroll anchor.
-/// The shell retains responsibility only for visual transitions and tab routing.
+/// Card used by the temporary package and plugin demo lists.
 private final class ShellPlaceholderCell: UITableViewCell {
     private let card = UIView()
     private let iconBackground = UIView()

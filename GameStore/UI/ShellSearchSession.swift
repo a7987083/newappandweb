@@ -44,7 +44,7 @@ final class ShellSearchSession {
 
     deinit { stopObservingKeyboard() }
 
-    func begin(on table: UITableView, in host: UIView, safeTop: CGFloat) {
+    func begin(on table: UITableView) {
         stopObservingKeyboard()
         table.layoutIfNeeded()
         originalFrame = table.frame

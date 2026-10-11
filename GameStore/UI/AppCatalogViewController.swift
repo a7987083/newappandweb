@@ -11,6 +11,7 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
     private var query = ""
     private var observer: NSObjectProtocol?
     private var refreshSubscription: AnyCancellable?
+    private var downloadSubscription: AnyCancellable?
     private weak var refreshAlert: UIAlertController?
     private var refreshRequested = false
     private var catalogHeader: UIView?
@@ -41,6 +42,11 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
             object: nil, queue: .main
         ) { [weak self] _ in self?.reloadCatalog() }
         reloadCatalog()
+        downloadSubscription = AppStoreViewModel.shared.downloadCenter.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.tableView.reloadData() }
+            }
         if !SoftwareSourceStore.shared.sources.isEmpty { SoftwareSourceStore.shared.refreshCatalog() }
     }
 
@@ -146,6 +152,21 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
     private var authorizationValid: Bool {
         guard let udid = UDIDService.shared.udid else { return false }
         return verifiedUDID == udid && (authorizationExpiry ?? .distantPast) > Date()
+    }
+
+    private func downloadPresentation(for app: SourceCatalogApp) -> (String, Bool)? {
+        let center = AppStoreViewModel.shared.downloadCenter
+        // Prefer a current URL match; signed URLs can change, so resolve the
+        // retained file's original download URL as well when possible.
+        guard let url = validDownloadURL(app.downloadURL),
+              let item = center.item(for: url) else { return nil }
+        switch item.state {
+        case .queued: return ("等待中", false)
+        case .downloading: return ("\(Int(item.progress * 100))%", false)
+        case .paused: return ("继续", true)
+        case .completed: return ("已下载", false)
+        case .failed, .cancelled: return ("重试", true)
+        }
     }
 
     private func validDownloadURL(_ url: URL?) -> URL? {
@@ -260,7 +281,9 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
             date = "—"
         }
         let hasDownload = validDownloadURL(app.downloadURL) != nil
-        switch app.requiresUnlock {
+        if let state = downloadPresentation(for: app) {
+            cell.configureAction(title: state.0, enabled: state.1)
+        } else { switch app.requiresUnlock {
         case .none:
             cell.configureAction(title: "待刷新", enabled: false)
         case .some(false):
@@ -272,8 +295,17 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
                 cell.configureAction(title: "解锁", enabled: app.unlockURL != nil)
             }
         }
+        }
         cell.onAction = { [weak self] in
             guard let self = self else { return }
+            if let url = self.validDownloadURL(app.downloadURL),
+               let item = AppStoreViewModel.shared.downloadCenter.item(for: url) {
+                switch item.state {
+                case .paused: AppStoreViewModel.shared.downloadCenter.resume(item); return
+                case .failed, .cancelled: self.requestGet(for: app); return
+                default: return
+                }
+            }
             if app.requiresUnlock == true &&
                 (!self.authorizationValid || self.validDownloadURL(app.downloadURL) == nil) {
                 self.presentUnlock(for: app)
@@ -291,6 +323,7 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
         guard visibleIndices.indices.contains(row) else { return }
         let app = applications[visibleIndices[row]]
         let hasURL = validDownloadURL(app.downloadURL) != nil
+        let state = downloadPresentation(for: app)
         let title: String
         let enabled: Bool
         switch app.requiresUnlock {
@@ -300,13 +333,21 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
             title = authorizationValid && hasURL ? "获取" : "解锁"
             enabled = title == "获取" || app.unlockURL != nil
         }
-        let detail = AppDetailViewController(app: app, actionTitle: title, actionEnabled: enabled)
+        let detail = AppDetailViewController(app: app, actionTitle: state?.0 ?? title, actionEnabled: state?.1 ?? enabled)
         detail.modalPresentationStyle = .fullScreen
         detail.onAction = { [weak self, weak detail] in
             guard let self = self, let detail = detail else { return }
             // The catalog continues to own authorization and download actions.
             detail.dismiss(animated: true) { [weak self] in
                 guard let self = self else { return }
+                if let url = self.validDownloadURL(app.downloadURL),
+                   let item = AppStoreViewModel.shared.downloadCenter.item(for: url) {
+                    switch item.state {
+                    case .paused: AppStoreViewModel.shared.downloadCenter.resume(item); return
+                    case .failed, .cancelled: self.requestGet(for: app); return
+                    default: return
+                    }
+                }
                 if app.requiresUnlock == true &&
                     (!self.authorizationValid || self.validDownloadURL(app.downloadURL) == nil) {
                     self.presentUnlock(for: app)

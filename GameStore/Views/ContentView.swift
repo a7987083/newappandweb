@@ -69,6 +69,5 @@ struct ContentView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
-        .accessibilityLabel(title)
     }
 }

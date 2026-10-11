@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CryptoKit
 
 /// Registration-only source manager. Validation must succeed before persistence.
 final class SoftwareSourceStore: ObservableObject {
@@ -478,10 +479,10 @@ final class SourceUnlockService {
             guard message == "ok，解锁成功" else {
                 completion(.failure(Failure.invalid(message.isEmpty ? "解锁失败" : message))); return
             }
-            self.verify(udid: device, completion: completion)
+            self.verify(app: app, udid: device, completion: completion)
         }.resume()
     }
-    private func verify(udid: String, completion: @escaping (Result<Void, Error>) -> Void) {
+    private func verify(app: SourceCatalogApp, udid: String, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let endpoint = URL(string: "https://app.zonoeios.xyz/index/index/apiface"),
               let target = query(endpoint, [URLQueryItem(name: "udid", value: udid)]) else {
             completion(.failure(Failure.invalid("校验地址无效"))); return
@@ -498,8 +499,24 @@ final class SourceUnlockService {
                   expires > Date().timeIntervalSince1970 else {
                 completion(.failure(Failure.invalid("授权无效或已过期"))); return
             }
+            UserDefaults.standard.set(expires, forKey: self.grantKey(app: app, udid: udid))
             completion(.success(()))
         }.resume()
+    }
+    func isUnlocked(_ app: SourceCatalogApp, udid: String?) -> Bool {
+        guard let udid = udid, !udid.isEmpty else { return false }
+        return UserDefaults.standard.double(forKey: grantKey(app: app, udid: udid)) > Date().timeIntervalSince1970
+    }
+    private func grantKey(app: SourceCatalogApp, udid: String) -> String {
+        let identity = app.bundleIdentifier.isEmpty ? app.name : app.bundleIdentifier
+        let source = URLComponents(string: app.sourceURL).map { components -> String in
+            var clean = components
+            clean.queryItems = (clean.queryItems ?? []).filter { $0.name.lowercased() != "udid" }
+            return clean.url?.absoluteString ?? app.sourceURL
+        } ?? app.sourceURL
+        let raw = "\(source)\n\(udid)\n\(identity)"
+        let digest = SHA256.hash(data: Data(raw.utf8)).map { String(format: "%02x", $0) }.joined()
+        return "zonoe.sourceUnlock.\(digest)"
     }
     private func query(_ url: URL, _ items: [URLQueryItem]) -> URL? {
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false),

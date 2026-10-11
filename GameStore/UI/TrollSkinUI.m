@@ -1,4 +1,5 @@
 #import "TrollSkinUI.h"
+#import "GameStore-Swift.h"
 static UIColor *C(int hex){return [UIColor colorWithRed:((hex>>16)&255)/255. green:((hex>>8)&255)/255. blue:(hex&255)/255. alpha:1];}
 static UILabel *L(NSString *s,CGFloat font,BOOL bold,UIColor *color){UILabel *l=[UILabel new];l.text=s;l.textColor=color;l.font=bold?[UIFont boldSystemFontOfSize:font]:[UIFont systemFontOfSize:font];return l;}
 @interface TSSkinScreen : UIViewController <UIScrollViewDelegate, UISearchBarDelegate>
@@ -20,6 +21,17 @@ static UILabel *L(NSString *s,CGFloat font,BOOL bold,UIColor *color){UILabel *l=
 @end
 @implementation TSSkinScreen
 - (void)demo {UIAlertController *a=[UIAlertController alertControllerWithTitle:@"界面演示" message:@"当前为 UI 占位，尚未接入实际安装、插件或系统管理功能。" preferredStyle:UIAlertControllerStyleAlert];[a addAction:[UIAlertAction actionWithTitle:@"知道了" style:UIAlertActionStyleDefault handler:nil]];[self presentViewController:a animated:YES completion:nil];}
+- (void)openDeviceAuthentication {
+ NSString *udid=[GameStoreDeviceAuthBridge currentUDID];
+ BOOL verified=udid.length>0;
+ NSString *message=verified ? [NSString stringWithFormat:@"当前已获取设备 UDID：\\n%@",udid] : @"尚未获取设备 UDID。点击下方按钮将使用 GameStore 原有描述文件认证流程。";
+ UIAlertController *alert=[UIAlertController alertControllerWithTitle:verified ? @"设备认证 · 已获取" : @"设备认证 · 未获取" message:message preferredStyle:UIAlertControllerStyleAlert];
+ [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+ [alert addAction:[UIAlertAction actionWithTitle:verified ? @"重新获取 UDID" : @"获取设备 UDID" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+  [GameStoreDeviceAuthBridge requestAuthentication];
+ }]];
+ [self presentViewController:alert animated:YES completion:nil];
+}
 - (void)viewDidLoad {
  [super viewDidLoad];self.view.backgroundColor=C(0xF2F2F7);
  [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(keyboardChanged:) name:UIKeyboardWillChangeFrameNotification object:nil];

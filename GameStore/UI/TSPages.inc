@@ -12,6 +12,7 @@
  y=[self line:@"设置" y:largeTitleY x:20 color:UIColor.blackColor size:37 bold:YES height:53]+8;
  y=[self line:@"如果应用安装后没有立即出现在主屏幕，请在此处注销一次。对于无法启动的应用，可以尝试刷新应用注册状态。" y:y x:30 color:C(0x8E8E93) size:14 bold:NO height:59]+15;
  y=[self line:@"设备管理" y:y x:30 color:C(0x8E8E93) size:14 bold:NO height:27]+5;
+ y=[self setting:@"设备认证" icon:@"checkmark.shield.fill" color:C(0x337CFA) y:y];
  NSArray *names=@[@"自定义清理",@"切换 App Store 账户",@"允许所有 App 粘贴",@"屏蔽 / 恢复 系统更新",@"直降应用"];
  NSArray *icons=@[@"trash.circle.fill",@"person.2.circle.fill",@"doc.on.doc.fill",@"shield.slash.fill",@"arrow.down.to.line"];
  for(NSInteger i=0;i<names.count;i++)y=[self setting:names[i] icon:icons[i] color:C(0x337CFA) y:y];

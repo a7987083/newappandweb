@@ -117,7 +117,6 @@ private struct DownloadCenterContent: View {
                     .background(Color.white)
                     .cornerRadius(20)
                     .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
                 }
                 .listStyle(PlainListStyle())
             }

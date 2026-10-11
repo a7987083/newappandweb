@@ -1,5 +1,6 @@
 import Foundation
 import ZIPFoundation
+import Zip
 
 /// Lossless type checks around IPA extraction and repacking.
 /// The original archive is read-only; entries are never silently coerced.
@@ -18,7 +19,7 @@ enum IPAArchiveIntegrity {
             switch self {
             case .invalidEntry(let path): return "ZIP 条目冲突或路径不安全：" + path
             case .typeChanged(let path, let expected, let actual):
-                return "ZIP 类型变化：\\(path)，原为 \\(expected.rawValue)，现为 \\(actual?.rawValue ?? "不存在")"
+                return "ZIP 类型变化：\(path)，原为 \(expected.rawValue)，现为 \(actual?.rawValue ?? "不存在")"
             case .missingEntry(let path): return "ZIP 缺少原始目录或符号链接：" + path
             case .archiveOpen(let detail): return "ZIP 无法读取：" + detail
             }
@@ -80,12 +81,22 @@ enum IPAArchiveIntegrity {
     static func extract(_ input: URL, to destination: URL, report: (String) -> Void) throws -> Baseline {
         let manifest = try entries(at: input)
         let special = manifest.filter { $0.value != .file }
-        report("ZIP 原始条目：\\(manifest.count)，目录及符号链接：\\(special.count)")
+        report("ZIP 原始条目：\(manifest.count)，目录及符号链接：\(special.count)")
         // ZIPFoundation preserves Unix directory and symlink types, while the
         // legacy Zip/minizip Swift wrapper only distinguishes paths ending in '/'.
-        try FileManager.default.unzipItem(at: input, to: destination, pathEncoding: .utf8)
+        if special.values.contains(.symlink) {
+            // The legacy Zip wrapper writes link entries as ordinary files.
+            // ZIPFoundation supports symlink extraction with containment checks.
+            try FileManager.default.unzipItem(at: input, to: destination, pathEncoding: .utf8)
+            report("ZIP 含符号链接，使用 ZIPFoundation 安全解压")
+        } else {
+            Zip.addCustomFileExtension("ipa")
+            Zip.addCustomFileExtension("tipa")
+            try Zip.unzipFile(input, destination: destination, overwrite: true, password: nil)
+            report("ZIP 使用 Zonoe Zip/minizip 解压")
+        }
         try checkFilesystem(root: destination, baseline: special)
-        report("ZIP 解压类型核对通过：\\(special.count)")
+        report("ZIP 解压类型核对通过：\(special.count)")
         return Baseline(specialEntries: special)
     }
 

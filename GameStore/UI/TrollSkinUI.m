@@ -35,6 +35,17 @@ static UILabel *L(NSString *s,CGFloat font,BOOL bold,UIColor *color){UILabel *l=
  self.catalogItems = [SourceCatalogUIBridge entries];
  [self filterCatalog:self.searchBar.text ?: @""];
  [self.catalogTable reloadData];
+ if (self.catalogTable) {
+  self.catalogTable.backgroundView = self.visibleCatalogItems.count ? nil : [self catalogEmptyView];
+ }
+}
+- (UIView *)catalogEmptyView {
+ UILabel *empty=L([SourceCatalogUIBridge hasSources]?@"暂无软件源应用（正在同步或软件源为空）":@"尚未添加软件源，请前往「设置 → 软件源」添加",15,NO,C(0x8E8E93));
+ empty.textAlignment=NSTextAlignmentCenter;empty.numberOfLines=0;
+ empty.frame=CGRectMake(20,60,self.view.bounds.size.width-40,90);
+ UIView *holder=[[UIView alloc]initWithFrame:self.catalogTable.bounds];
+ [holder addSubview:empty];
+ return holder;
 }
 - (void)dealloc {[NSNotificationCenter.defaultCenter removeObserver:self];}
 - (void)keyboardChanged:(NSNotification *)notification {
@@ -89,6 +100,19 @@ static UILabel *L(NSString *s,CGFloat font,BOOL bold,UIColor *color){UILabel *l=
  [card viewWithTag:104].frame=CGRectMake(72,28,width-116,17);
  [card viewWithTag:105].frame=CGRectMake(72,49,60,16);
  NSDictionary *item=self.visibleCatalogItems[indexPath.row];
+ UIImageView *imageView=(UIImageView *)[card viewWithTag:102];
+ NSString *iconURL=item[@"iconURL"]?:@"";
+ cell.accessibilityIdentifier=iconURL;
+ imageView.image=[SourceCatalogUIBridge cachedIcon:iconURL] ?: [UIImage systemImageNamed:@"square.grid.2x2.fill"];
+ if (iconURL.length && ![SourceCatalogUIBridge cachedIcon:iconURL]) {
+  __weak UITableViewCell *weakCell=cell;
+  [SourceCatalogUIBridge loadIcon:iconURL completion:^(UIImage *image) {
+   UITableViewCell *strongCell=weakCell;
+   if (!strongCell || ![strongCell.accessibilityIdentifier isEqualToString:iconURL] || !image) return;
+   UIImageView *currentIcon=(UIImageView *)[[strongCell.contentView viewWithTag:101] viewWithTag:102];
+   currentIcon.image=image;
+  }];
+ }
  ((UILabel *)[card viewWithTag:103]).text=item[@"name"];
  ((UILabel *)[card viewWithTag:104]).text=item[@"detail"];
  ((UILabel *)[card viewWithTag:105]).text=item[@"category"];

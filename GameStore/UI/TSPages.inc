@@ -47,13 +47,7 @@
  table.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
  self.catalogTable=table;
  [self.view addSubview:table];
- if (self.catalogItems.count==0) {
-  UILabel *empty=L([SourceCatalogUIBridge hasSources]?@"暂无软件源应用":@"尚未添加软件源，请前往「设置 → 软件源」添加",15,NO,C(0x8E8E93));
-  empty.textAlignment=NSTextAlignmentCenter;
-  empty.numberOfLines=0;
-  empty.frame=CGRectMake(20,60,w-40,90);
-  table.backgroundView=empty;
- }
+ if (self.catalogItems.count==0) { table.backgroundView=[self catalogEmptyView]; }
  } else if(self.tab==1){
  y=[self card:@"1" detail:@"文件夹 · 2026-10-11 09:21（演示）" symbol:@"folder.fill" badge:nil y:y];
  y=[self card:@"Random Dice 2.ipa" detail:@"273.6 MB · 2026-10-10 02:35（演示）" symbol:@"doc.fill" badge:nil y:y];

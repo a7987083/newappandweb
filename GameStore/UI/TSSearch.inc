@@ -3,7 +3,7 @@
  self.searching=YES;
  CGFloat w=self.view.bounds.size.width;
  CGFloat safeTop=self.view.safeAreaInsets.top;
- self.preSearchOffsetY=self.scroll.contentOffset.y;
+ self.preSearchOffsetY=self.tab==0?self.catalogTable.contentOffset.y:self.scroll.contentOffset.y;
  self.searchOriginalFrame=searchBar.frame;
  CGRect startFrame=[searchBar.superview convertRect:searchBar.frame toView:self.view];
  UIView *overlay=[[UIView alloc]initWithFrame:CGRectMake(0,0,w,safeTop+61)];
@@ -27,6 +27,7 @@
  self.largeTitleLabel.hidden=YES;
  // Remove the collapsed large-title/search placeholder area while editing.
  self.searchRowsTop=safeTop+70;
+ if (self.tab==0) { CGRect f=self.catalogTable.frame;f.origin.y=safeTop+65;f.size.height=MAX(0,self.view.bounds.size.height-f.origin.y);self.catalogTable.frame=f; }
  [self searchBar:searchBar textDidChange:searchBar.text?:@""];
  [UIView animateWithDuration:0.28 delay:0 options:UIViewAnimationOptionCurveEaseInOut|UIViewAnimationOptionBeginFromCurrentState animations:^{
    overlay.alpha=1;
@@ -45,11 +46,12 @@
 - (void)cancelSearch {
  // Preserve the position reached while browsing search results, not the
  // position saved before search began. Capture it before changing row geometry.
- CGFloat visibleOffset=self.scroll.contentOffset.y;
+ CGFloat visibleOffset=self.tab==0?self.catalogTable.contentOffset.y:self.scroll.contentOffset.y;
  self.searching=NO; // Ignore the asynchronous keyboard-hide notification.
  [self.searchBar resignFirstResponder];
  self.searchBar.text=@"";
  self.searchRowsTop=self.normalSearchRowsTop;
+ if (self.tab==0) { CGRect f=self.catalogTable.frame;f.origin.y=self.normalSearchRowsTop;f.size.height=MAX(0,self.view.bounds.size.height-f.origin.y);self.catalogTable.frame=f; }
  self.scroll.frame=self.view.bounds;
  self.scroll.contentInset=UIEdgeInsetsMake(0,0,100,0);
  [self searchBar:self.searchBar textDidChange:@""];
@@ -80,6 +82,7 @@
  }];
 }
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
+ if (self.tab==0) { [self filterCatalog:searchText];[self.catalogTable reloadData];return; }
  NSString *needle=[searchText stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
  CGFloat y=self.searchRowsTop;
  for (UIView *row in self.searchRows) {

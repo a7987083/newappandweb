@@ -292,6 +292,19 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     @objc private func cancelSearch() { closeSearch(animated: true) }
     private func closeSearch(animated: Bool) {
         guard searching,let bar = searchBar,let table = currentTable else { return }
+        // Anchor the item currently visible in search, not the position
+        // from before search was activated.
+        table.layoutIfNeeded()
+        let searchOffset = table.contentOffset.y
+        let searchRow = table.indexPathsForVisibleRows?
+            .filter { $0.section == 0 }
+            .sorted { $0.row < $1.row }
+            .first?.row
+        let searchDelta = searchRow.map {
+            table.rectForRow(at: IndexPath(row: $0, section: 0)).minY - searchOffset
+        } ?? 0
+        let searchAppID = searchRow.flatMap { selectedTab == 0 ? catalog?.appID(atVisibleRow: $0) : nil }
+        let searchDemoName = searchRow.flatMap { selectedTab != 0 && $0 < filtered.count ? filtered[$0].0 : nil }
         searching = false
         if let observer = keyboardObserver { NotificationCenter.default.removeObserver(observer); keyboardObserver = nil }
         table.contentInset.bottom = savedBottomInset
@@ -310,11 +323,16 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         // The unfiltered row set and full header must be installed before
         // resolving the pre-search browsing position.
         table.layoutIfNeeded()
+        let targetRow: Int? = {
+            if let id = searchAppID { return catalog?.visibleRow(forAppID: id) }
+            if let name = searchDemoName { return filtered.firstIndex { $0.0 == name } }
+            return searchRow
+        }()
         let restoreOffset: CGFloat
-        if let row = savedBrowseRow, row < table.numberOfRows(inSection: 0) {
-            restoreOffset = table.rectForRow(at: IndexPath(row: row, section: 0)).minY - savedBrowseRowTopDelta
+        if let row = targetRow, row < table.numberOfRows(inSection: 0) {
+            restoreOffset = table.rectForRow(at: IndexPath(row: row, section: 0)).minY - searchDelta
         } else {
-            restoreOffset = savedBrowseOffset
+            restoreOffset = searchOffset + headerHeight
         }
         let restoreBrowsePosition = {
             table.layoutIfNeeded()

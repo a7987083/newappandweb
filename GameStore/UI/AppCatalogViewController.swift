@@ -148,6 +148,15 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
         }
     }
 
+    func appID(atVisibleRow row: Int) -> String? {
+        guard visibleIndices.indices.contains(row) else { return nil }
+        return applications[visibleIndices[row]].id
+    }
+
+    func visibleRow(forAppID id: String) -> Int? {
+        visibleIndices.firstIndex { applications[$0].id == id }
+    }
+
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         visibleIndices.count
     }

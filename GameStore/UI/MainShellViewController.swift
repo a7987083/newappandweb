@@ -1,7 +1,7 @@
 import UIKit
 
 /// Unified four-tab Swift/UIKit shell. The dock stays fixed above each tab's scroll view.
-final class MainShellViewController: UIViewController, UISearchBarDelegate, UIScrollViewDelegate, UITableViewDataSource {
+final class MainShellViewController: UIViewController, UISearchBarDelegate, UIScrollViewDelegate, UITableViewDataSource, UITableViewDelegate {
     private var tab = 0
     private var child: UIViewController?
     private var currentTable: UITableView?

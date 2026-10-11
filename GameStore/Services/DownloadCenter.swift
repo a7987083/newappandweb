@@ -25,6 +25,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
     private var pausingTaskIDs = Set<Int>()
     private var resumedTaskIDs = Set<Int>()
     private let persistenceQueue = DispatchQueue(label: "com.GameStore.download.persistence")
+    private let archiveQueue = DispatchQueue(label: "com.GameStore.download.archive", qos: .utility)
     private static let completedSourcesKey = "zonoe.downloadCompletedSources.v1"
 
     private static func completedSources() -> [String: String] {
@@ -268,26 +269,41 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         }
     }
 
-    func deleteDownloadedItem(_ item: Item) throws {
-        precondition(Thread.isMainThread, "DownloadCenter mutations must run on main")
-        guard item.state == .completed,
+    // Extraction and deletion share archiveQueue: a delete cannot race a
+    // late background extraction and recreate its directory.
+    func deleteDownloadedItem(_ item: Item, completion: @escaping (Error?) -> Void) {
+        guard Thread.isMainThread,
+              item.state == .completed,
               let localURL = item.localURL,
               completedItems.contains(where: { $0.id == item.id && $0.localURL == localURL }),
               localURL.deletingLastPathComponent().standardizedFileURL == Self.downloadsDirectory().standardizedFileURL else {
+            completion(NSError(domain: "GameStore.DownloadCenter", code: 1,
+                               userInfo: [NSLocalizedDescriptionKey: "安装包不在可删除目录"]))
             return
         }
-
-        let fileManager = FileManager.default
-        if fileManager.fileExists(atPath: localURL.path) {
-            try fileManager.removeItem(at: localURL)
-        }
-        try DownloadIPAExtractor.removeExtraction(for: localURL)
-        extractionStatus.removeValue(forKey: localURL.lastPathComponent)
-
-        Self.updateCompletedSource(filename: localURL.lastPathComponent, source: nil)
-        let path = localURL.standardizedFileURL.path
-        completedItems.removeAll {
-            $0.localURL?.standardizedFileURL.path == path
+        archiveQueue.async { [weak self] in
+            let failure: Error?
+            do {
+                // Clean associated archive directory first: if it fails, retain IPA
+                // and mapping so user can retry without orphaning the extraction.
+                try DownloadIPAExtractor.removeExtraction(for: localURL)
+                if FileManager.default.fileExists(atPath: localURL.path) {
+                    try FileManager.default.removeItem(at: localURL)
+                }
+                failure = nil
+            } catch {
+                failure = error
+            }
+            DispatchQueue.main.async {
+                guard let self = self else { completion(failure); return }
+                if failure == nil {
+                    Self.updateCompletedSource(filename: localURL.lastPathComponent, source: nil)
+                    self.extractionStatus.removeValue(forKey: localURL.lastPathComponent)
+                    let path = localURL.standardizedFileURL.path
+                    self.completedItems.removeAll { $0.localURL?.standardizedFileURL.path == path }
+                }
+                completion(failure)
+            }
         }
     }
 
@@ -456,7 +472,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             DispatchQueue.main.async {
                 self.extractionStatus[destination.lastPathComponent] = "正在解压"
             }
-            DispatchQueue.global(qos: .utility).async {
+            archiveQueue.async {
                 do {
                     try DownloadIPAExtractor.extract(destination)
                     DispatchQueue.main.async { self.extractionStatus[destination.lastPathComponent] = "解压完成" }

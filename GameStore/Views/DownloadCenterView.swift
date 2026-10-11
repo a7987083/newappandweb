@@ -6,7 +6,7 @@ struct DownloadCenterView: View {
     var body: some View {
         NavigationView {
             DownloadCenterContent(downloadCenter: store.downloadCenter)
-                .navigationBarTitle("", displayMode: .inline)
+                .navigationBarTitle("下载管理")
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
@@ -20,11 +20,7 @@ private struct DownloadCenterContent: View {
     @State private var inspectingPaths = Set<String>()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("安装包")
-                .font(.system(size: 40, weight: .bold))
-                .padding(.horizontal, 18)
-                .padding(.top, 12)
+        Group {
             if downloadCenter.items.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "arrow.down.circle")
@@ -113,15 +109,10 @@ private struct DownloadCenterContent: View {
                             .buttonStyle(BorderlessButtonStyle())
                         }
                     }
-                    .padding(15)
-                    .background(Color.white)
-                    .cornerRadius(20)
-                    .listRowBackground(Color.clear)
+                    .padding(.vertical, 5)
                 }
-                .listStyle(PlainListStyle())
             }
         }
-        .background(Color(red: 0.95, green: 0.95, blue: 0.97))
         .onAppear {
             downloadCenter.reloadDownloadedItems()
         }

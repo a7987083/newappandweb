@@ -27,6 +27,31 @@ final class CertificateStore: ObservableObject {
         }
     }
 
+    // Display metadata only: never use the prefix as certificate identity or signing trust.
+    private static func displayName(profileData: Data, fallback: String) -> String {
+        var decoder: CMSDecoder?
+        guard CMSDecoderCreate(&decoder) == errSecSuccess, let cms = decoder else { return fallback }
+        let feed = profileData.withUnsafeBytes { buffer -> OSStatus in
+            guard let address = buffer.baseAddress else { return errSecParam }
+            return CMSDecoderUpdateMessage(cms, address, profileData.count)
+        }
+        guard feed == errSecSuccess,
+              CMSDecoderFinalizeMessage(cms) == errSecSuccess else { return fallback }
+        var payload: CFData?
+        guard CMSDecoderCopyContent(cms, &payload) == errSecSuccess,
+              let bytes = payload as Data?,
+              let plist = try? PropertyListSerialization.propertyList(from: bytes, format: nil),
+              let info = plist as? [String: Any] else { return fallback }
+        func first(_ key: String) -> String? {
+            let value = (info[key] as? [String])?.first ??
+                (info[key] as? String)
+            guard let clean = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !clean.isEmpty else { return nil }
+            return clean
+        }
+        return first("TeamIdentifier") ?? first("ApplicationIdentifierPrefix") ?? fallback
+    }
+
     func add(p12 sourceP12: URL, provision sourceProvision: URL, password: String) throws {
         guard sourceP12.pathExtension.lowercased() == "p12",
               sourceProvision.pathExtension.lowercased() == "mobileprovision" else {
@@ -59,7 +84,7 @@ final class CertificateStore: ObservableObject {
             values.isExcludedFromBackup = true
             var folder = dir
             try folder.setResourceValues(values)
-            let name = sourceP12.deletingPathExtension().lastPathComponent
+            let name = Self.displayName(profileData: profile, fallback: sourceP12.deletingPathExtension().lastPathComponent)
             let item = DeviceCertificate(id: id, name: name, p12URL: p12URL, mobileProvisionURL: profileURL)
             try CertificatePasswordKeychain.save(password, for: id)
             certificates.append(item)

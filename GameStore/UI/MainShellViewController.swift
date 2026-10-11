@@ -54,13 +54,49 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        if initialSize != view.bounds.size {
-            initialSize = view.bounds.size
-            // Resize cached pages without replacing controllers or search state.
-            for page in pages.values {
-                page.controller.view.frame = view.bounds
-                page.dock.frame.origin.y = view.bounds.height - view.safeAreaInsets.bottom - 72
-                page.dock.center.x = view.bounds.midX
+        let sizeChanged = initialSize != view.bounds.size
+        if sizeChanged { initialSize = view.bounds.size }
+        // This callback also runs when safe-area insets become available after
+        // viewDidLoad. Never assume safeAreaInsets.top was valid at construction.
+        let width = view.bounds.width
+        let safeTop = view.safeAreaInsets.top
+        for (index, page) in pages {
+            if sizeChanged { page.controller.view.frame = view.bounds }
+            page.dock.frame.origin.y = view.bounds.height - view.safeAreaInsets.bottom - 72
+            page.dock.center.x = view.bounds.midX
+            for case let button as UIButton in page.views {
+                let isEdit = button.title(for: .normal) == "编辑"
+                button.frame.origin = CGPoint(x: width - (isEdit ? 108 : 53), y: safeTop + 8)
+            }
+            guard index != 3, let head = page.header, let table = page.table else { continue }
+            // Do not modify the active search header until its overlay closes.
+            if searching && index == selectedTab { continue }
+            let newHeight = safeTop + 189
+            let delta = newHeight - head.frame.height
+            if abs(delta) > 0.5 || sizeChanged {
+                head.frame = CGRect(x: 0, y: 0, width: width, height: newHeight)
+                for item in head.subviews {
+                    if let title = item as? UILabel {
+                        title.frame = CGRect(x: 20, y: safeTop + 66, width: width - 40, height: 53)
+                    } else if let search = item as? UISearchBar {
+                        search.frame = CGRect(x: 12, y: safeTop + 127, width: width - 24, height: 52)
+                    }
+                }
+                if index == 0 {
+                    page.catalog?.setCatalogHeader(head, height: newHeight)
+                } else {
+                    table.tableHeaderView = head
+                }
+                if index == selectedTab { headerHeight = newHeight }
+                // An expanded header changes content coordinates; preserve the
+                // visible cell when safe-area values arrive after first layout.
+                if table.contentOffset.y > 0 && abs(delta) > 0.5 {
+                    table.contentOffset.y += delta
+                }
+            }
+            page.compact.frame = CGRect(x: 0, y: 0, width: width, height: safeTop + 52)
+            for case let label as UILabel in page.compact.subviews {
+                label.frame = CGRect(x: 65, y: safeTop + 5, width: width - 130, height: 36)
             }
         }
     }

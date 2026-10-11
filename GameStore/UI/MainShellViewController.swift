@@ -28,13 +28,8 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     private var searching = false
     private var overlay: UIView?
     private var oldSearchFrame = CGRect.zero
-    private var normalTableFrame = CGRect.zero
-    private var savedBrowseOffset: CGFloat = 0
-    private var savedBrowseRow: Int?
-    private var savedBrowseRowTopDelta: CGFloat = 0
+    private let searchSession = ShellSearchSession()
     private var initialSize = CGSize.zero
-    private var savedBottomInset: CGFloat = 100
-    private var keyboardObserver: NSObjectProtocol?
     private let blue = UIColor(red: 51/255, green: 124/255, blue: 250/255, alpha: 1)
     private let bg = UIColor(red: 242/255, green: 242/255, blue: 247/255, alpha: 1)
     private var rows: [(String,String,String)] = []
@@ -49,8 +44,6 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             SoftwareSourceStore.shared.refreshCatalog()
         }
     }
-
-    deinit { if let keyboardObserver = keyboardObserver { NotificationCenter.default.removeObserver(keyboardObserver) } }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
@@ -313,20 +306,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     func searchBarShouldBeginEditing(_ bar: UISearchBar) -> Bool {
         guard !searching,let table = currentTable else { return true }
         searching = true
-        normalTableFrame = table.frame
-        // Preserve the browsing anchor before filtering, collapsing the header
-        // or changing the table viewport. Never use the search result offset.
-        table.layoutIfNeeded()
-        savedBrowseOffset = table.contentOffset.y
-        savedBrowseRow = table.indexPathsForVisibleRows?
-            .filter { $0.section == 0 }
-            .sorted { $0.row < $1.row }
-            .first?.row
-        if let row = savedBrowseRow {
-            savedBrowseRowTopDelta = table.rectForRow(at: IndexPath(row: row, section: 0)).minY - savedBrowseOffset
-        } else {
-            savedBrowseRowTopDelta = 0
-        }
+        searchSession.begin(on: table, in: view, safeTop: view.safeAreaInsets.top)
         oldSearchFrame = bar.frame
         let origin = bar.superview?.convert(bar.frame,to: view) ?? bar.frame
         let safe = view.safeAreaInsets.top
@@ -355,21 +335,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         }
         // Keep the scrollable viewport below the fixed search overlay.
         // Insets alone would let cells continue scrolling behind the overlay.
-        let searchBottom = safe + 61
-        table.frame = CGRect(x: normalTableFrame.minX,
-                             y: searchBottom,
-                             width: normalTableFrame.width,
-                             height: max(0, normalTableFrame.height - searchBottom))
-        table.setContentOffset(CGPoint(x: 0, y: 0), animated: false)
-        savedBottomInset = table.contentInset.bottom
-        keyboardObserver = NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification, object: nil, queue: .main) { [weak self] note in
-            guard let self = self, self.searching, let table = self.currentTable,
-                  let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-            let local = self.view.convert(frame, from: nil)
-            let overlap = max(0, self.view.bounds.maxY - max(self.view.bounds.minY, local.minY))
-            table.contentInset.bottom = max(self.savedBottomInset, overlap + 12)
-            table.scrollIndicatorInsets.bottom = table.contentInset.bottom
-        }
+        searchSession.activateViewport(on: table, in: view, safeTop: safe)
         UIView.animate(withDuration: 0.28) {
             panel.alpha = 1
             bar.frame = CGRect(x: 12,y: safe+5,width: self.view.bounds.width-93,height: 49)
@@ -381,26 +347,12 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     @objc private func cancelSearch() { closeSearch(animated: true) }
     private func closeSearch(animated: Bool) {
         guard searching,let bar = searchBar,let table = currentTable else { return }
-        // Anchor the item currently visible in search, not the position
-        // from before search was activated.
-        table.layoutIfNeeded()
-        let searchOffset = table.contentOffset.y
-        let searchRow = table.indexPathsForVisibleRows?
-            .filter { $0.section == 0 }
-            .sorted { $0.row < $1.row }
-            .first?.row
-        let searchDelta = searchRow.map {
-            table.rectForRow(at: IndexPath(row: $0, section: 0)).minY - searchOffset
-        } ?? 0
-        // The search viewport is below the fixed bar; normal mode starts at y=0.
-        let screenDelta = searchDelta + table.frame.minY - normalTableFrame.minY
+        let anchor = searchSession.captureCurrent(on: table)
+        let searchRow = anchor.row
         let searchAppID = searchRow.flatMap { selectedTab == 0 ? catalog?.appID(atVisibleRow: $0) : nil }
         let searchDemoName = searchRow.flatMap { selectedTab != 0 && $0 < filtered.count ? filtered[$0].0 : nil }
         searching = false
-        if let observer = keyboardObserver { NotificationCenter.default.removeObserver(observer); keyboardObserver = nil }
-        table.contentInset.bottom = savedBottomInset
-        table.scrollIndicatorInsets.bottom = savedBottomInset
-        table.frame = normalTableFrame
+        searchSession.restoreViewport(on: table)
         bar.resignFirstResponder()
         bar.text = ""
         searchBar(bar,textDidChange: "")
@@ -419,17 +371,8 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             if let name = searchDemoName { return filtered.firstIndex { $0.0 == name } }
             return searchRow
         }()
-        let restoreOffset: CGFloat
-        if let row = targetRow, row < table.numberOfRows(inSection: 0) {
-            restoreOffset = table.rectForRow(at: IndexPath(row: row, section: 0)).minY - screenDelta
-        } else {
-            restoreOffset = savedBrowseOffset
-        }
-        let restoreBrowsePosition = {
-            table.layoutIfNeeded()
-            let minimum = -table.adjustedContentInset.top
-            let maximum = max(minimum, table.contentSize.height - table.bounds.height + table.adjustedContentInset.bottom)
-            table.setContentOffset(CGPoint(x: 0, y: min(max(restoreOffset, minimum), maximum)), animated: false)
+        let restoreBrowsePosition = { [weak self] in
+            self?.searchSession.restoreAnchor(on: table, row: targetRow, anchor: anchor)
         }
         restoreBrowsePosition()
         let destination = header?.convert(oldSearchFrame,to: view) ?? oldSearchFrame
@@ -465,6 +408,89 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         }
     }
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) { searchBar.resignFirstResponder() }
+}
+
+/// Owns the transient search viewport, keyboard observer and scroll anchor.
+/// The shell retains responsibility only for visual transitions and tab routing.
+private final class ShellSearchSession {
+    struct Anchor {
+        let row: Int?
+        let screenDelta: CGFloat
+    }
+
+    private var originalFrame: CGRect = .zero
+    private var originalBottomInset: CGFloat = 0
+    private var originalOffset: CGFloat = 0
+    private var keyboardObserver: NSObjectProtocol?
+
+    deinit { stopObservingKeyboard() }
+
+    func begin(on table: UITableView, in host: UIView, safeTop: CGFloat) {
+        stopObservingKeyboard()
+        table.layoutIfNeeded()
+        originalFrame = table.frame
+        originalOffset = table.contentOffset.y
+        originalBottomInset = table.contentInset.bottom
+    }
+
+    func activateViewport(on table: UITableView, in host: UIView, safeTop: CGFloat) {
+        let bottom = safeTop + 61
+        table.frame = CGRect(x: originalFrame.minX, y: bottom,
+                             width: originalFrame.width,
+                             height: max(0, originalFrame.height - bottom))
+        table.setContentOffset(.zero, animated: false)
+        keyboardObserver = NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil, queue: .main
+        ) { [weak self, weak table, weak host] note in
+            guard let self = self, let table = table, let host = host,
+                  let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            let local = host.convert(frame, from: nil)
+            let overlap = max(0, host.bounds.maxY - max(host.bounds.minY, local.minY))
+            let bottomInset = max(self.originalBottomInset, overlap + 12)
+            table.contentInset.bottom = bottomInset
+            table.scrollIndicatorInsets.bottom = bottomInset
+        }
+    }
+
+    func captureCurrent(on table: UITableView) -> Anchor {
+        table.layoutIfNeeded()
+        let offset = table.contentOffset.y
+        let row = table.indexPathsForVisibleRows?
+            .filter { $0.section == 0 }
+            .min { $0.row < $1.row }?.row
+        let delta = row.map {
+            table.rectForRow(at: IndexPath(row: $0, section: 0)).minY - offset
+        } ?? 0
+        return Anchor(row: row, screenDelta: delta + table.frame.minY - originalFrame.minY)
+    }
+
+    func restoreViewport(on table: UITableView) {
+        stopObservingKeyboard()
+        table.contentInset.bottom = originalBottomInset
+        table.scrollIndicatorInsets.bottom = originalBottomInset
+        table.frame = originalFrame
+    }
+
+    func restoreAnchor(on table: UITableView, row: Int?, anchor: Anchor) {
+        table.layoutIfNeeded()
+        let offset: CGFloat
+        if let row = row, row >= 0, row < table.numberOfRows(inSection: 0) {
+            offset = table.rectForRow(at: IndexPath(row: row, section: 0)).minY - anchor.screenDelta
+        } else {
+            offset = originalOffset
+        }
+        let minimum = -table.adjustedContentInset.top
+        let maximum = max(minimum, table.contentSize.height - table.bounds.height + table.adjustedContentInset.bottom)
+        table.setContentOffset(CGPoint(x: 0, y: min(max(offset, minimum), maximum)), animated: false)
+    }
+
+    private func stopObservingKeyboard() {
+        if let observer = keyboardObserver {
+            NotificationCenter.default.removeObserver(observer)
+            keyboardObserver = nil
+        }
+    }
 }
 
 private final class ShellPlaceholderCell: UITableViewCell {

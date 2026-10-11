@@ -25,6 +25,7 @@ struct SigningExecutionView: View {
     @State private var removeURLSchemes = false
     @State private var state: SigningState = .idle
     @State private var running = false
+    @State private var cancellationPending = false
     @State private var result: SignedArtifact?
     @State private var errorMessage: String?
     @State private var reportLines: [String] = []
@@ -168,7 +169,14 @@ struct SigningExecutionView: View {
             }
             .navigationBarTitle("修改应用信息", displayMode: .inline)
             .navigationBarItems(
-                leading: Button("取消") { presentation.wrappedValue.dismiss() }.disabled(running),
+                leading: Button(cancellationPending ? "取消中…" : "取消") {
+                    if running {
+                        cancellationPending = true
+                        engine.cancel()
+                    } else {
+                        presentation.wrappedValue.dismiss()
+                    }
+                }.disabled(cancellationPending),
                 trailing: Button(action: {
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
                                                     to: nil, from: nil, for: nil)
@@ -330,6 +338,7 @@ struct SigningExecutionView: View {
         }
         let certificate = certificates.certificates.first(where: { $0.id == selectedID }) ?? DeviceCertificate(id: "modify-only", name: "仅修改", p12URL: nil, mobileProvisionURL: nil)
         running = true
+        cancellationPending = false
         result = nil
         errorMessage = nil
         state = .prepareContext
@@ -349,6 +358,16 @@ struct SigningExecutionView: View {
             state = nextState
         }, completion: { response in
             running = false
+            let wasCancelled = cancellationPending
+            cancellationPending = false
+            if wasCancelled {
+                result = nil
+                errorMessage = nil
+                state = .idle
+                activeSheet = nil
+                presentation.wrappedValue.dismiss()
+                return
+            }
             switch response {
             case .success(let artifact):
                 if wasLegacy && !temporary { try? CertificatePasswordKeychain.save(effectivePassword, for: certificate.id) }

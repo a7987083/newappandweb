@@ -44,10 +44,11 @@ enum IPAArchiveIntegrity {
     }
 
     private static func archive(at url: URL) throws -> Archive {
-        guard let archive = Archive(url: url, accessMode: .read, pathEncoding: .utf8) else {
-            throw Failure.archiveOpen(url.lastPathComponent)
+        do {
+            return try Archive(url: url, accessMode: .read, pathEncoding: .utf8)
+        } catch {
+            throw Failure.archiveOpen(error.localizedDescription)
         }
-        return archive
     }
 
     /// Inspect explicit entry types, and detect file/directory path conflicts.

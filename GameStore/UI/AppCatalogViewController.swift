@@ -129,7 +129,7 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
         verifiedUDID = nil
         authorizationExpiry = nil
         tableView.reloadData()
-        guard let udid = UDIDService.shared.udid, !udid.isEmpty else { return }
+        guard let udid = UDIDService.shared.udid, UDIDLocalServer.validUDID(udid) else { return }
         SourceUnlockService.shared.verifyAuthorization(udid: udid) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self, generation == self.authorizationGeneration,
@@ -163,8 +163,8 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
     private func requestGet(for app: SourceCatalogApp) {
         guard let current = latestApp(matching: app) else { return }
         if current.requiresUnlock == true {
-            guard let udid = UDIDService.shared.udid, !udid.isEmpty else {
-                showRefreshMessage("需要设备 UDID", "请先在设置中获取设备 UDID")
+            guard let udid = UDIDService.shared.udid, UDIDLocalServer.validUDID(udid) else {
+                promptForUDID()
                 return
             }
             SourceUnlockService.shared.verifyAuthorization(udid: udid) { [weak self] result in
@@ -288,10 +288,23 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
                        iconURL: app.iconURL?.absoluteString ?? "")
         return cell
     }
+    private func promptForUDID() {
+        let alert = UIAlertController(
+            title: "需要获取设备 UDID",
+            message: "解锁此应用需要设备 UDID，是否立即获取？",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "确定", style: .default) { _ in
+            UDIDService.shared.requestProfileConfiguration()
+        })
+        present(alert, animated: true)
+    }
+
     private func presentUnlock(for app: SourceCatalogApp) {
         guard app.requiresUnlock == true, app.unlockURL != nil else { return }
-        guard let udid = UDIDService.shared.udid, !udid.isEmpty else {
-            showRefreshMessage("需要设备 UDID", "请先在设置中获取设备 UDID")
+        guard let udid = UDIDService.shared.udid, UDIDLocalServer.validUDID(udid) else {
+            promptForUDID()
             return
         }
         let alert = UIAlertController(title: "使用解锁码", message: nil, preferredStyle: .alert)

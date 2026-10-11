@@ -287,6 +287,37 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
                        iconURL: app.iconURL?.absoluteString ?? "")
         return cell
     }
+    func openDetail(atVisibleRow row: Int) {
+        guard visibleIndices.indices.contains(row) else { return }
+        let app = applications[visibleIndices[row]]
+        let hasURL = validDownloadURL(app.downloadURL) != nil
+        let title: String
+        let enabled: Bool
+        switch app.requiresUnlock {
+        case .none: title = "待刷新"; enabled = false
+        case .some(false): title = "获取"; enabled = hasURL
+        case .some(true):
+            title = authorizationValid && hasURL ? "获取" : "解锁"
+            enabled = title == "获取" || app.unlockURL != nil
+        }
+        let detail = AppDetailViewController(app: app, actionTitle: title, actionEnabled: enabled)
+        detail.modalPresentationStyle = .fullScreen
+        detail.onAction = { [weak self, weak detail] in
+            guard let self = self, let detail = detail else { return }
+            // The catalog continues to own authorization and download actions.
+            detail.dismiss(animated: true) { [weak self] in
+                guard let self = self else { return }
+                if app.requiresUnlock == true &&
+                    (!self.authorizationValid || self.validDownloadURL(app.downloadURL) == nil) {
+                    self.presentUnlock(for: app)
+                } else {
+                    self.requestGet(for: app)
+                }
+            }
+        }
+        present(detail, animated: true)
+    }
+
     private func promptForUDID() {
         let alert = UIAlertController(
             title: "需要获取设备 UDID",

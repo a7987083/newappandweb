@@ -1,4 +1,5 @@
 import Foundation
+import Zip
 
 /// Extracts IPA files into unique unsign_########## directories.
 /// Work is staged and atomically published so partial archives never look extracted.
@@ -75,9 +76,11 @@ enum DownloadIPAExtractor {
         var published = false
         defer { if !published { try? fm.removeItem(at: staging) } }
 
-        // Reuse the existing signing pipeline's ZIP inspection and extraction.
-        // It validates ZIP entry types and checks the resulting filesystem.
-        _ = try IPAArchiveIntegrity.extract(ipa, to: staging, report: { _ in })
+        // Match the signing pipeline: SC_Info entries in some IPA archives
+        // fail the strict IPAArchiveIntegrity preflight despite being unpackable.
+        Zip.addCustomFileExtension("ipa")
+        Zip.addCustomFileExtension("tipa")
+        try Zip.unzipFile(ipa, destination: staging, overwrite: true, password: nil)
         let payload = staging.appendingPathComponent("Payload", isDirectory: true)
         let applications = (try? fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
         guard applications.contains(where: { candidate in

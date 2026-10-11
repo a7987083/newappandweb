@@ -12,7 +12,7 @@ final class GameStoreAppDelegate: UIResponder, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         let window = UIWindow(frame: UIScreen.main.bounds)
-        window.rootViewController = TrollSkinUI.createRootViewController()
+        window.rootViewController = MainShellViewController()
         window.makeKeyAndVisible()
         self.window = window
         return true

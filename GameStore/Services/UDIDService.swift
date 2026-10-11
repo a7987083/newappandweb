@@ -52,7 +52,7 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
               scheme.lowercased() != "https" else { return }
         let nonce = items.first(where: { $0.name.lowercased() == "nonce" })?.value
         let validNonce = nonce.flatMap { UDIDLocalServer.validNonce($0) ? $0 : nil }
-        if let udid = udid, !udid.isEmpty {
+        if let udid = udid, UDIDLocalServer.validUDID(udid) {
             deliverProviderCallback(callback, udid: udid, nonce: validNonce)
         } else {
             UserDefaults.standard.set(callback.absoluteString, forKey: Self.pendingCallbackKey)
@@ -156,7 +156,7 @@ final class UDIDService: NSObject, ObservableObject, SFSafariViewControllerDeleg
         DispatchQueue.main.async {
             guard self.sessionToken == session, self.completedSession != session else { return }
             let clean = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !clean.isEmpty else { return }
+            guard UDIDLocalServer.validUDID(clean) else { return }
             self.completedSession = session
             UserDefaults.standard.set(clean, forKey: Self.storageKey)
             self.udid = clean

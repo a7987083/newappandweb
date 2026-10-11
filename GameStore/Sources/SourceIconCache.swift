@@ -1,68 +1,187 @@
 import Foundation
 import UIKit
-import SystemConfiguration
+import ImageIO
+import SQLite3
 
-/// URL-keyed two-layer cache. Visible requests never wait behind bulk prefetch work.
+/// Lightweight, URL-keyed image cache: SQLite index, inline small images,
+/// file-backed larger images and bounded decoded-image memory.
 final class SourceIconCache {
     static let shared = SourceIconCache()
+
     private let memory = NSCache<NSString, UIImage>()
-    private let diskQueue = DispatchQueue(label: "gamestore.icons.disk", qos: .userInitiated, attributes: .concurrent)
     private let state = DispatchQueue(label: "gamestore.icons.state")
+    private let disk = DispatchQueue(label: "gamestore.icons.sqlite", qos: .utility)
     private let session: URLSession
-    private let directory: URL
-    private var callbacks: [String: [(UIImage?) -> Void]] = [:]
+    private let root: URL
+    private let fileDirectory: URL
+    private var db: OpaquePointer?
+    private var waiting: [String: [(UIImage?) -> Void]] = [:]
     private var foreground: [URL] = []
     private var background: [URL] = []
     private var active = Set<String>()
-    private var diskChecking = Set<String>()
-    private var maxDownloads = 12
-    private var prefetchGeneration = 0
+    private var checking = Set<String>()
+    private var failed = Set<String>()
     private var knownURLs: [URL] = []
-    private var retries: [String: Int] = [:]
-    private var retryAfter: [String: Date] = [:]
-    private var retryWorkScheduled = false
-    private let diskLimit: Int64 = 300 * 1024 * 1024
-    private var networkReachability: SCNetworkReachability?
+    private let downloadLimit = 4
+    private let diskLimit = 50 * 1024 * 1024
+    private var writesSincePrune = 0
 
     private init() {
-        memory.countLimit = 300
-        memory.totalCostLimit = 48 * 1024 * 1024
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        directory = base.appendingPathComponent("GameStore/Icons", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: nil)
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 15
-        session = URLSession(configuration: config)
-        if let reachability = SCNetworkReachabilityCreateWithName(nil, "apple.com") {
-            networkReachability = reachability
-            let callback: SCNetworkReachabilityCallBack = { _, flags, info in
-                guard let info = info else { return }
-                let cache = Unmanaged<SourceIconCache>.fromOpaque(info).takeUnretainedValue()
-                let reachable = flags.contains(.reachable) && !flags.contains(.connectionRequired)
-                if reachable { cache.retryWhenOnline() }
+        memory.countLimit = 120
+        memory.totalCostLimit = 12 * 1024 * 1024
+        root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("GameStore/CompactIcons", isDirectory: true)
+        fileDirectory = root.appendingPathComponent("data", isDirectory: true)
+        try? FileManager.default.createDirectory(at: fileDirectory, withIntermediateDirectories: true)
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 15
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.urlCache = nil
+        session = URLSession(configuration: configuration)
+        disk.async { self.openDatabase() }
+    }
+
+    private func hash(_ key: String) -> String {
+        var value: UInt64 = 14695981039346656037
+        for byte in key.utf8 { value = (value ^ UInt64(byte)) &* 1099511628211 }
+        return String(format: "%016llx", value)
+    }
+
+    private func openDatabase() {
+        guard db == nil else { return }
+        let path = root.appendingPathComponent("manifest.sqlite").path
+        guard sqlite3_open(path, &db) == SQLITE_OK else {
+            if db != nil { sqlite3_close(db); db = nil }
+            return
+        }
+        sqlite3_busy_timeout(db, 3000)
+        exec("PRAGMA journal_mode=WAL")
+        exec("CREATE TABLE IF NOT EXISTS manifest (key TEXT PRIMARY KEY, filename TEXT, size INTEGER NOT NULL, inline_data BLOB, last_access_time INTEGER NOT NULL)")
+        exec("CREATE INDEX IF NOT EXISTS idx_access ON manifest(last_access_time)")
+    }
+
+    private func exec(_ sql: String) {
+        _ = sqlite3_exec(db, sql, nil, nil, nil)
+    }
+
+    private func prepare(_ sql: String) -> OpaquePointer? {
+        guard db != nil else { return nil }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            if statement != nil { sqlite3_finalize(statement) }
+            return nil
+        }
+        return statement
+    }
+
+    private func bindText(_ value: String, to statement: OpaquePointer?, at index: Int32) {
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        _ = sqlite3_bind_text(statement, index, value, -1, transient)
+    }
+
+    private func read(_ url: URL) -> Data? {
+        let key = url.absoluteString
+        guard let stmt = prepare("SELECT filename, inline_data FROM manifest WHERE key=?") else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        bindText(key, to: stmt, at: 1)
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        var bytes: Data?
+        if let pointer = sqlite3_column_blob(stmt, 1) {
+            bytes = Data(bytes: pointer, count: Int(sqlite3_column_bytes(stmt, 1)))
+        } else if let filename = sqlite3_column_text(stmt, 0) {
+            let name = String(cString: filename)
+            bytes = try? Data(contentsOf: fileDirectory.appendingPathComponent(name))
+        }
+        if bytes != nil {
+            if let update = prepare("UPDATE manifest SET last_access_time=? WHERE key=?") {
+                sqlite3_bind_int64(update, 1, Int64(Date().timeIntervalSince1970))
+                bindText(key, to: update, at: 2)
+                _ = sqlite3_step(update)
+                sqlite3_finalize(update)
             }
-            var context = SCNetworkReachabilityContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(), retain: nil, release: nil, copyDescription: nil)
-            if SCNetworkReachabilitySetCallback(reachability, callback, &context) {
-                SCNetworkReachabilitySetDispatchQueue(reachability, state)
+        }
+        return bytes
+    }
+
+    private func store(_ data: Data, for url: URL) {
+        let key = url.absoluteString
+        let name = hash(key) + ".img"
+        let inline = data.count <= 12 * 1024
+        if !inline {
+            do {
+                try data.write(to: fileDirectory.appendingPathComponent(name), options: .atomic)
+            } catch { return }
+        }
+        guard let stmt = prepare("INSERT OR REPLACE INTO manifest(key,filename,size,inline_data,last_access_time) VALUES(?,?,?,?,?)") else { return }
+        defer { sqlite3_finalize(stmt) }
+        bindText(key, to: stmt, at: 1)
+        if inline {
+            sqlite3_bind_null(stmt, 2)
+        } else {
+            bindText(name, to: stmt, at: 2)
+        }
+        sqlite3_bind_int64(stmt, 3, Int64(data.count))
+        if inline {
+            let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+            _ = data.withUnsafeBytes { pointer in
+                sqlite3_bind_blob(stmt, 4, pointer.baseAddress, Int32(data.count), transient)
             }
+        } else {
+            sqlite3_bind_null(stmt, 4)
+        }
+        sqlite3_bind_int64(stmt, 5, Int64(Date().timeIntervalSince1970))
+        _ = sqlite3_step(stmt)
+        writesSincePrune += 1
+        if writesSincePrune >= 32 {
+            writesSincePrune = 0
+            prune()
         }
     }
 
-    private func retryWhenOnline() {
-        state.async {
-            self.retryAfter.removeAll()
-            self.retries.removeAll()
-            self.enqueueMissing(self.knownURLs)
+    /// Evict least-recently-used records; count SQLite storage as part of the budget.
+    private func prune() {
+        guard let stmt = prepare("SELECT key,filename,size FROM manifest ORDER BY last_access_time ASC") else { return }
+        var records: [(String, String?, Int)] = []
+        var total = 0
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let keyPointer = sqlite3_column_text(stmt, 0) else { continue }
+            let key = String(cString: keyPointer)
+            let filename = sqlite3_column_text(stmt, 1).map { String(cString: $0) }
+            let size = Int(sqlite3_column_int64(stmt, 2))
+            records.append((key, filename, size))
+            total += size
         }
+        sqlite3_finalize(stmt)
+        guard total > diskLimit else { return }
+        for (key, filename, size) in records where total > diskLimit {
+            if let stmt = prepare("DELETE FROM manifest WHERE key=?") {
+                bindText(key, to: stmt, at: 1)
+                _ = sqlite3_step(stmt)
+                sqlite3_finalize(stmt)
+            }
+            if let filename = filename {
+                try? FileManager.default.removeItem(at: fileDirectory.appendingPathComponent(filename))
+            }
+            total -= size
+        }
+        exec("PRAGMA wal_checkpoint(PASSIVE)")
     }
 
-    private func path(for url: URL) -> URL {
-        // Preserve V2 filenames so previously saved icons remain usable.
-        var hash: UInt64 = 14695981039346656037
-        for byte in url.absoluteString.utf8 {
-            hash = (hash ^ UInt64(byte)) &* 1099511628211
-        }
-        return directory.appendingPathComponent(String(format: "%016llx", hash) + ".img")
+    private func thumbnail(_ bytes: Data) -> UIImage? {
+        let options = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(bytes as CFData, options) else { return nil }
+        let settings: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: 120,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, settings as CFDictionary) else { return nil }
+        return UIImage(cgImage: image)
+    }
+
+    private func imageCost(_ image: UIImage) -> Int {
+        Int(image.size.width * image.size.height * image.scale * image.scale * 4)
     }
 
     func cachedMemoryImage(for url: URL) -> UIImage? {
@@ -70,187 +189,106 @@ final class SourceIconCache {
     }
 
     func load(_ url: URL, completion: @escaping (UIImage?) -> Void) {
-        if let image = cachedMemoryImage(for: url) {
-            DispatchQueue.main.async { completion(image) }
+        if let cached = cachedMemoryImage(for: url) {
+            DispatchQueue.main.async { completion(cached) }
             return
         }
         state.async {
             let key = url.absoluteString
-            if self.callbacks[key] != nil {
-                self.callbacks[key]?.append(completion)
-                self.background.removeAll { $0.absoluteString == key }
-                if !self.active.contains(key) && !self.diskChecking.contains(key) &&
-                    !self.foreground.contains(where: { $0.absoluteString == key }) {
-                    self.foreground.insert(url, at: 0)
-                }
-            } else {
-                self.callbacks[key] = [completion]
-                self.foreground.insert(url, at: 0)
-                self.checkDisk(url)
+            if self.waiting[key] != nil {
+                self.waiting[key]?.append(completion)
+                return
             }
-            self.schedule()
+            self.waiting[key] = [completion]
+            self.foreground.insert(url, at: 0)
+            self.background.removeAll { $0.absoluteString == key }
+            self.checkDisk(url)
         }
     }
 
     private func checkDisk(_ url: URL) {
         let key = url.absoluteString
-        guard diskChecking.insert(key).inserted else { return }
-        diskQueue.async {
-            let image = (try? Data(contentsOf: self.path(for: url))).flatMap(UIImage.init(data:))
+        guard checking.insert(key).inserted else { return }
+        disk.async {
+            let image = self.read(url).flatMap(self.thumbnail)
             self.state.async {
-                self.diskChecking.remove(key)
+                self.checking.remove(key)
                 if let image = image {
                     self.foreground.removeAll { $0.absoluteString == key }
-                    self.background.removeAll { $0.absoluteString == key }
-                    self.complete(url, image: image)
+                    self.finish(url, image: image)
                 } else {
-                    self.schedule()
+                    self.runQueue()
                 }
             }
         }
     }
 
-    private func complete(_ url: URL, image: UIImage?) {
+    private func finish(_ url: URL, image: UIImage?) {
         let key = url.absoluteString
         if let image = image {
-            memory.setObject(image, forKey: key as NSString,
-                             cost: Int(image.size.width * image.size.height * image.scale * image.scale * 4))
+            memory.setObject(image, forKey: key as NSString, cost: imageCost(image))
         }
-        let handlers = callbacks.removeValue(forKey: key) ?? []
+        let handlers = waiting.removeValue(forKey: key) ?? []
         DispatchQueue.main.async { handlers.forEach { $0(image) } }
     }
 
-    private func schedule() {
-        while active.count < maxDownloads {
-            let frontIndex = foreground.firstIndex { !diskChecking.contains($0.absoluteString) && !active.contains($0.absoluteString) }
+    private func runQueue() {
+        while active.count < downloadLimit {
             let url: URL
-            if let index = frontIndex {
-                url = foreground.remove(at: index)
+            if !foreground.isEmpty {
+                url = foreground.removeFirst()
             } else if !background.isEmpty {
-                // Keep two network slots available for visible icons.
-                if active.count >= maxDownloads - 4 { break }
                 url = background.removeFirst()
             } else {
-                break
+                return
             }
             let key = url.absoluteString
-            if active.contains(key) || diskChecking.contains(key) { continue }
+            if active.contains(key) || checking.contains(key) || failed.contains(key) { continue }
             active.insert(key)
             session.dataTask(with: url) { data, response, error in
-                let valid: Data?
+                var image: UIImage?
+                var encoded: Data?
                 if error == nil, let http = response as? HTTPURLResponse,
                    (200...299).contains(http.statusCode),
-                   let bytes = data, bytes.count <= 5 * 1024 * 1024,
-                   UIImage(data: bytes) != nil {
-                    valid = bytes
-                } else {
-                    valid = nil
+                   let bytes = data, bytes.count <= 5 * 1024 * 1024 {
+                    image = self.thumbnail(bytes)
+                    if let image = image { encoded = image.pngData() }
                 }
-                self.diskQueue.async {
-                    if let valid = valid {
-                        try? valid.write(to: self.path(for: url), options: .atomic)
-                    }
-                    let image = valid.flatMap(UIImage.init(data:))
+                self.disk.async {
+                    if let encoded = encoded { self.store(encoded, for: url) }
                     self.state.async {
                         self.active.remove(key)
-                        if image == nil {
-                            let count = min((self.retries[key] ?? 0) + 1, 6)
-                            self.retries[key] = count
-                            if count < 6 {
-                                self.retryAfter[key] = Date().addingTimeInterval(min(300, pow(2.0, Double(count)) * 2.0))
-                            } else {
-                                // Stop retrying until the next refresh or connectivity recovery.
-                                self.retryAfter.removeValue(forKey: key)
-                            }
-                        } else {
-                            self.retries.removeValue(forKey: key)
-                            self.retryAfter.removeValue(forKey: key)
-                        }
-                        self.complete(url, image: image)
-                        self.schedule()
-                        if image == nil { self.scheduleRetry() }
+                        if image == nil { self.failed.insert(key) }
+                        self.finish(url, image: image)
+                        self.runQueue()
                     }
                 }
             }.resume()
         }
     }
 
-    private func scheduleRetry() {
-        guard !retryWorkScheduled, !retryAfter.isEmpty else { return }
-        retryWorkScheduled = true
-        let delay = max(1, retryAfter.values.map { $0.timeIntervalSinceNow }.min() ?? 5)
-        state.asyncAfter(deadline: .now() + delay) {
-            self.retryWorkScheduled = false
-            self.enqueueMissing(self.knownURLs)
-            if !self.retryAfter.isEmpty { self.scheduleRetry() }
-        }
-    }
-
-    private func enqueueMissing(_ urls: [URL]) {
-        prefetchGeneration += 1
-        let generation = prefetchGeneration
-        background.removeAll()
-        diskQueue.async {
-            var seen = Set<String>()
-            let missing = urls.filter {
-                seen.insert($0.absoluteString).inserted &&
-                !FileManager.default.fileExists(atPath: self.path(for: $0).path)
-            }
-            self.state.async {
-                guard generation == self.prefetchGeneration else { return }
-                for url in missing {
-                    let key = url.absoluteString
-                    guard (self.retryAfter[key] ?? .distantPast) <= Date(),
-                          (self.retries[key] ?? 0) < 6 else { continue }
-                    if self.memory.object(forKey: key as NSString) == nil &&
-                       !self.active.contains(key) && !self.diskChecking.contains(key) &&
-                       !self.foreground.contains(where: { $0.absoluteString == key }) {
-                        self.background.append(url)
-                    }
-                }
-                self.schedule()
-                self.scheduleRetry()
-            }
-        }
-    }
-
     func prefetch(_ urls: [URL]) {
         state.async {
-            self.retries.removeAll()
-            self.retryAfter.removeAll()
-            self.knownURLs = Array(Dictionary(grouping: urls, by: { $0.absoluteString }).values.compactMap { $0.first })
-            self.enqueueMissing(self.knownURLs)
-            self.cleanDisk(protecting: Set(self.knownURLs.map { self.path(for: $0).lastPathComponent }))
-        }
-    }
-
-    private func cleanDisk(protecting protected: Set<String>) {
-        diskQueue.async {
-            let fm = FileManager.default
-            let files = (try? fm.contentsOfDirectory(at: self.directory,
-                includingPropertiesForKeys: [.fileSizeKey, .contentAccessDateKey, .contentModificationDateKey],
-                options: [.skipsHiddenFiles])) ?? []
-            var entries: [(URL, Int64, Date)] = []
-            var total: Int64 = 0
-            for file in files {
-                guard let metadata = try? file.resourceValues(forKeys: [.fileSizeKey, .contentAccessDateKey, .contentModificationDateKey]),
-                      let size = metadata.fileSize else { continue }
-                let bytes = Int64(size)
-                total += bytes
-                entries.append((file, bytes, metadata.contentAccessDate ?? metadata.contentModificationDate ?? .distantPast))
+            self.knownURLs = urls
+            self.failed.removeAll()
+            let visible = Set(self.foreground.map { $0.absoluteString })
+            self.background = urls.filter {
+                !visible.contains($0.absoluteString) &&
+                !self.active.contains($0.absoluteString)
             }
-            guard total > self.diskLimit else { return }
-            let sorted = entries.sorted(by: { $0.2 < $1.2 })
-            // First evict orphaned icons, preserving the current source catalog.
-            for entry in sorted where !protected.contains(entry.0.lastPathComponent) {
-                if total <= self.diskLimit { break }
-                do { try fm.removeItem(at: entry.0); total -= entry.1 } catch { }
-            }
-            // A strict storage ceiling cannot guarantee every icon remains available offline.
-            // If the active catalog alone exceeds the limit, evict its oldest icons.
-            for entry in sorted where protected.contains(entry.0.lastPathComponent) {
-                if total <= self.diskLimit { break }
-                do { try fm.removeItem(at: entry.0); total -= entry.1 } catch { }
+            // Avoid network work for entries already saved to SQLite.
+            let candidates = self.background
+            self.background.removeAll()
+            self.disk.async {
+                let missing = candidates.filter { self.read($0) == nil }
+                self.state.async {
+                    self.background = missing.filter {
+                        !self.active.contains($0.absoluteString) &&
+                        !self.checking.contains($0.absoluteString) &&
+                        !self.foreground.contains($0)
+                    }
+                    self.runQueue()
+                }
             }
         }
     }

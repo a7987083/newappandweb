@@ -42,6 +42,7 @@
  catalog.view.frame=CGRectMake(0,y,w,MAX(0,self.view.bounds.size.height-y));
  catalog.view.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
  self.catalogTable=catalog.tableView;
+ self.catalogTable.delegate=self; // Preserve the existing compact-header scroll behavior.
  [self.view addSubview:catalog.view];
  [catalog didMoveToParentViewController:self];
  } else if(self.tab==1){

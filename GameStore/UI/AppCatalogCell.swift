@@ -1,15 +1,15 @@
 import UIKit
 
-/// The source app card owns its image request and reuse token.
-/// Only visible UITableView cells initiate image loading.
 @objc(AppCatalogCell)
 final class AppCatalogCell: UITableViewCell {
     private let card = UIView()
     private let iconBacking = UIView()
+    private let placeholder = UIImageView(image: UIImage(systemName: "square.grid.2x2.fill"))
     private let iconView = UIImageView()
     private let nameLabel = UILabel()
-    private let detailLabel = UILabel()
-    private let categoryLabel = UILabel()
+    private let versionLabel = UILabel()
+    private let metadataLabel = UILabel()
+    private let downloadButton = UIButton(type: .system)
     private var representedIconURL = ""
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -21,23 +21,31 @@ final class AppCatalogCell: UITableViewCell {
         contentView.addSubview(card)
         iconBacking.backgroundColor = UIColor(red: 230/255, green: 240/255, blue: 1, alpha: 1)
         iconBacking.layer.cornerRadius = 11
+        iconBacking.clipsToBounds = true
         card.addSubview(iconBacking)
-        iconView.contentMode = .scaleAspectFit
-        iconView.tintColor = UIColor(red: 51/255, green: 124/255, blue: 250/255, alpha: 1)
+        placeholder.contentMode = .scaleAspectFit
+        placeholder.tintColor = UIColor(red: 51/255, green: 124/255, blue: 250/255, alpha: 1)
+        iconBacking.addSubview(placeholder)
+        iconView.contentMode = .scaleAspectFill
         iconView.clipsToBounds = true
         iconBacking.addSubview(iconView)
         nameLabel.font = .boldSystemFont(ofSize: 15)
-        detailLabel.font = .systemFont(ofSize: 11)
-        detailLabel.textColor = .secondaryLabel
-        detailLabel.adjustsFontSizeToFitWidth = true
-        detailLabel.minimumScaleFactor = 0.75
-        categoryLabel.font = .systemFont(ofSize: 10)
-        categoryLabel.textColor = iconView.tintColor
-        categoryLabel.backgroundColor = iconBacking.backgroundColor
-        categoryLabel.textAlignment = .center
-        categoryLabel.layer.cornerRadius = 5
-        categoryLabel.clipsToBounds = true
-        [nameLabel, detailLabel, categoryLabel].forEach(card.addSubview)
+        nameLabel.textColor = .black
+        nameLabel.lineBreakMode = .byTruncatingTail
+        versionLabel.font = .systemFont(ofSize: 11)
+        versionLabel.textColor = .secondaryLabel
+        metadataLabel.font = .systemFont(ofSize: 10)
+        metadataLabel.textColor = .secondaryLabel
+        metadataLabel.adjustsFontSizeToFitWidth = true
+        metadataLabel.minimumScaleFactor = 0.8
+        [nameLabel, versionLabel, metadataLabel].forEach(card.addSubview)
+        downloadButton.setTitle("下载", for: .normal)
+        downloadButton.titleLabel?.font = .boldSystemFont(ofSize: 12)
+        downloadButton.setTitleColor(.white, for: .normal)
+        downloadButton.backgroundColor = UIColor(red: 51/255, green: 124/255, blue: 250/255, alpha: 1)
+        downloadButton.layer.cornerRadius = 15
+        downloadButton.isUserInteractionEnabled = false // Visual state only; download/unlock actions are not wired.
+        card.addSubview(downloadButton)
     }
 
     required init?(coder: NSCoder) { fatalError("Programmatic cell only") }
@@ -45,27 +53,30 @@ final class AppCatalogCell: UITableViewCell {
     override func layoutSubviews() {
         super.layoutSubviews()
         let width = contentView.bounds.width
-        card.frame = CGRect(x: 18, y: 0, width: max(0, width - 36), height: 70)
-        iconBacking.frame = CGRect(x: 13, y: 12, width: 46, height: 46)
-        iconView.frame = iconBacking.bounds.insetBy(dx: 10, dy: 10)
-        nameLabel.frame = CGRect(x: 72, y: 8, width: max(0, width - 118), height: 22)
-        detailLabel.frame = CGRect(x: 72, y: 28, width: max(0, width - 116), height: 17)
-        categoryLabel.frame = CGRect(x: 72, y: 49, width: 60, height: 16)
+        card.frame = CGRect(x: 18, y: 0, width: max(0, width - 36), height: 86)
+        iconBacking.frame = CGRect(x: 13, y: 20, width: 46, height: 46)
+        placeholder.frame = iconBacking.bounds.insetBy(dx: 10, dy: 10)
+        iconView.frame = iconBacking.bounds
+        let textWidth = max(0, card.bounds.width - 72 - 88)
+        nameLabel.frame = CGRect(x: 72, y: 10, width: textWidth, height: 23)
+        versionLabel.frame = CGRect(x: 72, y: 34, width: textWidth, height: 17)
+        metadataLabel.frame = CGRect(x: 72, y: 55, width: max(0, card.bounds.width - 85), height: 17)
+        downloadButton.frame = CGRect(x: max(72, card.bounds.width - 80), y: 20, width: 68, height: 30)
     }
 
     override func prepareForReuse() {
         super.prepareForReuse()
         representedIconURL = ""
-        iconView.image = UIImage(systemName: "square.grid.2x2.fill")
+        iconView.image = nil
     }
 
-    @objc(configureWithName:detail:category:iconURL:)
-    func configure(name: String, detail: String, category: String, iconURL: String) {
+    @objc(configureWithName:version:metadata:iconURL:)
+    func configure(name: String, version: String, metadata: String, iconURL: String) {
         nameLabel.text = name
-        detailLabel.text = detail
-        categoryLabel.text = category
+        versionLabel.text = version
+        metadataLabel.text = metadata
         representedIconURL = iconURL
-        iconView.image = UIImage(systemName: "square.grid.2x2.fill")
+        iconView.image = nil
         guard let url = URL(string: iconURL),
               let scheme = url.scheme?.lowercased(),
               ["https", "http"].contains(scheme), url.host != nil else { return }

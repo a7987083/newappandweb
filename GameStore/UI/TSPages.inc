@@ -39,10 +39,19 @@
  AppCatalogViewController *catalog=[AppCatalogViewController new];
  self.catalogController=catalog;
  [self addChildViewController:catalog];
- catalog.view.frame=CGRectMake(0,y,w,MAX(0,self.view.bounds.size.height-y));
+ catalog.view.frame=CGRectMake(0,0,w,self.view.bounds.size.height);
  catalog.view.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
  self.catalogTable=catalog.tableView;
- self.catalogTable.delegate=self; // Preserve the existing compact-header scroll behavior.
+ self.catalogTable.delegate=self;
+ UIView *catalogHeader=[[UIView alloc]initWithFrame:CGRectMake(0,0,w,y)];
+ catalogHeader.backgroundColor=C(0xF2F2F7);
+ [self.largeTitleLabel removeFromSuperview];
+ [catalogHeader addSubview:self.largeTitleLabel];
+ [search removeFromSuperview];
+ [catalogHeader addSubview:search];
+ [catalog setCatalogHeader:catalogHeader height:y];
+ self.scroll.hidden=YES;
+ self.scroll.scrollEnabled=NO;
  [self.view addSubview:catalog.view];
  [catalog didMoveToParentViewController:self];
  } else if(self.tab==1){

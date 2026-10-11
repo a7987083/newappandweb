@@ -13,6 +13,7 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
     private var refreshSubscription: AnyCancellable?
     private weak var refreshAlert: UIAlertController?
     private var refreshRequested = false
+    private var catalogHeader: UIView?
 
     override func loadView() {
         view = UIView()
@@ -23,7 +24,7 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
         tableView.separatorStyle = .none
         tableView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 100, right: 0)
         tableView.dataSource = self
-        tableView.rowHeight = 78
+        tableView.rowHeight = 94
         tableView.register(AppCatalogCell.self, forCellReuseIdentifier: "SourceApp")
         view.addSubview(tableView)
     }
@@ -36,6 +37,30 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
             object: nil, queue: .main
         ) { [weak self] _ in self?.reloadCatalog() }
         reloadCatalog()
+    }
+
+    @objc(installHeader:)
+    func installHeader(_ header: UIView) {
+        catalogHeader = header
+        tableView.tableHeaderView = header
+    }
+
+    @objc(setHeaderCollapsed:)
+    func setHeaderCollapsed(_ collapsed: Bool) {
+        guard let header = catalogHeader else { return }
+        var frame = header.frame
+        let height = headerHeight
+        frame.size.height = collapsed ? 0 : height
+        header.frame = frame
+        tableView.tableHeaderView = header
+    }
+
+    private var headerHeight: CGFloat = 0
+
+    @objc(setCatalogHeader:height:)
+    func setCatalogHeader(_ header: UIView, height: CGFloat) {
+        headerHeight = height
+        installHeader(header)
     }
 
     /// Presents the same alert style as source registration but waits for
@@ -131,9 +156,18 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
             return UITableViewCell()
         }
         let app = applications[visibleIndices[indexPath.row]]
-        let detail = [app.version, app.bundleIdentifier].filter { !$0.isEmpty }.joined(separator: " · ")
-        cell.configure(name: app.name, detail: detail,
-                       category: app.category.isEmpty ? "软件源" : app.category,
+        let size = app.sizeBytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "—"
+        let date: String
+        if let updated = app.updatedAt {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            date = formatter.string(from: updated)
+        } else {
+            date = "—"
+        }
+        cell.configure(name: app.name,
+                       version: app.version.isEmpty ? "—" : app.version,
+                       metadata: "\(size) · \(date)",
                        iconURL: app.iconURL?.absoluteString ?? "")
         return cell
     }

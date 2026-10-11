@@ -5,6 +5,7 @@
  CGFloat safeTop=self.view.safeAreaInsets.top;
  self.preSearchOffsetY=self.tab==0?self.catalogTable.contentOffset.y:self.scroll.contentOffset.y;
  self.searchOriginalFrame=searchBar.frame;
+ if (self.tab==0) self.searchOriginalFrame=CGRectMake(12,self.normalSearchRowsTop-62,self.view.bounds.size.width-24,52);
  CGRect startFrame=[searchBar.superview convertRect:searchBar.frame toView:self.view];
  UIView *overlay=[[UIView alloc]initWithFrame:CGRectMake(0,0,w,safeTop+61)];
  overlay.backgroundColor=C(0xF7F8FA);
@@ -25,9 +26,10 @@
  separator.backgroundColor=C(0xD0D0D4);[overlay addSubview:separator];
  self.compactHeader.hidden=YES;
  self.largeTitleLabel.hidden=YES;
+ if (self.tab==0) [self.catalogController setHeaderCollapsed:YES];
  // Remove the collapsed large-title/search placeholder area while editing.
  self.searchRowsTop=safeTop+70;
- if (self.tab==0) { CGRect f=self.catalogController.view.frame;f.origin.y=safeTop+65;f.size.height=MAX(0,self.view.bounds.size.height-f.origin.y);self.catalogController.view.frame=f; }
+
  [self searchBar:searchBar textDidChange:searchBar.text?:@""];
  [UIView animateWithDuration:0.28 delay:0 options:UIViewAnimationOptionCurveEaseInOut|UIViewAnimationOptionBeginFromCurrentState animations:^{
    overlay.alpha=1;
@@ -51,15 +53,19 @@
  [self.searchBar resignFirstResponder];
  self.searchBar.text=@"";
  self.searchRowsTop=self.normalSearchRowsTop;
- if (self.tab==0) { CGRect f=self.catalogController.view.frame;f.origin.y=self.normalSearchRowsTop;f.size.height=MAX(0,self.view.bounds.size.height-f.origin.y);self.catalogController.view.frame=f; }
+ if (self.tab==0) {
+  // Restore the list header before restoring its scrolling position.
+  [self.catalogController setHeaderCollapsed:NO];
+ }
+
  self.scroll.frame=self.view.bounds;
  self.scroll.contentInset=UIEdgeInsetsMake(0,0,100,0);
  [self searchBar:self.searchBar textDidChange:@""];
- CGFloat minOffset=-self.scroll.adjustedContentInset.top;
- CGFloat maxOffset=MAX(minOffset,self.scroll.contentSize.height-self.scroll.bounds.size.height+self.scroll.adjustedContentInset.bottom);
+ CGFloat minOffset=self.tab==0?-self.catalogTable.adjustedContentInset.top:-self.scroll.adjustedContentInset.top;
+ CGFloat maxOffset=self.tab==0?MAX(minOffset,self.catalogTable.contentSize.height-self.catalogTable.bounds.size.height+self.catalogTable.adjustedContentInset.bottom):MAX(minOffset,self.scroll.contentSize.height-self.scroll.bounds.size.height+self.scroll.adjustedContentInset.bottom);
  CGFloat targetY=MIN(MAX(visibleOffset,minOffset),maxOffset);
- [self.scroll setContentOffset:CGPointMake(0,targetY) animated:NO];
- CGRect restore=[self.content convertRect:self.searchOriginalFrame toView:self.view];
+ if(self.tab==0) [self.catalogTable setContentOffset:CGPointMake(0,targetY+self.normalSearchRowsTop) animated:NO]; else [self.scroll setContentOffset:CGPointMake(0,targetY) animated:NO];
+ CGRect restore=self.tab==0?[self.catalogTable convertRect:self.searchOriginalFrame toView:self.view]:[self.content convertRect:self.searchOriginalFrame toView:self.view];
  self.dock.hidden=NO;
  [UIView animateWithDuration:0.28 delay:0 options:UIViewAnimationOptionCurveEaseInOut|UIViewAnimationOptionBeginFromCurrentState animations:^{
    self.searchBar.frame=restore;
@@ -69,16 +75,16 @@
    // Complete cleanup even if the animation was interrupted.
    [self.searchBar removeFromSuperview];
    self.searchBar.frame=self.searchOriginalFrame;
-   [self.content addSubview:self.searchBar];
+   if(self.tab==0) [self.catalogTable.tableHeaderView addSubview:self.searchBar]; else [self.content addSubview:self.searchBar];
    [self.searchOverlay removeFromSuperview];
    self.searchOverlay=nil;
    self.compactHeader.hidden=NO;
    self.largeTitleLabel.hidden=NO;
    // Re-apply after UIKit's keyboard/layout updates settle.
-   CGFloat minY=-self.scroll.adjustedContentInset.top;
-   CGFloat maxY=MAX(minY,self.scroll.contentSize.height-self.scroll.bounds.size.height+self.scroll.adjustedContentInset.bottom);
-   [self.scroll setContentOffset:CGPointMake(0,MIN(MAX(targetY,minY),maxY)) animated:NO];
-   [self scrollViewDidScroll:self.scroll];
+   CGFloat minY=self.tab==0?-self.catalogTable.adjustedContentInset.top:-self.scroll.adjustedContentInset.top;
+   CGFloat maxY=self.tab==0?MAX(minY,self.catalogTable.contentSize.height-self.catalogTable.bounds.size.height+self.catalogTable.adjustedContentInset.bottom):MAX(minY,self.scroll.contentSize.height-self.scroll.bounds.size.height+self.scroll.adjustedContentInset.bottom);
+   if(self.tab==0) [self.catalogTable setContentOffset:CGPointMake(0,MIN(MAX(targetY+self.normalSearchRowsTop,minY),maxY)) animated:NO]; else [self.scroll setContentOffset:CGPointMake(0,MIN(MAX(targetY,minY),maxY)) animated:NO];
+   [self scrollViewDidScroll:self.tab==0?self.catalogTable:self.scroll];
  }];
 }
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {

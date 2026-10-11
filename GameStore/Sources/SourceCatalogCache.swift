@@ -21,7 +21,7 @@ enum SourceCatalogCache {
     private static var legacyURL: URL { directory.appendingPathComponent("SourceCatalog-v1.json") }
 
     static var needsMigration: Bool {
-        !FileManager.default.fileExists(atPath: databaseURL.path) &&
+        !hasValidDatabase() &&
         (FileManager.default.fileExists(atPath: previousURL.path) ||
          FileManager.default.fileExists(atPath: legacyURL.path))
     }
@@ -83,12 +83,23 @@ enum SourceCatalogCache {
         sql(db, "CREATE INDEX IF NOT EXISTS idx_apps_name ON apps(name)")
     }
 
+    private static func hasValidDatabase() -> Bool {
+        guard FileManager.default.fileExists(atPath: databaseURL.path),
+              let db = openDatabase() else { return false }
+        defer { sqlite3_close(db) }
+        guard let statement = prepare(db, "PRAGMA user_version") else { return false }
+        defer { sqlite3_finalize(statement) }
+        return sqlite3_step(statement) == SQLITE_ROW && sqlite3_column_int(statement, 0) == 3
+    }
+
     private static func loadDatabase() -> [String: [SourceCatalogApp]]? {
         guard FileManager.default.fileExists(atPath: databaseURL.path),
               let db = openDatabase() else { return nil }
         defer { sqlite3_close(db) }
-        guard createSchema(db),
-              let statement = prepare(db, """
+        guard let marker = prepare(db, "PRAGMA user_version") else { return nil }
+        let valid = sqlite3_step(marker) == SQLITE_ROW && sqlite3_column_int(marker, 0) == 3
+        sqlite3_finalize(marker)
+        guard valid, let statement = prepare(db, """
                 SELECT s.url,a.app_id,a.name,a.bundle_id,a.version,a.category,
                        a.description,a.icon_url,a.download_url,a.developer,
                        a.size_bytes,a.updated_at,a.release_notes
@@ -181,7 +192,7 @@ enum SourceCatalogCache {
                 guard sqlite3_step(appStatement) == SQLITE_DONE else { throw storeError("应用目录写入失败") }
             }
         }
-        guard sql(db, "COMMIT") else { throw storeError("目录事务提交失败") }
+        guard sql(db, "PRAGMA user_version=3"), sql(db, "COMMIT") else { throw storeError("目录事务提交失败") }
         committed = true
         // Only remove old snapshots after a complete successful transaction.
         try? FileManager.default.removeItem(at: previousURL)

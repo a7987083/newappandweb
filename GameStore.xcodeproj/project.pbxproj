@@ -9,6 +9,7 @@
     AF000000000000000000000D /* MainShellViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF000000000000000000000E /* MainShellViewController.swift */; };
     AF0000000000000000000031 /* ShellSearchSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0000000000000000000032 /* ShellSearchSession.swift */; };
     AF0000000000000000000033 /* ShellHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0000000000000000000034 /* ShellHeaderView.swift */; };
+    AF0000000000000000000035 /* ShellTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0000000000000000000036 /* ShellTabBar.swift */; };
 		AF000000000000000000000B /* AppCatalogViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF000000000000000000000C /* AppCatalogViewController.swift */; };
 		AF0000000000000000000009 /* AppCatalogCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF000000000000000000000A /* AppCatalogCell.swift */; };
 		AF0000000000000000000007 /* SourceCatalogUIBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0000000000000000000008 /* SourceCatalogUIBridge.swift */; };
@@ -42,6 +43,7 @@
     AF000000000000000000000E /* MainShellViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/MainShellViewController.swift; sourceTree = "<group>"; };
     AF0000000000000000000032 /* ShellSearchSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/ShellSearchSession.swift; sourceTree = "<group>"; };
     AF0000000000000000000034 /* ShellHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/ShellHeaderView.swift; sourceTree = "<group>"; };
+    AF0000000000000000000036 /* ShellTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/ShellTabBar.swift; sourceTree = "<group>"; };
 		AF000000000000000000000C /* AppCatalogViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/AppCatalogViewController.swift; sourceTree = "<group>"; };
 		AF000000000000000000000A /* AppCatalogCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/AppCatalogCell.swift; sourceTree = "<group>"; };
 		AF0000000000000000000008 /* SourceCatalogUIBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/SourceCatalogUIBridge.swift; sourceTree = "<group>"; };
@@ -101,6 +103,7 @@
     AF000000000000000000000E /* MainShellViewController.swift */,
     AF0000000000000000000032 /* ShellSearchSession.swift */,
     AF0000000000000000000034 /* ShellHeaderView.swift */,
+    AF0000000000000000000036 /* ShellTabBar.swift */,
 				E10000000000000000000002 /* CertificateStore.swift */,
 				C844D856FEFC392299F6D0F7 /* Products */,
 			); sourceTree = "<group>"; };
@@ -149,6 +152,7 @@
     AF000000000000000000000D /* MainShellViewController.swift in Sources */,
     AF0000000000000000000031 /* ShellSearchSession.swift in Sources */,
     AF0000000000000000000033 /* ShellHeaderView.swift in Sources */,
+    AF0000000000000000000035 /* ShellTabBar.swift in Sources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

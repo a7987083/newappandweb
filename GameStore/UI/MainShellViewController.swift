@@ -232,39 +232,16 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     }
 
     private func buildDock() {
-        let w = view.bounds.width
-        let dw = min(w-112,320)
-        dock = UIView(frame: CGRect(x: (w-dw)/2,y: view.bounds.height-view.safeAreaInsets.bottom-72,width: dw,height: 60))
-        dock.autoresizingMask = [.flexibleTopMargin,.flexibleLeftMargin,.flexibleRightMargin]
-        dock.layer.cornerRadius = 30
-        dock.layer.borderWidth = 0.5
-        dock.layer.borderColor = UIColor.lightGray.cgColor
-        dock.backgroundColor = UIColor(red: 249/255,green: 249/255,blue: 251/255,alpha: 1)
-        dock.layer.shadowColor = UIColor.black.cgColor
-        dock.layer.shadowOpacity = 0.08
-        dock.layer.shadowRadius = 11
-        view.addSubview(dock)
-        let titles = ["应用","安装包","插件","设置"]
-        let icons = ["square.grid.3x3.fill","shippingbox.fill","puzzlepiece.fill","gearshape.fill"]
-        for i in 0..<4 {
-            let col = dw/4
-            let b = UIButton(type: .system)
-            b.tag = i
-            b.frame = CGRect(x: CGFloat(i)*col,y: 2,width: col,height: 38)
-            b.tintColor = i == selectedTab ? blue : .gray
-            b.setImage(UIImage(systemName: icons[i],withConfiguration: UIImage.SymbolConfiguration(pointSize: 19)),for: .normal)
-            b.addTarget(self,action: #selector(tapTab(_:)),for: .touchUpInside)
-            dock.addSubview(b)
-            let label = UILabel(frame: CGRect(x: CGFloat(i)*col,y: 38,width: col,height: 17))
-            label.text = titles[i]
-            label.textAlignment = .center
-            label.textColor = b.tintColor
-            label.font = i == selectedTab ? .boldSystemFont(ofSize: 10) : .systemFont(ofSize: 10)
-            dock.addSubview(label)
-        }
+        let bar = ShellTabBar(width: view.bounds.width,
+                              height: view.bounds.height,
+                              bottomInset: view.safeAreaInsets.bottom,
+                              selectedTab: selectedTab,
+                              tint: blue)
+        bar.onSelect = { [weak self] index in self?.showTab(index) }
+        dock = bar
+        view.addSubview(bar)
     }
 
-    @objc private func tapTab(_ b: UIButton) { showTab(b.tag) }
     @objc private func refresh() { catalog?.refreshSourceCatalog() }
     @objc private func demo() {
         let a = UIAlertController(title: "界面演示",message: "当前仅为 UI 占位。",preferredStyle: .alert)

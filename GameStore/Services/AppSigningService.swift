@@ -1,6 +1,5 @@
 import Foundation
 import ZIPFoundation
-import Zip
 import CryptoKit
 
 protocol AppSigning {
@@ -83,14 +82,8 @@ final class AppSigningService: AppSigning {
         try fm.createDirectory(at: payloadRoot, withIntermediateDirectories: true, attributes: nil)
 
         emit(.extracting)
-        // Match Zonoe/Ksign's default "Zip" extraction engine (minizip),
-        // rather than forcing ZIPFoundation's UTF-8 path decoding.
-        // Keep ZIPFoundation for IPA repacking and inspection.
-        // Zip's default whitelist is only "zip" and "cbz". IPA/TIPA are ZIP archives.
-        Zip.addCustomFileExtension("ipa")
-        Zip.addCustomFileExtension("tipa")
-        try Zip.unzipFile(request.ipaURL, destination: payloadRoot, overwrite: true, password: nil)
-        report("IPA 解压完成（Zonoe Zip/minizip）")
+        let archiveBaseline = try IPAArchiveIntegrity.extract(request.ipaURL, to: payloadRoot, report: report)
+        report("IPA 解压完成并已核对目录与符号链接类型")
         let payload = payloadRoot.appendingPathComponent("Payload", isDirectory: true)
         let apps = (try fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: [.isDirectoryKey]))
             .filter { $0.pathExtension.lowercased() == "app" }
@@ -146,6 +139,7 @@ final class AppSigningService: AppSigning {
         }
         let afterNested = nestedDiagnosticSnapshot(in: app, phase: "签名后")
         compareNestedSnapshots(before: beforeNested, after: afterNested)
+        try IPAArchiveIntegrity.checkFilesystem(root: payloadRoot, baseline: archiveBaseline.specialEntries)
         emit(.repacking)
         report("开始压缩输出 IPA")
         let outDir = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -163,6 +157,7 @@ final class AppSigningService: AppSigning {
         do {
             if fm.fileExists(atPath: output.path) { try fm.removeItem(at: output) }
             try fm.zipItem(at: payloadRoot, to: output, shouldKeepParent: false, compressionMethod: .deflate)
+            try IPAArchiveIntegrity.verifyOutput(output, baseline: archiveBaseline)
             emit(.verifySignature)
             let inspected = try IPAInspector.inspect(output)
             report("输出 IPA 结构解析成功：" + output.lastPathComponent)

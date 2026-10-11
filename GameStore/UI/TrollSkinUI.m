@@ -50,6 +50,11 @@ static UILabel *L(NSString *s,CGFloat font,BOOL bold,UIColor *color){UILabel *l=
  if (CGSizeEqualToSize(self.renderedSize,self.view.bounds.size)) return;
  self.renderedSize=self.view.bounds.size;
  self.searching=NO;self.searchOverlay=nil;
+ for (UIViewController *child in [self.childViewControllers copy]) {
+  [child willMoveToParentViewController:nil];
+  [child.view removeFromSuperview];
+  [child removeFromParentViewController];
+ }
  for (UIView *view in [self.view.subviews copy]) [view removeFromSuperview];
  [self build];
 }

@@ -1,4 +1,14 @@
 - (void)build {
+ if (self.tab == 3) {
+  SettingsViewController *settings = [SettingsViewController new];
+  [self addChildViewController:settings];
+  settings.view.frame = self.view.bounds;
+  settings.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+  [self.view addSubview:settings.view];
+  [settings didMoveToParentViewController:self];
+  [self tabs];
+  return;
+ }
  CGFloat w=self.view.bounds.size.width;
  CGFloat safeTop=self.view.safeAreaInsets.top;
  CGFloat headerY=safeTop+8.0;
@@ -8,22 +18,6 @@
  self.content=[[UIView alloc]initWithFrame:CGRectMake(0,0,w,1700)];[self.scroll addSubview:self.content];
  self.searchRows=[NSMutableArray array];
  CGFloat y=0;
- if(self.tab==3){
- y=[self line:@"设置" y:largeTitleY x:20 color:UIColor.blackColor size:37 bold:YES height:53]+8;
- y=[self line:@"如果应用安装后没有立即出现在主屏幕，请在此处注销一次。对于无法启动的应用，可以尝试刷新应用注册状态。" y:y x:30 color:C(0x8E8E93) size:14 bold:NO height:59]+15;
- y=[self line:@"设备管理" y:y x:30 color:C(0x8E8E93) size:14 bold:NO height:27]+5;
- y=[self setting:@"设备认证" icon:@"checkmark.shield.fill" color:C(0x337CFA) y:y];
- NSArray *names=@[@"自定义清理",@"切换 App Store 账户",@"允许所有 App 粘贴",@"屏蔽 / 恢复 系统更新",@"直降应用"];
- NSArray *icons=@[@"trash.circle.fill",@"person.2.circle.fill",@"doc.on.doc.fill",@"shield.slash.fill",@"arrow.down.to.line"];
- for(NSInteger i=0;i<names.count;i++)y=[self setting:names[i] icon:icons[i] color:C(0x337CFA) y:y];
- y=[self line:@"自定义清理功能允许你添加文件或文件夹路径，以便快速清理缓存垃圾或其它文件。\n直降应用功能允许你直接降级设备未安装应用到指定版本。" y:y x:30 color:C(0x8E8E93) size:14 bold:NO height:95]+5;
- y=[self line:@"签名工具 (LDID)" y:y x:30 color:C(0x8E8E93) size:14 bold:NO height:30]+5;
- y=[self setting:@"ldid: 已安装 (v2.1.5-procursus7-new)" icon:@"checkmark.seal.fill" color:C(0x8E8E93) y:y];
- y=[self line:@"ldid 状态仅为演示占位，未进行系统检测。" y:y x:30 color:C(0x8E8E93) size:13 bold:NO height:35]+8;
- y=[self line:@"持久性助手" y:y x:30 color:C(0x8E8E93) size:14 bold:NO height:32]+8;
- y=[self setting:@"助手状态（演示占位）" icon:@"checkmark.square.fill" color:C(0x8E8E93) y:y];
- y=[self setting:@"卸载持久化助手" icon:@"trash" color:UIColor.systemRedColor y:y];
- }else{
  NSString *heading=@[@"应用",@"安装包",@"插件"][self.tab];
  y=[self line:heading y:largeTitleY x:20 color:UIColor.blackColor size:37 bold:YES height:53]+8;
  self.largeTitleLabel=(UILabel *)self.content.subviews.lastObject;
@@ -80,7 +74,6 @@
    [self.view addSubview:header];
  }
  if(self.tab==1 || self.tab==2){UIButton *edit=[UIButton buttonWithType:UIButtonTypeSystem];edit.frame=CGRectMake(w-108,actionY,42,34);[edit setTitle:@"编辑" forState:UIControlStateNormal];edit.titleLabel.font=[UIFont systemFontOfSize:16];[edit addTarget:self action:@selector(demo) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:edit];}
- if(self.tab==3){UIButton *brush=[UIButton buttonWithType:UIButtonTypeSystem];brush.frame=CGRectMake(w-58,actionY,40,40);[brush setImage:[UIImage systemImageNamed:@"paintbrush.pointed.fill"] forState:UIControlStateNormal];brush.tintColor=C(0x337CFA);[brush addTarget:self action:@selector(demo) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:brush];}
  if(self.tab!=3){UIButton *plus=[UIButton buttonWithType:UIButtonTypeSystem];plus.frame=CGRectMake(w-53,actionY,42,42);[plus setImage:[UIImage systemImageNamed:@"plus.circle.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:29]] forState:UIControlStateNormal];plus.tintColor=C(0x337CFA);[plus addTarget:self action:@selector(demo) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:plus];}
  [self tabs];
 }

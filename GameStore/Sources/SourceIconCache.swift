@@ -3,8 +3,8 @@ import UIKit
 import ImageIO
 import SQLite3
 
-/// Lightweight, URL-keyed image cache: SQLite index, inline small images,
-/// file-backed larger images and bounded decoded-image memory.
+/// URL-keyed image thumbnails kept exclusively as SQLite BLOBs.
+/// Decoded images use a bounded NSCache.
 final class SourceIconCache {
     static let shared = SourceIconCache()
 
@@ -32,7 +32,7 @@ final class SourceIconCache {
         root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("GameStore/CompactIcons", isDirectory: true)
         fileDirectory = root.appendingPathComponent("data", isDirectory: true)
-        try? FileManager.default.createDirectory(at: fileDirectory, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 15
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -58,6 +58,39 @@ final class SourceIconCache {
         exec("PRAGMA journal_mode=WAL")
         exec("CREATE TABLE IF NOT EXISTS manifest (key TEXT PRIMARY KEY, filename TEXT, size INTEGER NOT NULL, inline_data BLOB, last_access_time INTEGER NOT NULL)")
         exec("CREATE INDEX IF NOT EXISTS idx_access ON manifest(last_access_time)")
+        migrateFileEntries()
+    }
+
+    /// Upgrade existing file-backed entries without losing cached images.
+    /// Called only by the serial SQLite queue.
+    private func migrateFileEntries() {
+        guard let stmt = prepare("SELECT key,filename FROM manifest WHERE filename IS NOT NULL") else { return }
+        var entries: [(String, String)] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if let k = sqlite3_column_text(stmt, 0), let f = sqlite3_column_text(stmt, 1) {
+                entries.append((String(cString: k), String(cString: f)))
+            }
+        }
+        sqlite3_finalize(stmt)
+        for (key, name) in entries {
+            let path = fileDirectory.appendingPathComponent(name)
+            guard let data = try? Data(contentsOf: path) else { continue }
+            guard let update = prepare("UPDATE manifest SET filename=NULL, inline_data=?,size=? WHERE key=?") else { continue }
+            let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+            _ = data.withUnsafeBytes {
+                sqlite3_bind_blob(update, 1, $0.baseAddress, Int32(data.count), transient)
+            }
+            sqlite3_bind_int64(update, 2, Int64(data.count))
+            bindText(key, to: update, at: 3)
+            let saved = sqlite3_step(update) == SQLITE_DONE
+            sqlite3_finalize(update)
+            if saved { try? FileManager.default.removeItem(at: path) }
+        }
+        // Remove unreferenced old blobs only after every referenced item migrated.
+        let remaining = prepare("SELECT COUNT(*) FROM manifest WHERE filename IS NOT NULL")
+        let hasPending = remaining != nil && sqlite3_step(remaining) == SQLITE_ROW && sqlite3_column_int(remaining, 0) > 0
+        sqlite3_finalize(remaining)
+        if !hasPending { try? FileManager.default.removeItem(at: fileDirectory) }
     }
 
     private func exec(_ sql: String) {
@@ -104,37 +137,18 @@ final class SourceIconCache {
     }
 
     private func store(_ data: Data, for url: URL) {
-        let key = url.absoluteString
-        let name = hash(key) + ".img"
-        let inline = data.count <= 12 * 1024
-        if !inline {
-            do {
-                try data.write(to: fileDirectory.appendingPathComponent(name), options: .atomic)
-            } catch { return }
-        }
-        guard let stmt = prepare("INSERT OR REPLACE INTO manifest(key,filename,size,inline_data,last_access_time) VALUES(?,?,?,?,?)") else { return }
+        guard let stmt = prepare("INSERT OR REPLACE INTO manifest(key,filename,size,inline_data,last_access_time) VALUES(?,NULL,?,?,?)") else { return }
         defer { sqlite3_finalize(stmt) }
-        bindText(key, to: stmt, at: 1)
-        if inline {
-            sqlite3_bind_null(stmt, 2)
-        } else {
-            bindText(name, to: stmt, at: 2)
+        bindText(url.absoluteString, to: stmt, at: 1)
+        sqlite3_bind_int64(stmt, 2, Int64(data.count))
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        _ = data.withUnsafeBytes {
+            sqlite3_bind_blob(stmt, 3, $0.baseAddress, Int32(data.count), transient)
         }
-        sqlite3_bind_int64(stmt, 3, Int64(data.count))
-        if inline {
-            let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-            _ = data.withUnsafeBytes { pointer in
-                sqlite3_bind_blob(stmt, 4, pointer.baseAddress, Int32(data.count), transient)
-            }
-        } else {
-            sqlite3_bind_null(stmt, 4)
-        }
-        sqlite3_bind_int64(stmt, 5, Int64(Date().timeIntervalSince1970))
-        _ = sqlite3_step(stmt)
-        writesSincePrune += 1
-        if writesSincePrune >= 32 {
-            writesSincePrune = 0
-            prune()
+        sqlite3_bind_int64(stmt, 4, Int64(Date().timeIntervalSince1970))
+        if sqlite3_step(stmt) == SQLITE_DONE {
+            writesSincePrune += 1
+            if writesSincePrune >= 32 { writesSincePrune = 0; prune() }
         }
     }
 
@@ -164,7 +178,7 @@ final class SourceIconCache {
             }
             total -= size
         }
-        exec("PRAGMA wal_checkpoint(PASSIVE)")
+        exec("PRAGMA wal_checkpoint(TRUNCATE)")
     }
 
     private func thumbnail(_ bytes: Data) -> UIImage? {

@@ -25,7 +25,8 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     private var headerHeight: CGFloat = 0
     private var dock = UIView()
     private var compact = UIView()
-    private var searching = false
+    private let searchPhase = ShellSearchPhaseMachine()
+    private var searching: Bool { searchPhase.isSearching }
     private var overlay: UIView?
     private var oldSearchFrame = CGRect.zero
     private let searchSession = ShellSearchSession()
@@ -264,8 +265,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     }
 
     func searchBarShouldBeginEditing(_ bar: UISearchBar) -> Bool {
-        guard !searching,let table = currentTable else { return true }
-        searching = true
+        guard let table = currentTable, searchPhase.begin() else { return false }
         searchSession.begin(on: table, in: view, safeTop: view.safeAreaInsets.top)
         oldSearchFrame = bar.frame
         let origin = bar.superview?.convert(bar.frame,to: view) ?? bar.frame
@@ -300,18 +300,19 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             panel.alpha = 1
             bar.frame = CGRect(x: 12,y: safe+5,width: self.view.bounds.width-93,height: 49)
             self.dock.alpha = 0
-        } completion: { _ in if self.searching { self.dock.isHidden = true } }
+        } completion: { _ in
+            if self.searchPhase.activate() { self.dock.isHidden = true }
+        }
         return true
     }
 
     @objc private func cancelSearch() { closeSearch(animated: true) }
     private func closeSearch(animated: Bool) {
-        guard searching,let bar = searchBar,let table = currentTable else { return }
+        guard let bar = searchBar, let table = currentTable, searchPhase.startRestoring() else { return }
         let anchor = searchSession.captureCurrent(on: table)
         let searchRow = anchor.row
         let searchAppID = searchRow.flatMap { selectedTab == 0 ? catalog?.appID(atVisibleRow: $0) : nil }
         let searchDemoName = searchRow.flatMap { selectedTab != 0 && $0 < filtered.count ? filtered[$0].0 : nil }
-        searching = false
         searchSession.restoreViewport(on: table)
         bar.resignFirstResponder()
         bar.text = ""
@@ -347,6 +348,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             self.compact.isHidden = false
             self.dock.alpha = 1
             restoreBrowsePosition()
+            self.searchPhase.finishRestoring()
             self.scrollViewDidScroll(table)
         }
         if animated {

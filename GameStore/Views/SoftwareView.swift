@@ -102,7 +102,7 @@ struct SoftwareView: View {
                 .padding(.bottom, 20)
             }
             .background(Color(red: 0.055, green: 0.070, blue: 0.095).edgesIgnoringSafeArea(.all))
-            .navigationBarTitle("", displayMode: .inline)
+            .navigationBarTitle("")
             .navigationBarItems(trailing:
                 Button(action: { sources.refreshCatalog() }) {
                     Image(systemName: "arrow.clockwise")

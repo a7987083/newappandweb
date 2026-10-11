@@ -223,18 +223,19 @@ extension SoftwareSourceStore {
             for (source, apps) in collected where registered.contains(source) {
                 next[source] = apps
             }
-            do {
-                try SourceCatalogCache.save(next)
-                self.catalogsBySource = next
-                self.catalogApps = next.values.flatMap { $0 }.sorted {
-                    $0.name.localizedStandardCompare($1.name) == .orderedAscending
-                }
-                SourceIconCache.shared.prefetch(self.catalogApps.compactMap { $0.iconURL })
-                self.catalogError = failures.isEmpty ? nil : "刷新部分失败，已保留旧数据"
-            } catch {
-                self.catalogError = "本地缓存写入失败：" + error.localizedDescription
+            // Publish the refreshed catalog immediately; disk serialization runs off-main.
+            self.catalogsBySource = next
+            self.catalogApps = next.values.flatMap { $0 }.sorted {
+                $0.name.localizedStandardCompare($1.name) == .orderedAscending
             }
+            SourceIconCache.shared.prefetch(self.catalogApps.compactMap { $0.iconURL })
+            self.catalogError = failures.isEmpty ? nil : "刷新部分失败，已保留旧数据"
             self.isCatalogLoading = false
+            SourceCatalogCache.saveAsync(next) { [weak self] error in
+                guard let self = self, let error = error else { return }
+                // The screen remains usable even when offline persistence fails.
+                self.catalogError = "本地缓存保存失败：" + error.localizedDescription
+            }
         }
     }
 

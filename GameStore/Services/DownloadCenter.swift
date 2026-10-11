@@ -116,6 +116,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
     override init() {
         super.init()
         restorePausedRecords()
+        migrateLegacyDownloads()
         reloadDownloadedItems()
     }
 
@@ -287,6 +288,36 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         let path = localURL.standardizedFileURL.path
         completedItems.removeAll {
             $0.localURL?.standardizedFileURL.path == path
+        }
+    }
+
+    private func migrateLegacyDownloads() {
+        let fm = FileManager.default
+        let documents = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let legacy = documents.appendingPathComponent("Downloads", isDirectory: true)
+        let destination = Self.downloadsDirectory()
+        guard let files = try? fm.contentsOfDirectory(at: legacy, includingPropertiesForKeys: nil) else { return }
+        do {
+            try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+            for file in files where file.pathExtension.lowercased() == "ipa" {
+                var target = destination.appendingPathComponent(file.lastPathComponent)
+                let stem = file.deletingPathExtension().lastPathComponent
+                var suffix = 2
+                while fm.fileExists(atPath: target.path) {
+                    target = destination.appendingPathComponent("\(stem)-\(suffix).ipa")
+                    suffix += 1
+                }
+                try fm.moveItem(at: file, to: target)
+                let oldMap = Self.completedSources()
+                if let source = oldMap[file.lastPathComponent], let sourceURL = URL(string: source) {
+                    Self.updateCompletedSource(filename: target.lastPathComponent, source: sourceURL)
+                    if target.lastPathComponent != file.lastPathComponent {
+                        Self.updateCompletedSource(filename: file.lastPathComponent, source: nil)
+                    }
+                }
+            }
+        } catch {
+            NSLog("DownloadCenter: legacy IPA migration failed: %@", String(describing: error))
         }
     }
 

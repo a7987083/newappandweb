@@ -12,6 +12,8 @@ final class SettingsViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         updateAuthSummary()
+        // Keep the interactive pop scoped to the settings navigation stack.
+        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
     }
 
     private func updateAuthSummary() {
@@ -488,6 +490,8 @@ private final class DeviceAuthDetailController: UIViewController {
 
 private final class SigningSettingsController: UIViewController {
     private let store = SigningOptionsStore.shared
+    private var switches: [UISwitch] = []
+    private weak var packagingButton: UIButton?
     private let scroll = UIScrollView()
     private let stack = UIStackView()
 
@@ -553,6 +557,7 @@ private final class SigningSettingsController: UIViewController {
         packaging.setTitle("打包规则：\(store.options.packagingRule.title)  ›", for: .normal)
         packaging.setTitleColor(.black, for: .normal)
         packaging.addTarget(self, action: #selector(selectPackaging(_:)), for: .touchUpInside)
+        packagingButton = packaging
         stack.addArrangedSubview(packaging)
 
         let reset = UIButton(type: .system)
@@ -578,6 +583,7 @@ private final class SigningSettingsController: UIViewController {
         toggle.tag = key
         toggle.translatesAutoresizingMaskIntoConstraints = false
         toggle.addTarget(self, action: #selector(changeOption(_:)), for: .valueChanged)
+        switches.append(toggle)
         row.addSubview(toggle)
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 17),
@@ -629,11 +635,23 @@ private final class SigningSettingsController: UIViewController {
         let alert = UIAlertController(title: "恢复默认设置", message: "确定恢复所有签名设置？", preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
         alert.addAction(UIAlertAction(title: "恢复", style: .destructive) { [weak self] _ in
-            self?.store.resetToDefaults()
-            self?.loadViewIfNeeded()
-            self?.stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-            self?.view.subviews.forEach { $0.removeFromSuperview() }
-            self?.viewDidLoad()
+            guard let self = self else { return }
+            self.store.resetToDefaults()
+            for toggle in self.switches {
+                switch toggle.tag {
+                case 0: toggle.isOn = self.store.options.forceLocalization
+                case 1: toggle.isOn = self.store.options.fileSharing
+                case 2: toggle.isOn = self.store.options.itunesFileSharing
+                case 3: toggle.isOn = self.store.options.proMotion
+                case 4: toggle.isOn = self.store.options.gameMode
+                case 5: toggle.isOn = self.store.options.ipadFullscreen
+                case 6: toggle.isOn = self.store.options.temporarySigning
+                case 7: toggle.isOn = self.store.options.autoInstallAfterSigning
+                case 8: toggle.isOn = self.store.options.registerCallback
+                default: break
+                }
+            }
+            self.packagingButton?.setTitle("打包规则：\(self.store.options.packagingRule.title)  ›", for: .normal)
         })
         present(alert, animated: true)
     }

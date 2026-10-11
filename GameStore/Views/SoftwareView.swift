@@ -2,83 +2,65 @@ import SwiftUI
 
 struct SoftwareView: View {
     @ObservedObject private var sources = SoftwareSourceStore.shared
-    @State private var query = ""
+    @EnvironmentObject private var appStore: AppStoreViewModel
+    @State private var selectedCategory = "全部"
 
+    private var categories: [String] {
+        ["全部"] + Array(Set(sources.catalogApps.map { $0.category.isEmpty ? "其他" : $0.category })).sorted()
+    }
     private var displayed: [SourceCatalogApp] {
-        query.isEmpty ? sources.catalogApps : sources.catalogApps.filter {
-            $0.name.localizedCaseInsensitiveContains(query) ||
-            $0.bundleIdentifier.localizedCaseInsensitiveContains(query)
-        }
+        selectedCategory == "全部" ? sources.catalogApps :
+            sources.catalogApps.filter { ($0.category.isEmpty ? "其他" : $0.category) == selectedCategory }
     }
 
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text("应用")
-                        .font(.system(size: 40, weight: .bold))
-                        .padding(.top, 12)
-
-                    HStack(spacing: 10) {
-                        Image(systemName: "magnifyingglass").foregroundColor(.gray)
-                        TextField("搜索", text: $query)
-                    }
-                    .font(.system(size: 19))
-                    .padding(13)
-                    .background(Color(red: 0.89, green: 0.89, blue: 0.91))
-                    .cornerRadius(12)
-
-                    if let error = sources.catalogError {
-                        Text(error).font(.footnote).foregroundColor(.orange)
-                    }
-                    if sources.sources.isEmpty {
-                        Text("尚未添加软件源，可在设置页面添加。")
+            List {
+                if let error = sources.catalogError {
+                    Section { Text(error).font(.footnote).foregroundColor(.orange) }
+                }
+                if sources.sources.isEmpty {
+                    Section {
+                        Text("尚未添加软件源，请前往「我的 → 软件源」添加。")
                             .foregroundColor(.secondary)
                     }
-                    ForEach(displayed) { app in
-                        NavigationLink(destination: SourceAppDetailView(app: app)) {
-                            HStack(spacing: 16) {
-                                SourceAppIcon(url: app.iconURL)
-                                    .frame(width: 64, height: 64)
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text(app.name)
-                                        .font(.system(size: 18, weight: .semibold))
-                                        .foregroundColor(.primary)
-                                        .lineLimit(1)
-                                    Text([app.version, app.bundleIdentifier].filter { !$0.isEmpty }.joined(separator: " · "))
-                                        .font(.system(size: 13))
-                                        .foregroundColor(.gray)
-                                        .lineLimit(1)
-                                    Text("软件源")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(.blue)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 3)
-                                        .background(Color.blue.opacity(0.09))
-                                        .cornerRadius(6)
+                } else {
+                    Section {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(categories, id: \.self) { category in
+                                    Button(action: { selectedCategory = category }) {
+                                        Text(category)
+                                            .font(.subheadline)
+                                            .padding(.horizontal, 13)
+                                            .padding(.vertical, 8)
+                                            .background(selectedCategory == category ? Color.accentColor.opacity(0.16) : Color(UIColor.secondarySystemGroupedBackground))
+                                            .cornerRadius(12)
+                                    }
                                 }
-                                Spacer(minLength: 0)
                             }
-                            .padding(15)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.white)
-                            .cornerRadius(20)
                         }
-                        .buttonStyle(PlainButtonStyle())
                     }
-                    if displayed.isEmpty && !sources.isCatalogLoading && !sources.sources.isEmpty {
-                        Text("没有匹配的应用")
-                            .foregroundColor(.secondary)
+                    Section(header: Text("软件 · \(displayed.count)")) {
+                        ForEach(displayed) { app in
+                            NavigationLink(destination: SourceAppDetailView(app: app)) {
+                                SourceAppRow(app: app)
+                            }
+                        }
+                        if displayed.isEmpty && !sources.isCatalogLoading {
+                            Text("此分类暂无软件").foregroundColor(.secondary)
+                        }
                     }
                 }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 18)
             }
-            .background(Color(red: 0.95, green: 0.95, blue: 0.97).edgesIgnoringSafeArea(.all))
-            .navigationBarTitle("", displayMode: .inline)
+            .listStyle(GroupedListStyle())
+            .navigationBarTitle("精品软件")
             .navigationBarItems(trailing: Button(action: { sources.refreshCatalog() }) {
-                Image(systemName: "plus.circle.fill").font(.system(size: 25))
+                Image(systemName: "arrow.clockwise")
             }.disabled(sources.isCatalogLoading))
+            .overlay(Group {
+                if sources.isCatalogLoading { Text("正在解析软件源…").font(.footnote).padding(12).background(Color(UIColor.secondarySystemBackground)).cornerRadius(12) }
+            })
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }

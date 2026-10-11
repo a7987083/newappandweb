@@ -25,7 +25,8 @@ enum DownloadIPAExtractor {
         var expanded: Int64 = 0
         for entry in archive {
             let path = entry.path
-            let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+            let normalized = path.hasSuffix("/") ? String(path.dropLast()) : path
+            let parts = normalized.split(separator: "/", omittingEmptySubsequences: false)
             guard !path.hasPrefix("/"), !path.contains("\\"),
                   !parts.contains(".."), !parts.contains("."),
                   !parts.contains(""), !path.contains(":"),

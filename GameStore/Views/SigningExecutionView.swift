@@ -21,6 +21,7 @@ struct SigningExecutionView: View {
     @State private var version = ""
     @State private var minimumOS = ""
     @State private var outputFormat = "ipa"
+    @State private var compressionPreset: IPACompressionPreset = .balanced
     @State private var removeURLSchemes = false
     @State private var state: SigningState = .idle
     @State private var running = false
@@ -50,6 +51,16 @@ struct SigningExecutionView: View {
                             Text("ipa").tag("ipa")
                             Text("zip").tag("zip")
                             Text("tipa").tag("tipa")
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 12)
+
+                        sectionLabel("压缩模式")
+                        Picker("压缩模式", selection: $compressionPreset) {
+                            ForEach(IPACompressionPreset.allCases) { preset in
+                                Text(preset.title).tag(preset)
+                            }
                         }
                         .pickerStyle(SegmentedPickerStyle())
                         .padding(.horizontal, 18)
@@ -332,7 +343,7 @@ struct SigningExecutionView: View {
         let storedPassword = temporary ? "" : CertificatePasswordKeychain.read(for: certificate.id)
         let effectivePassword = storedPassword ?? password
         let wasLegacy = storedPassword == nil
-        let editing = SigningAppEditing(displayName: appName, bundleIdentifier: bundleID, version: version, minimumOS: minimumOS, removeURLSchemes: removeURLSchemes, outputFormat: outputFormat, replacementIconPNG: replacementIconPNG)
+        let editing = SigningAppEditing(displayName: appName, bundleIdentifier: bundleID, version: version, minimumOS: minimumOS, removeURLSchemes: removeURLSchemes, outputFormat: outputFormat, compressionPreset: compressionPreset, replacementIconPNG: replacementIconPNG)
         let request = SigningRequest(ipaURL: ipaURL, certificate: certificate, password: effectivePassword, editing: editing)
         engine.sign(request: request, progress: { nextState in
             state = nextState

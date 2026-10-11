@@ -11,6 +11,7 @@ final class AppCatalogCell: UITableViewCell {
     private let descriptionLabel = UILabel()
     private let downloadButton = UIButton(type: .system)
     private var representedIconURL = ""
+    var onUnlock: (() -> Void)?
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -45,7 +46,8 @@ final class AppCatalogCell: UITableViewCell {
         downloadButton.setTitleColor(.white, for: .normal)
         downloadButton.backgroundColor = UIColor(red: 51/255, green: 124/255, blue: 250/255, alpha: 1)
         downloadButton.layer.cornerRadius = 15
-        downloadButton.isUserInteractionEnabled = false // Visual state only; download/unlock actions are not wired.
+        downloadButton.isUserInteractionEnabled = false // Download remains a separate task.
+        downloadButton.addTarget(self, action: #selector(requestUnlock), for: .touchUpInside)
         card.addSubview(downloadButton)
     }
 
@@ -68,7 +70,15 @@ final class AppCatalogCell: UITableViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         representedIconURL = ""
+        onUnlock = nil
         iconView.image = nil
+    }
+
+    @objc private func requestUnlock() { onUnlock?() }
+
+    func configureUnlock(_ locked: Bool, available: Bool) {
+        downloadButton.setTitle(locked ? "解锁" : "下载", for: .normal)
+        downloadButton.isUserInteractionEnabled = locked && available
     }
 
     @objc(configureWithName:metadata:descriptionText:iconURL:)

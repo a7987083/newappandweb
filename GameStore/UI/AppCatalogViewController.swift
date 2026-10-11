@@ -175,10 +175,39 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
         } else {
             date = "—"
         }
+        cell.configureUnlock(app.requiresUnlock == true, available: app.unlockURL != nil)
+        cell.onUnlock = { [weak self] in self?.presentUnlock(for: app) }
         cell.configure(name: app.name,
                        metadata: "\(app.version.isEmpty ? "—" : app.version) · \(size) · \(date)",
                        descriptionText: app.description,
                        iconURL: app.iconURL?.absoluteString ?? "")
         return cell
     }
+    private func presentUnlock(for app: SourceCatalogApp) {
+        guard app.requiresUnlock == true, app.unlockURL != nil else { return }
+        guard let udid = UDIDService.shared.udid, !udid.isEmpty else {
+            showRefreshMessage("需要设备 UDID", "请先在设置中获取设备 UDID")
+            return
+        }
+        let alert = UIAlertController(title: "使用解锁码", message: nil, preferredStyle: .alert)
+        alert.addTextField { $0.placeholder = "请输入卡密" }
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "使用解锁码", style: .default) { [weak self, weak alert] _ in
+            guard let self = self else { return }
+            let code = alert?.textFields?.first?.text ?? ""
+            SourceUnlockService.shared.unlock(app: app, udid: udid, code: code) { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        self.showRefreshMessage("解锁成功", "已通过服务器授权校验，正在刷新软件源")
+                        SoftwareSourceStore.shared.refreshCatalog()
+                    case .failure(let error):
+                        self.showRefreshMessage("解锁失败", error.localizedDescription)
+                    }
+                }
+            }
+        })
+        present(alert, animated: true)
+    }
+
 }

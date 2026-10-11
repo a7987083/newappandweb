@@ -169,6 +169,8 @@ struct SourceCatalogApp: Identifiable, Codable {
     let sizeBytes: Int64?
     let updatedAt: Date?
     let releaseNotes: String
+    let requiresUnlock: Bool?
+    let unlockURL: URL?
 }
 
 extension SoftwareSourceStore {
@@ -287,6 +289,21 @@ extension SoftwareSourceStore {
             let nestedDownload = latest.map { value($0, urlKeys) } ?? ""
             let topDownload = value(app, urlKeys)
             let download = resolvedURL(nestedDownload) ?? resolvedURL(topDownload)
+            let legacy = root["unlock"] as? [String: Any] ?? [:]
+            let primary = value(root, ["unlockURL", "unlockUrl"])
+            let unlockURL = resolvedURL(primary.isEmpty ? value(legacy, ["url"]) : primary)
+            let lockRaw = app["isNeedlock"] ?? app["isNeedLock"] ?? app["lock"]
+            let requiresUnlock: Bool? = {
+                if let n = lockRaw as? NSNumber { return n.boolValue }
+                if let text = lockRaw as? String {
+                    switch text.lowercased() {
+                    case "1", "true", "yes": return true
+                    case "0", "false", "no": return false
+                    default: return nil
+                    }
+                }
+                return nil
+            }()
             let name = value(app, ["name", "title", "appName"])
             guard !name.isEmpty else { return nil }
             let bundle = value(app, ["bundleIdentifier", "bundleID", "bundleId", "identifier"])
@@ -321,7 +338,9 @@ extension SoftwareSourceStore {
                 developer: value(app, ["developerName", "developer", "author", "sellerName"]),
                 sizeBytes: bytes,
                 updatedAt: date,
-                releaseNotes: value(app, ["versionDescription", "releaseNotes"])
+                releaseNotes: value(app, ["versionDescription", "releaseNotes"]),
+                requiresUnlock: requiresUnlock,
+                unlockURL: unlockURL
             )
         }
     }
@@ -432,5 +451,62 @@ private enum ZonoeSourceURLNormalizer {
             index = next
         }
         return result
+    }
+}
+
+final class SourceUnlockService {
+    static let shared = SourceUnlockService()
+    private init() {}
+    enum Failure: LocalizedError {
+        case invalid(String)
+        var errorDescription: String? { if case .invalid(let message) = self { return message }; return nil }
+    }
+    func unlock(app: SourceCatalogApp, udid: String, code: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        let device = udid.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !device.isEmpty, !clean.isEmpty, let endpoint = app.unlockURL,
+              let requestURL = query(endpoint, [URLQueryItem(name: "udid", value: device), URLQueryItem(name: "code", value: clean)]) else {
+            completion(.failure(Failure.invalid("UDID、解锁码或接口无效"))); return
+        }
+        URLSession.shared.dataTask(with: requestURL) { data, response, error in
+            if let error = error { completion(.failure(error)); return }
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                  let data = data, let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                completion(.failure(Failure.invalid("解锁服务器响应无效"))); return
+            }
+            let message = (object["msg"] as? String) ?? (object["message"] as? String) ?? ""
+            guard message == "ok，解锁成功" else {
+                completion(.failure(Failure.invalid(message.isEmpty ? "解锁失败" : message))); return
+            }
+            self.verify(udid: device, completion: completion)
+        }.resume()
+    }
+    private func verify(udid: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let endpoint = URL(string: "https://app.zonoeios.xyz/index/index/apiface"),
+              let target = query(endpoint, [URLQueryItem(name: "udid", value: udid)]) else {
+            completion(.failure(Failure.invalid("校验地址无效"))); return
+        }
+        URLSession.shared.dataTask(with: target) { data, response, error in
+            if let error = error { completion(.failure(error)); return }
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                  let data = data, let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                completion(.failure(Failure.invalid("授权状态响应无效"))); return
+            }
+            let code = (object["code"] as? NSNumber)?.intValue ?? (object["code"] as? String).flatMap(Int.init)
+            let expiry = (object["expire"] as? NSNumber)?.doubleValue ?? (object["expire"] as? String).flatMap(Double.init)
+            guard code == 1, object["msg"] as? String == "ok", let expires = expiry,
+                  expires > Date().timeIntervalSince1970 else {
+                completion(.failure(Failure.invalid("授权无效或已过期"))); return
+            }
+            completion(.success(()))
+        }.resume()
+    }
+    private func query(_ url: URL, _ items: [URLQueryItem]) -> URL? {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              ["http", "https"].contains(components.scheme?.lowercased() ?? ""),
+              components.host != nil else { return nil }
+        let names = Set(items.map { $0.name.lowercased() })
+        components.queryItems = (components.queryItems ?? []).filter { !names.contains($0.name.lowercased()) } + items
+        return components.url
     }
 }

@@ -11,7 +11,7 @@ final class AppCatalogCell: UITableViewCell {
     private let descriptionLabel = UILabel()
     private let downloadButton = UIButton(type: .system)
     private var representedIconURL = ""
-    var onUnlock: (() -> Void)?
+    var onAction: (() -> Void)?
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -41,13 +41,13 @@ final class AppCatalogCell: UITableViewCell {
         descriptionLabel.textColor = .secondaryLabel
         descriptionLabel.lineBreakMode = .byTruncatingTail
         [nameLabel, metadataLabel, descriptionLabel].forEach(card.addSubview)
-        downloadButton.setTitle("下载", for: .normal)
+        downloadButton.setTitle("获取", for: .normal)
         downloadButton.titleLabel?.font = .boldSystemFont(ofSize: 12)
         downloadButton.setTitleColor(.white, for: .normal)
         downloadButton.backgroundColor = UIColor(red: 51/255, green: 124/255, blue: 250/255, alpha: 1)
         downloadButton.layer.cornerRadius = 15
-        downloadButton.isUserInteractionEnabled = false // Download remains a separate task.
-        downloadButton.addTarget(self, action: #selector(requestUnlock), for: .touchUpInside)
+        downloadButton.isEnabled = false
+        downloadButton.addTarget(self, action: #selector(requestAction), for: .touchUpInside)
         card.addSubview(downloadButton)
     }
 
@@ -70,15 +70,15 @@ final class AppCatalogCell: UITableViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         representedIconURL = ""
-        onUnlock = nil
+        onAction = nil
         iconView.image = nil
     }
 
-    @objc private func requestUnlock() { onUnlock?() }
+    @objc private func requestAction() { onAction?() }
 
-    func configureUnlock(_ locked: Bool, available: Bool) {
-        downloadButton.setTitle(locked ? "解锁" : "下载", for: .normal)
-        downloadButton.isUserInteractionEnabled = locked && available
+    func configureAction(title: String, enabled: Bool) {
+        downloadButton.setTitle(title, for: .normal)
+        downloadButton.isEnabled = enabled
     }
 
     @objc(configureWithName:metadata:descriptionText:iconURL:)

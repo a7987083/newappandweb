@@ -268,15 +268,14 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
         case .some(true):
             if authorizationValid && hasDownload {
                 cell.configureAction(title: "获取", enabled: true)
-            } else if authorizationValid {
-                cell.configureAction(title: "暂无地址", enabled: false)
             } else {
                 cell.configureAction(title: "解锁", enabled: app.unlockURL != nil)
             }
         }
         cell.onAction = { [weak self] in
             guard let self = self else { return }
-            if app.requiresUnlock == true && !self.authorizationValid {
+            if app.requiresUnlock == true &&
+                (!self.authorizationValid || self.validDownloadURL(app.downloadURL) == nil) {
                 self.presentUnlock(for: app)
             } else {
                 self.requestGet(for: app)

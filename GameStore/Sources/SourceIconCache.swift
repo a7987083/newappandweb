@@ -23,7 +23,7 @@ final class SourceIconCache {
     private var failed = Set<String>()
     private var knownURLs: [URL] = []
     private let downloadLimit = 4
-    private let diskLimit = 50 * 1024 * 1024
+    private let diskLimit = 3 * 1024 * 1024
     private var writesSincePrune = 0
 
     private init() {
@@ -59,6 +59,7 @@ final class SourceIconCache {
         exec("CREATE TABLE IF NOT EXISTS manifest (key TEXT PRIMARY KEY, filename TEXT, size INTEGER NOT NULL, inline_data BLOB, last_access_time INTEGER NOT NULL)")
         exec("CREATE INDEX IF NOT EXISTS idx_access ON manifest(last_access_time)")
         migrateFileEntries()
+        migrateLegacyThumbnails()
     }
 
     /// Upgrade existing file-backed entries without losing cached images.
@@ -96,6 +97,54 @@ final class SourceIconCache {
             let legacy = root.deletingLastPathComponent().appendingPathComponent("Icons", isDirectory: true)
             try? FileManager.default.removeItem(at: legacy)
         }
+    }
+
+    /// One-time v3 migration. Re-encode previous PNG BLOBs as compact JPEGs
+    /// before deleting old bytes. Runs off-main on the serial disk queue.
+    private func migrateLegacyThumbnails() {
+        guard let version = prepare("PRAGMA user_version") else { return }
+        let oldVersion = sqlite3_step(version) == SQLITE_ROW ? sqlite3_column_int(version, 0) : 0
+        sqlite3_finalize(version)
+        guard oldVersion < 3 else { return }
+        guard let stmt = prepare("SELECT key,inline_data FROM manifest WHERE inline_data IS NOT NULL") else { return }
+        var records: [(String, Data)] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let keyPointer = sqlite3_column_text(stmt, 0),
+                  let blob = sqlite3_column_blob(stmt, 1) else { continue }
+            let key = String(cString: keyPointer)
+            records.append((key, Data(bytes: blob, count: Int(sqlite3_column_bytes(stmt, 1)))))
+        }
+        sqlite3_finalize(stmt)
+        for (key, data) in records {
+            guard let image = thumbnail(data),
+                  let compact = encodeThumbnail(image) else { continue }
+            guard let update = prepare("UPDATE manifest SET inline_data=?,size=?,filename=NULL WHERE key=?") else { continue }
+            let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+            _ = compact.withUnsafeBytes {
+                sqlite3_bind_blob(update, 1, $0.baseAddress, Int32(compact.count), transient)
+            }
+            sqlite3_bind_int64(update, 2, Int64(compact.count))
+            bindText(key, to: update, at: 3)
+            _ = sqlite3_step(update)
+            sqlite3_finalize(update)
+        }
+        prune()
+        exec("PRAGMA user_version=3")
+        exec("PRAGMA wal_checkpoint(TRUNCATE)")
+        exec("VACUUM")
+        exec("PRAGMA wal_checkpoint(TRUNCATE)")
+    }
+
+    private func encodeThumbnail(_ image: UIImage) -> Data? {
+        // White backing preserves antialiasing on transparent source icons.
+        let bounds = CGRect(origin: .zero, size: image.size)
+        UIGraphicsBeginImageContextWithOptions(image.size, true, 1)
+        UIColor.white.setFill()
+        UIRectFill(bounds)
+        image.draw(in: bounds)
+        let flattened = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return flattened?.jpegData(compressionQuality: 0.55)
     }
 
     private func exec(_ sql: String) {
@@ -191,7 +240,7 @@ final class SourceIconCache {
         guard let source = CGImageSourceCreateWithData(bytes as CFData, options) else { return nil }
         let settings: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceThumbnailMaxPixelSize: 120,
+            kCGImageSourceThumbnailMaxPixelSize: 80,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceShouldCacheImmediately: true
         ]
@@ -271,7 +320,7 @@ final class SourceIconCache {
                    (200...299).contains(http.statusCode),
                    let bytes = data, bytes.count <= 5 * 1024 * 1024 {
                     image = self.thumbnail(bytes)
-                    if let image = image { encoded = image.pngData() }
+                    if let image = image { encoded = self.encodeThumbnail(image) }
                 }
                 self.disk.async {
                     if let encoded = encoded { self.store(encoded, for: url) }

@@ -5,7 +5,7 @@ import SafariServices
 @UIApplicationMain
 final class GameStoreAppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
-    private let store = AppStoreViewModel()
+    private let store = AppStoreViewModel.shared
 
     func application(
         _ application: UIApplication,

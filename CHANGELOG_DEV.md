@@ -1,3 +1,12 @@
+## 2026-10-11 — TrollSkin-inspired UI migration (draft)
+
+- Branch: `refactor/trollskin-ui-v1`, based on `9bb51ab9b53e95f8d3d4d37cd85cb6348a2b0147`.
+- Replaced root navigation, catalog, search, and profile presentation; restyled download manager list.
+- Services, Sources, ViewModels, signing, UDID, OTA, and image cache implementation unchanged.
+- iOS 13 remains the minimum supported OS; used VStack instead of iOS 14+ LazyVStack.
+- **Incomplete:** app detail, download content, certificate/signing/settings subviews still need full visual migration.
+- CI workflow Run 38141847717 started; runtime, device, and visual comparison are not verified.
+
 # CHANGELOG_DEV
 
 ## 2026-09-23 — v0.1 bootstrap

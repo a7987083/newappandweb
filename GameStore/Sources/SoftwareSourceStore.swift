@@ -133,11 +133,9 @@ final class SoftwareSourceStore: ObservableObject {
                 UserDefaults.standard.set(self.registeredIdentities, forKey: Self.identitiesKey)
                 UserDefaults.standard.set(self.sourceNames, forKey: Self.namesKey)
                 self.refreshCatalog {
-                    if let error = self.catalogError {
-                        completion(.failure(NSError(domain: "SoftwareSourceCatalog", code: 1, userInfo: [NSLocalizedDescriptionKey: error])))
-                    } else {
-                        completion(.success(()))
-                    }
+                    // Registration is already persisted; a catalog/network failure
+                    // must not be reported as a failed source registration.
+                    completion(.success(()))
                 }
             }
         }

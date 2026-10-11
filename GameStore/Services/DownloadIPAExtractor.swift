@@ -1,5 +1,4 @@
 import Foundation
-import ZIPFoundation
 
 /// Extracts IPA files into unique unsign_########## directories.
 /// Work is staged and atomically published so partial archives never look extracted.
@@ -47,51 +46,24 @@ enum DownloadIPAExtractor {
             identifier = nextIdentifier(used: occupied)
         }
         let destination = root.appendingPathComponent(identifier, isDirectory: true)
+        if mapping[filename] == identifier && fm.fileExists(atPath: destination.path) {
+            // Idempotent retry: keep the original folder and mapping.
+            return
+        }
         let staging = root.appendingPathComponent(".staging-" + UUID().uuidString, isDirectory: true)
         try fm.createDirectory(at: staging, withIntermediateDirectories: true)
         var published = false
         defer { if !published { try? fm.removeItem(at: staging) } }
 
-        guard let archive = Archive(url: ipa, accessMode: .read, pathEncoding: .utf8) else {
-            throw NSError(domain: "GameStore.IPAExtractor", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "IPA 压缩文件无法打开"])
-        }
-        var hasApp = false
-        var entries = 0
-        var expanded: Int64 = 0
-        for entry in archive {
-            let path = entry.path
-            let normalized = path.hasSuffix("/") ? String(path.dropLast()) : path
-            let parts = normalized.split(separator: "/", omittingEmptySubsequences: false)
-            guard !path.hasPrefix("/"), !path.contains("\\"),
-                  !parts.contains(".."), !parts.contains("."),
-                  !parts.contains(""), !path.contains(":"),
-                  entry.type != .symlink else {
-                throw NSError(domain: "GameStore.IPAExtractor", code: 2,
-                              userInfo: [NSLocalizedDescriptionKey: "IPA 包含不安全的文件路径"])
-            }
-            entries += 1
-            guard entries <= 200_000 else {
-                throw NSError(domain: "GameStore.IPAExtractor", code: 3,
-                              userInfo: [NSLocalizedDescriptionKey: "IPA 文件条目过多"])
-            }
-            let size = Int64(entry.uncompressedSize)
-            guard size >= 0, expanded <= 12_000_000_000 - size else {
-                throw NSError(domain: "GameStore.IPAExtractor", code: 4,
-                              userInfo: [NSLocalizedDescriptionKey: "IPA 解压容量超过限制"])
-            }
-            expanded += size
-            if path.hasPrefix("Payload/") && path.contains(".app/") { hasApp = true }
-            let target = staging.appendingPathComponent(path)
-            if entry.type == .directory {
-                try fm.createDirectory(at: target, withIntermediateDirectories: true)
-            } else {
-                try fm.createDirectory(at: target.deletingLastPathComponent(),
-                                       withIntermediateDirectories: true)
-                _ = try archive.extract(entry, to: target)
-            }
-        }
-        guard hasApp else {
+        // Reuse the existing signing pipeline's ZIP inspection and extraction.
+        // It validates ZIP entry types and checks the resulting filesystem.
+        _ = try IPAArchiveIntegrity.extract(ipa, to: staging, report: { _ in })
+        let payload = staging.appendingPathComponent("Payload", isDirectory: true)
+        let applications = (try? fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        guard applications.contains(where: { candidate in
+            candidate.pathExtension.lowercased() == "app" &&
+            (try? candidate.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        }) else {
             throw NSError(domain: "GameStore.IPAExtractor", code: 5,
                           userInfo: [NSLocalizedDescriptionKey: "IPA 缺少 Payload 应用目录"])
         }

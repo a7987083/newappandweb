@@ -76,6 +76,10 @@ final class SettingsViewController: UIViewController {
         signing.removeTarget(self, action: #selector(placeholderTapped(_:)), for: .touchUpInside)
         signing.addTarget(self, action: #selector(openSigningSettings), for: .touchUpInside)
         stack.addArrangedSubview(signing)
+        let about = placeholder("关于我们", icon: "info.circle.fill")
+        about.removeTarget(self, action: #selector(placeholderTapped(_:)), for: .touchUpInside)
+        about.addTarget(self, action: #selector(openAbout), for: .touchUpInside)
+        stack.addArrangedSubview(about)
     }
 
     private func placeholder(_ title: String, icon: String, tint: UIColor = SettingsStyle.blue) -> UIButton {
@@ -110,6 +114,12 @@ final class SettingsViewController: UIViewController {
         present(alert, animated: true)
     }
 
+    @objc private func openAbout() {
+        let page = AboutSettingsController()
+        page.modalPresentationStyle = .fullScreen
+        present(page, animated: true)
+    }
+
     @objc private func openSigningSettings() {
         let detail = SigningSettingsController()
         detail.modalPresentationStyle = .fullScreen
@@ -142,40 +152,8 @@ private final class SoftwareSourcesSettingsController: UIViewController, UITable
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = SettingsStyle.background
-        let header = UIView()
-        header.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(header)
-        let back = UIButton(type: .system)
-        back.setImage(UIImage(systemName: "chevron.left"), for: .normal)
-        back.tintColor = SettingsStyle.blue
-        back.addTarget(self, action: #selector(close), for: .touchUpInside)
-        back.translatesAutoresizingMaskIntoConstraints = false
-        header.addSubview(back)
-        let title = SettingsStyle.text("软件源", size: 19, bold: true)
-        title.translatesAutoresizingMaskIntoConstraints = false
-        header.addSubview(title)
-        let add = UIButton(type: .system)
-        add.setImage(UIImage(systemName: "plus"), for: .normal)
-        add.tintColor = SettingsStyle.blue
-        add.addTarget(self, action: #selector(addSource), for: .touchUpInside)
-        add.translatesAutoresizingMaskIntoConstraints = false
-        header.addSubview(add)
-        NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            header.heightAnchor.constraint(equalToConstant: 50),
-            back.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 12),
-            back.centerYAnchor.constraint(equalTo: header.centerYAnchor),
-            back.widthAnchor.constraint(equalToConstant: 40),
-            back.heightAnchor.constraint(equalToConstant: 40),
-            title.centerXAnchor.constraint(equalTo: header.centerXAnchor),
-            title.centerYAnchor.constraint(equalTo: header.centerYAnchor),
-            add.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -12),
-            add.centerYAnchor.constraint(equalTo: header.centerYAnchor),
-            add.widthAnchor.constraint(equalToConstant: 40),
-            add.heightAnchor.constraint(equalToConstant: 40)
-        ])
+        let header = SettingsDetailLayout.header(in: self, title: "软件源", back: #selector(close),
+                                                  accessory: ("plus", #selector(addSource)))
         table.translatesAutoresizingMaskIntoConstraints = false
         table.backgroundColor = SettingsStyle.background
         table.dataSource = self
@@ -324,30 +302,7 @@ private final class DeviceAuthDetailController: UIViewController {
         view.backgroundColor = SettingsStyle.background
         NotificationCenter.default.addObserver(self, selector: #selector(refreshUDID),
                                                name: UDIDService.didUpdateNotification, object: nil)
-        let header = UIView()
-        header.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(header)
-        let back = UIButton(type: .system)
-        back.setImage(UIImage(systemName: "chevron.left"), for: .normal)
-        back.tintColor = SettingsStyle.blue
-        back.addTarget(self, action: #selector(close), for: .touchUpInside)
-        back.translatesAutoresizingMaskIntoConstraints = false
-        header.addSubview(back)
-        let heading = SettingsStyle.text("设备认证", size: 19, bold: true)
-        heading.translatesAutoresizingMaskIntoConstraints = false
-        header.addSubview(heading)
-        NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            header.heightAnchor.constraint(equalToConstant: 50),
-            back.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 12),
-            back.centerYAnchor.constraint(equalTo: header.centerYAnchor),
-            back.widthAnchor.constraint(equalToConstant: 40),
-            back.heightAnchor.constraint(equalToConstant: 40),
-            heading.centerXAnchor.constraint(equalTo: header.centerXAnchor),
-            heading.centerYAnchor.constraint(equalTo: header.centerYAnchor)
-        ])
+        let header = SettingsDetailLayout.header(in: self, title: "设备认证", back: #selector(close))
         SettingsStyle.embed(scroll: scroll, stack: stack, in: view, top: header.bottomAnchor, bottomInset: 20)
 
         let stateCard = SettingsStyle.card()
@@ -500,30 +455,7 @@ private final class SigningSettingsController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = SettingsStyle.background
-        let header = UIView()
-        header.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(header)
-        let back = UIButton(type: .system)
-        back.setImage(UIImage(systemName: "chevron.left"), for: .normal)
-        back.tintColor = SettingsStyle.blue
-        back.translatesAutoresizingMaskIntoConstraints = false
-        back.addTarget(self, action: #selector(close), for: .touchUpInside)
-        header.addSubview(back)
-        let title = SettingsStyle.text("签名设置", size: 19, bold: true)
-        title.translatesAutoresizingMaskIntoConstraints = false
-        header.addSubview(title)
-        NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            header.heightAnchor.constraint(equalToConstant: 50),
-            back.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 12),
-            back.centerYAnchor.constraint(equalTo: header.centerYAnchor),
-            back.widthAnchor.constraint(equalToConstant: 40),
-            back.heightAnchor.constraint(equalToConstant: 40),
-            title.centerXAnchor.constraint(equalTo: header.centerXAnchor),
-            title.centerYAnchor.constraint(equalTo: header.centerYAnchor)
-        ])
+        let header = SettingsDetailLayout.header(in: self, title: "签名设置", back: #selector(close))
         SettingsStyle.embed(scroll: scroll, stack: stack, in: view, top: header.bottomAnchor, bottomInset: 22)
 
         SettingsStyle.section("证书管理", in: stack)
@@ -533,9 +465,9 @@ private final class SigningSettingsController: UIViewController {
         certificate.heightAnchor.constraint(equalToConstant: 54).isActive = true
         certificate.setTitle("导入证书 ›", for: .normal)
         certificate.setTitleColor(SettingsStyle.blue, for: .normal)
-        certificate.addTarget(self, action: #selector(certificateInfo), for: .touchUpInside)
+        certificate.addTarget(self, action: #selector(openCertificates), for: .touchUpInside)
         stack.addArrangedSubview(certificate)
-        stack.addArrangedSubview(SettingsStyle.text("支持 P12 与 mobileprovision。证书导入界面暂未迁移。", size: 13, color: SettingsStyle.secondary))
+        stack.addArrangedSubview(SettingsStyle.text("支持导入 P12 和 mobileprovision，证书密码只用于校验。", size: 13, color: SettingsStyle.secondary))
 
         SettingsStyle.section("应用能力", in: stack)
         addSwitch("强制本地化", key: 0, value: store.options.forceLocalization)
@@ -658,13 +590,269 @@ private final class SigningSettingsController: UIViewController {
         present(alert, animated: true)
     }
 
-    @objc private func certificateInfo() {
-        let alert = UIAlertController(title: "证书管理", message: "原有证书存储服务仍保留，证书导入 UI 暂未迁移。", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "知道了", style: .default))
-        present(alert, animated: true)
+    @objc private func openCertificates() {
+        let page = CertificateSettingsController()
+        page.modalPresentationStyle = .fullScreen
+        present(page, animated: true)
     }
 
     @objc private func close() { dismiss(animated: true) }
+}
+
+
+// Shared full-screen presentation chrome for every settings subpage.
+// All layout lives here; the TrollSkin floating tab dock remains on the parent screen.
+private enum SettingsDetailLayout {
+    static func header(in owner: UIViewController, title: String, back: Selector,
+                       accessory: (symbol: String, action: Selector)? = nil) -> UIView {
+        owner.view.backgroundColor = SettingsStyle.background
+        let header = UIView()
+        header.translatesAutoresizingMaskIntoConstraints = false
+        owner.view.addSubview(header)
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+        button.tintColor = SettingsStyle.blue
+        button.addTarget(owner, action: back, for: .touchUpInside)
+        header.addSubview(button)
+        let heading = SettingsStyle.text(title, size: 19, bold: true)
+        heading.translatesAutoresizingMaskIntoConstraints = false
+        header.addSubview(heading)
+        NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: owner.view.safeAreaLayoutGuide.topAnchor),
+            header.leadingAnchor.constraint(equalTo: owner.view.leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: owner.view.trailingAnchor),
+            header.heightAnchor.constraint(equalToConstant: 50),
+            button.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 12),
+            button.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            button.widthAnchor.constraint(equalToConstant: 40),
+            button.heightAnchor.constraint(equalToConstant: 40),
+            heading.centerXAnchor.constraint(equalTo: header.centerXAnchor),
+            heading.centerYAnchor.constraint(equalTo: header.centerYAnchor)
+        ])
+        if let accessory = accessory {
+            let trailing = UIButton(type: .system)
+            trailing.translatesAutoresizingMaskIntoConstraints = false
+            trailing.setImage(UIImage(systemName: accessory.symbol), for: .normal)
+            trailing.tintColor = SettingsStyle.blue
+            trailing.addTarget(owner, action: accessory.action, for: .touchUpInside)
+            header.addSubview(trailing)
+            NSLayoutConstraint.activate([
+                trailing.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -12),
+                trailing.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+                trailing.widthAnchor.constraint(equalToConstant: 40),
+                trailing.heightAnchor.constraint(equalToConstant: 40)
+            ])
+        }
+        return header
+    }
+}
+
+
+private final class AboutSettingsController: UIViewController {
+    private let scroll = UIScrollView()
+    private let stack = UIStackView()
+    private let schemes: [(String, String, String)] = [
+        ("App 内打开网页", "zonoe://web?url=https%3A%2F%2Fexample.com", "在 zonoe 内使用 Safari View 打开 HTTP/HTTPS 网页。"),
+        ("下载 IPA", "zonoe://download/https%3A%2F%2Fexample.com%2Fapp.ipa", "将 HTTP/HTTPS IPA 地址加入下载队列。"),
+        ("下载 IPA（install 兼容入口）", "zonoe://install/https%3A%2F%2Fexample.com%2Fapp.ipa", "与 download 相同，加入下载队列。"),
+        ("UDID Provider", "zonoe://udid?callback=example%3A%2F%2Fcallback", "将已保存的 UDID 返回给请求方；未获取时先走设备信息获取流程。")
+    ]
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        let header = SettingsDetailLayout.header(in: self, title: "关于我们", back: #selector(close))
+        SettingsStyle.embed(scroll: scroll, stack: stack, in: view, top: header.bottomAnchor, bottomInset: 20)
+        stack.addArrangedSubview(SettingsStyle.text("zonoe", size: 25, bold: true))
+        SettingsStyle.section("URL Scheme 说明", in: stack)
+        for (index, entry) in schemes.enumerated() {
+            let card = SettingsStyle.card()
+            let title = SettingsStyle.text(entry.0, size: 16, bold: true)
+            let uri = SettingsStyle.text(entry.1, size: 12)
+            uri.lineBreakMode = .byCharWrapping
+            let note = SettingsStyle.text(entry.2, size: 13, color: SettingsStyle.secondary)
+            let copy = UIButton(type: .system)
+            copy.setTitle("复制", for: .normal)
+            copy.tag = index
+            copy.addTarget(self, action: #selector(copyScheme(_:)), for: .touchUpInside)
+            let content = UIStackView(arrangedSubviews: [title, uri, note, copy])
+            content.axis = .vertical
+            content.alignment = .leading
+            content.spacing = 9
+            content.translatesAutoresizingMaskIntoConstraints = false
+            card.addSubview(content)
+            NSLayoutConstraint.activate([
+                content.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
+                content.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+                content.topAnchor.constraint(equalTo: card.topAnchor, constant: 16),
+                content.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -16)
+            ])
+            stack.addArrangedSubview(card)
+        }
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "未知"
+        stack.addArrangedSubview(SettingsStyle.text("v\(version)-dev", size: 13, color: SettingsStyle.secondary))
+    }
+    @objc private func copyScheme(_ sender: UIButton) {
+        guard schemes.indices.contains(sender.tag) else { return }
+        UIPasteboard.general.string = schemes[sender.tag].1
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+    @objc private func close() { dismiss(animated: true) }
+}
+
+// Certificate import uses the existing CertificateStore, without duplicating verification.
+private final class CertificateSettingsController: UIViewController, UIDocumentPickerDelegate {
+    private let store = CertificateStore.shared
+    private let scroll = UIScrollView()
+    private let stack = UIStackView()
+    private var p12: URL?
+    private var provision: URL?
+    private var pickingP12 = true
+    private var p12Button = UIButton(type: .system)
+    private var provisionButton = UIButton(type: .system)
+    private let password = UITextField()
+    private let list = UIStackView()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        let header = SettingsDetailLayout.header(in: self, title: "证书管理", back: #selector(close))
+        SettingsStyle.embed(scroll: scroll, stack: stack, in: view, top: header.bottomAnchor, bottomInset: 20)
+        SettingsStyle.section("导入签名证书", in: stack)
+        p12Button = makeButton("选择 P12 文件", selector: #selector(selectP12))
+        provisionButton = makeButton("选择 mobileprovision 文件", selector: #selector(selectProvision))
+        stack.addArrangedSubview(p12Button)
+        stack.addArrangedSubview(provisionButton)
+        let passwordCard = SettingsStyle.card()
+        password.isSecureTextEntry = true
+        password.placeholder = "P12 密码"
+        password.textContentType = .password
+        password.translatesAutoresizingMaskIntoConstraints = false
+        passwordCard.addSubview(password)
+        passwordCard.heightAnchor.constraint(equalToConstant: 52).isActive = true
+        NSLayoutConstraint.activate([
+            password.leadingAnchor.constraint(equalTo: passwordCard.leadingAnchor, constant: 16),
+            password.trailingAnchor.constraint(equalTo: passwordCard.trailingAnchor, constant: -16),
+            password.centerYAnchor.constraint(equalTo: passwordCard.centerYAnchor)
+        ])
+        stack.addArrangedSubview(passwordCard)
+        stack.addArrangedSubview(makeButton("导入证书", selector: #selector(importCertificate)))
+        stack.addArrangedSubview(SettingsStyle.text("请选择 P12 和 mobileprovision 文件；密码仅用于本次校验，不会保存到设置页面。", size: 13, color: SettingsStyle.secondary))
+        SettingsStyle.section("已导入证书", in: stack)
+        list.axis = .vertical
+        list.spacing = 8
+        stack.addArrangedSubview(list)
+        renderCertificates()
+    }
+
+    private func makeButton(_ title: String, selector: Selector) -> UIButton {
+        let button = UIButton(type: .system)
+        button.backgroundColor = .white
+        button.layer.cornerRadius = 16
+        button.contentHorizontalAlignment = .left
+        button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
+        button.heightAnchor.constraint(equalToConstant: 54).isActive = true
+        button.setTitle(title, for: .normal)
+        button.addTarget(self, action: selector, for: .touchUpInside)
+        return button
+    }
+
+    @objc private func selectP12() { pickingP12 = true; pickDocument() }
+    @objc private func selectProvision() { pickingP12 = false; pickDocument() }
+    private func pickDocument() {
+        let picker = UIDocumentPickerViewController(documentTypes: ["public.data"], in: .import)
+        picker.delegate = self
+        picker.allowsMultipleSelection = false
+        present(picker, animated: true)
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let source = urls.first else { return }
+        let expected = pickingP12 ? "p12" : "mobileprovision"
+        guard source.pathExtension.lowercased() == expected else {
+            alert("文件格式错误", "请选择 .\(expected) 文件")
+            return
+        }
+        let scoped = source.startAccessingSecurityScopedResource()
+        defer { if scoped { source.stopAccessingSecurityScopedResource() } }
+        let staged = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-" + source.lastPathComponent)
+        do {
+            try FileManager.default.copyItem(at: source, to: staged)
+            if pickingP12 {
+                if let old = p12 { try? FileManager.default.removeItem(at: old) }
+                p12 = staged
+                p12Button.setTitle("P12：\(source.lastPathComponent)", for: .normal)
+            } else {
+                if let old = provision { try? FileManager.default.removeItem(at: old) }
+                provision = staged
+                provisionButton.setTitle("描述文件：\(source.lastPathComponent)", for: .normal)
+            }
+        } catch { alert("读取文件失败", error.localizedDescription) }
+    }
+
+    @objc private func importCertificate() {
+        guard let p12 = p12, let provision = provision else {
+            alert("未选择文件", "请先选择 P12 和 mobileprovision")
+            return
+        }
+        view.endEditing(true)
+        do {
+            try store.add(p12: p12, provision: provision, password: password.text ?? "")
+            try? FileManager.default.removeItem(at: p12)
+            try? FileManager.default.removeItem(at: provision)
+            self.p12 = nil
+            self.provision = nil
+            p12Button.setTitle("选择 P12 文件", for: .normal)
+            provisionButton.setTitle("选择 mobileprovision 文件", for: .normal)
+            password.text = nil
+            renderCertificates()
+            alert("导入成功", "证书已导入")
+        } catch { alert("导入失败", error.localizedDescription) }
+    }
+
+    private func renderCertificates() {
+        list.arrangedSubviews.forEach { list.removeArrangedSubview($0); $0.removeFromSuperview() }
+        store.reload()
+        if store.certificates.isEmpty {
+            list.addArrangedSubview(SettingsStyle.text("暂无证书", size: 14, color: SettingsStyle.secondary))
+        }
+        for item in store.certificates {
+            let row = UIStackView()
+            row.axis = .horizontal
+            row.alignment = .center
+            row.spacing = 10
+            let label = SettingsStyle.text(item.name, size: 15)
+            let remove = UIButton(type: .system)
+            remove.setImage(UIImage(systemName: "trash"), for: .normal)
+            remove.tintColor = .systemRed
+            remove.addActionForCertificateRemoval(target: self, id: item.id)
+            row.addArrangedSubview(label)
+            row.addArrangedSubview(remove)
+            list.addArrangedSubview(row)
+        }
+    }
+
+    @objc fileprivate func removeCertificate(_ sender: UIButton) {
+        guard let item = store.certificates.first(where: { $0.id == sender.accessibilityIdentifier }) else { return }
+        do { try store.remove(item); renderCertificates() }
+        catch { alert("删除失败", error.localizedDescription) }
+    }
+
+    private func alert(_ title: String, _ message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确定", style: .default))
+        present(alert, animated: true)
+    }
+    deinit {
+        if let p12 = p12 { try? FileManager.default.removeItem(at: p12) }
+        if let provision = provision { try? FileManager.default.removeItem(at: provision) }
+    }
+    @objc private func close() { dismiss(animated: true) }
+}
+
+private extension UIButton {
+    func addActionForCertificateRemoval(target: CertificateSettingsController, id: String) {
+        accessibilityIdentifier = id
+        addTarget(target, action: #selector(CertificateSettingsController.removeCertificate(_:)), for: .touchUpInside)
+    }
 }
 
 private enum SettingsStyle {

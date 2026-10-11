@@ -8,6 +8,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         let views: [UIView]
         let table: UITableView?
         let catalog: AppCatalogViewController?
+        let packages: PackageListViewController?
         let searchBar: UISearchBar?
         let header: UIView?
         let headerHeight: CGFloat
@@ -19,6 +20,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     private var pages = [Int: TabPage]()
     private var currentTable: UITableView?
     private var catalog: AppCatalogViewController?
+    private var packages: PackageListViewController?
     private var searchBar: UISearchBar?
     private var header: UIView?
     private var headerHeight: CGFloat = 0
@@ -95,7 +97,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         if let current = pages[selectedTab] {
             pages[selectedTab] = TabPage(
                 controller: current.controller, views: current.views,
-                table: currentTable, catalog: catalog, searchBar: searchBar,
+                table: currentTable, catalog: catalog, packages: packages, searchBar: searchBar,
                 header: header, headerHeight: headerHeight, compact: compact,
                 dock: dock, rows: rows, filtered: filtered)
         }
@@ -106,6 +108,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         if let existing = pages[index] {
             currentTable = existing.table
             catalog = existing.catalog
+            packages = existing.packages
             searchBar = existing.searchBar
             header = existing.header
             headerHeight = existing.headerHeight
@@ -120,6 +123,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         let previousViews = Set(view.subviews.map(ObjectIdentifier.init))
         currentTable = nil
         catalog = nil
+        packages = nil
         searchBar = nil
         header = nil
         rows = []
@@ -136,6 +140,12 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
                 controller = c
                 install(c)
                 catalog = c
+                table = c.tableView
+            } else if index == 1 {
+                let c = PackageListViewController()
+                controller = c
+                install(c)
+                packages = c
                 table = c.tableView
             } else {
                 let c = UIViewController()
@@ -160,7 +170,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
                 filtered = rows
             }
             currentTable = table
-            table.delegate = self
+            if index != 1 { table.delegate = self }
             let head = buildHeader(index)
             header = head
             headerHeight = head.bounds.height
@@ -172,7 +182,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         buildDock()
         let ownedViews = view.subviews.filter { !previousViews.contains(ObjectIdentifier($0)) }
         pages[index] = TabPage(controller: controller, views: ownedViews,
-                               table: currentTable, catalog: catalog,
+                               table: currentTable, catalog: catalog, packages: packages,
                                searchBar: searchBar, header: header,
                                headerHeight: headerHeight, compact: compact,
                                dock: dock, rows: rows, filtered: filtered)
@@ -314,7 +324,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         let anchor = searchSession.captureCurrent(on: table)
         let searchRow = anchor.row
         let searchAppID = searchRow.flatMap { selectedTab == 0 ? catalog?.appID(atVisibleRow: $0) : nil }
-        let searchDemoName = searchRow.flatMap { selectedTab != 0 && $0 < filtered.count ? filtered[$0].0 : nil }
+        let searchDemoName = searchRow.flatMap { selectedTab > 1 && $0 < filtered.count ? filtered[$0].0 : nil }
         searchSession.restoreViewport(on: table)
         bar.resignFirstResponder()
         bar.text = ""
@@ -365,6 +375,8 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     func searchBar(_ searchBar: UISearchBar,textDidChange value: String) {
         if selectedTab == 0 {
             catalog?.filter(query: value)
+        } else if selectedTab == 1 {
+            packages?.filter(query: value)
         } else {
             let q = value.trimmingCharacters(in: .whitespacesAndNewlines)
             filtered = q.isEmpty ? rows : rows.filter { ($0.0+" "+$0.1).localizedCaseInsensitiveContains(q) }

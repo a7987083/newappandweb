@@ -14,6 +14,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     private var searching = false
     private var overlay: UIView?
     private var oldSearchFrame = CGRect.zero
+    private var normalTableFrame = CGRect.zero
     private var initialSize = CGSize.zero
     private var savedBottomInset: CGFloat = 100
     private var keyboardObserver: NSObjectProtocol?
@@ -220,6 +221,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     func searchBarShouldBeginEditing(_ bar: UISearchBar) -> Bool {
         guard !searching,let table = currentTable else { return true }
         searching = true
+        normalTableFrame = table.frame
         oldSearchFrame = bar.frame
         let origin = bar.superview?.convert(bar.frame,to: view) ?? bar.frame
         let safe = view.safeAreaInsets.top
@@ -246,6 +248,13 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             if selectedTab == 0 { catalog?.setHeaderCollapsed(true) }
             else { table.tableHeaderView = h }
         }
+        // Keep the scrollable viewport below the fixed search overlay.
+        // Insets alone would let cells continue scrolling behind the overlay.
+        let searchBottom = safe + 61
+        table.frame = CGRect(x: normalTableFrame.minX,
+                             y: searchBottom,
+                             width: normalTableFrame.width,
+                             height: max(0, normalTableFrame.height - searchBottom))
         table.setContentOffset(CGPoint(x: 0, y: 0), animated: false)
         savedBottomInset = table.contentInset.bottom
         keyboardObserver = NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification, object: nil, queue: .main) { [weak self] note in
@@ -272,6 +281,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         if let observer = keyboardObserver { NotificationCenter.default.removeObserver(observer); keyboardObserver = nil }
         table.contentInset.bottom = savedBottomInset
         table.scrollIndicatorInsets.bottom = savedBottomInset
+        table.frame = normalTableFrame
         bar.resignFirstResponder()
         bar.text = ""
         searchBar(bar,textDidChange: "")

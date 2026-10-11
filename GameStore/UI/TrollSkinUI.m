@@ -28,6 +28,7 @@ static UILabel *L(NSString *s,CGFloat font,BOOL bold,UIColor *color){UILabel *l=
  [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(keyboardChanged:) name:UIKeyboardWillChangeFrameNotification object:nil];
  if (self.tab==0) { [SourceCatalogUIBridge start]; [SourceCatalogUIBridge refresh]; }
 }
+- (void)refreshSourceCatalog { [self.catalogController refreshSourceCatalog]; }
 - (void)dealloc {[NSNotificationCenter.defaultCenter removeObserver:self];}
 - (void)keyboardChanged:(NSNotification *)notification {
  if (!self.searching) return;

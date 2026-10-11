@@ -1,4 +1,5 @@
 import UIKit
+import Combine
 
 /// Source applications list controller; the legacy shell owns search transitions
 /// and floating navigation until those components are migrated separately.
@@ -9,6 +10,9 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
     private var visibleIndices: [Int] = []
     private var query = ""
     private var observer: NSObjectProtocol?
+    private var refreshSubscription: AnyCancellable?
+    private weak var refreshAlert: UIAlertController?
+    private var refreshRequested = false
 
     override func loadView() {
         view = UIView()
@@ -32,6 +36,45 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
             object: nil, queue: .main
         ) { [weak self] _ in self?.reloadCatalog() }
         reloadCatalog()
+    }
+
+    /// Presents the same alert style as source registration but waits for
+    /// the actual catalog refresh, not just the registration request.
+    @objc(refreshSourceCatalog)
+    func refreshSourceCatalog() {
+        let store = SoftwareSourceStore.shared
+        guard !store.sources.isEmpty else {
+            showRefreshMessage("尚未添加软件源", "请先前往「设置 → 软件源」添加软件源。")
+            return
+        }
+        guard !refreshRequested, !store.isCatalogLoading else { return }
+        refreshRequested = true
+        let alert = UIAlertController(title: "正在刷新软件源",
+                                      message: "正在请求并解析软件源…",
+                                      preferredStyle: .alert)
+        refreshAlert = alert
+        refreshSubscription = store.$isCatalogLoading
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] loading in
+                guard let self = self, self.refreshRequested, !loading else { return }
+                self.refreshRequested = false
+                self.refreshSubscription = nil
+                let error = store.catalogError
+                self.refreshAlert?.dismiss(animated: true) { [weak self] in
+                    if let error = error {
+                        self?.showRefreshMessage("软件源刷新提示", error)
+                    }
+                }
+            }
+        present(alert, animated: true)
+        store.refreshCatalog()
+    }
+
+    private func showRefreshMessage(_ title: String, _ message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确定", style: .default))
+        present(alert, animated: true)
     }
 
     deinit {

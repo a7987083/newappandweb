@@ -66,7 +66,7 @@
    [self.view addSubview:header];
  }
  if(self.tab==1 || self.tab==2){UIButton *edit=[UIButton buttonWithType:UIButtonTypeSystem];edit.frame=CGRectMake(w-108,actionY,42,34);[edit setTitle:@"编辑" forState:UIControlStateNormal];edit.titleLabel.font=[UIFont systemFontOfSize:16];[edit addTarget:self action:@selector(demo) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:edit];}
- if(self.tab!=3){UIButton *plus=[UIButton buttonWithType:UIButtonTypeSystem];plus.frame=CGRectMake(w-53,actionY,42,42);[plus setImage:[UIImage systemImageNamed:@"plus.circle.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:29]] forState:UIControlStateNormal];plus.tintColor=C(0x337CFA);[plus addTarget:self action:@selector(demo) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:plus];}
+ if(self.tab!=3){UIButton *action=[UIButton buttonWithType:UIButtonTypeSystem];action.frame=CGRectMake(w-53,actionY,42,42);NSString *symbol=self.tab==0?@"arrow.clockwise.circle.fill":@"plus.circle.fill";[action setImage:[UIImage systemImageNamed:symbol withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:29]] forState:UIControlStateNormal];action.tintColor=C(0x337CFA);[action addTarget:self action:self.tab==0?@selector(refreshSourceCatalog):@selector(demo) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:action];}
  if (self.tab==0) { [self.view bringSubviewToFront:self.compactHeader]; }
  [self tabs];
 }

@@ -24,6 +24,13 @@ static UILabel *L(NSString *s,CGFloat font,BOOL bold,UIColor *color){UILabel *l=
 - (void)viewDidLoad {
  [super viewDidLoad];self.view.backgroundColor=C(0xF2F2F7);
  [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(keyboardChanged:) name:UIKeyboardWillChangeFrameNotification object:nil];
+ [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(sourceCatalogChanged:) name:@"GameStoreSourceCatalogDidChange" object:nil];
+ if (self.tab==0) { [SourceCatalogUIBridge start]; [SourceCatalogUIBridge refresh]; }
+}
+- (void)sourceCatalogChanged:(NSNotification *)notification {
+ if (self.tab != 0 || !self.isViewLoaded) return;
+ self.renderedSize = CGSizeZero;
+ [self.view setNeedsLayout];
 }
 - (void)dealloc {[NSNotificationCenter.defaultCenter removeObserver:self];}
 - (void)keyboardChanged:(NSNotification *)notification {

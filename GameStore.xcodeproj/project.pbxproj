@@ -6,6 +6,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AF0000000000000000000007 /* SourceCatalogUIBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0000000000000000000008 /* SourceCatalogUIBridge.swift */; };
 		AF0000000000000000000005 /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0000000000000000000006 /* SettingsViewController.swift */; };
 		AF0000000000000000000001 /* TrollSkinUI.m in Sources */ = {isa = PBXBuildFile; fileRef = AF0000000000000000000002 /* TrollSkinUI.m */; };
 		EFAAB2000000000000000001 /* IPAArchivePackager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFAAB2000000000000000002 /* IPAArchivePackager.swift */; };
@@ -34,6 +35,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		AF0000000000000000000008 /* SourceCatalogUIBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/SourceCatalogUIBridge.swift; sourceTree = "<group>"; };
 		AF0000000000000000000006 /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/SettingsViewController.swift; sourceTree = "<group>"; };
 		AF0000000000000000000002 /* TrollSkinUI.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GameStore/UI/TrollSkinUI.m; sourceTree = "<group>"; };
 		EFAAB2000000000000000002 /* IPAArchivePackager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/IPAArchivePackager.swift; sourceTree = "<group>"; };
@@ -85,6 +87,7 @@
 				12B16B85BE8CE3610553969D /* AppStoreViewModel.swift */,
 				74AEB0BA6E23EF274058A2EC /* ContentView.swift */,
 				AF0000000000000000000006 /* SettingsViewController.swift */,
+				AF0000000000000000000008 /* SourceCatalogUIBridge.swift */,
 				AF0000000000000000000002 /* TrollSkinUI.m */,
 				E10000000000000000000002 /* CertificateStore.swift */,
 				C844D856FEFC392299F6D0F7 /* Products */,
@@ -128,6 +131,7 @@
 				2EA2861795073CA3403D25FC /* AppStoreViewModel.swift in Sources */,
 				F45B3567EE6A6A7B382A2882 /* ContentView.swift in Sources */,
 				AF0000000000000000000005 /* SettingsViewController.swift in Sources */,
+				AF0000000000000000000007 /* SourceCatalogUIBridge.swift in Sources */,
 				AF0000000000000000000001 /* TrollSkinUI.m in Sources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */

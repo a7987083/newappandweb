@@ -36,22 +36,15 @@
  self.searchRowsTop=y;
  self.normalSearchRowsTop=y;
  if(self.tab==0){
- NSArray *items=@[
- @[@"123云盘",@"3.3.2 · com.mfcloudcalculate.123networkdisk",@"cloud.fill",@"App Store"],
- @[@"阿里巴巴",@"12.11.1 · com.alibaba.wireless",@"shippingbox.fill",@"App Store"],
- @[@"阿里云盘",@"6.12.2 · com.alicloud.smartdrive",@"externaldrive.fill",@"App Store"],
- @[@"爱思全能版",@"2.2.0 · com.ownbook.notes",@"app.badge.fill",@"App Store"],
- @[@"保通双录",@"2.2.7 · com.baoinsurance.dr",@"video.fill",@"App Store"],
- @[@"必剪",@"2.91.0 · com.bilibili.studio",@"play.rectangle.fill",@"App Store"],
- @[@"哔哩哔哩",@"8.76.0 · tv.danmaku.bilianime",@"tv.fill",@"App Store"],
- @[@"Truck Simulator : Ultimate",@"1.3.7 · com.zuuks.truck.simulator.ultimate",@"truck.box.fill",@"TrollStore"],
- @[@"X",@"12.33 · com.atebits.Tweetie2",@"xmark",@"App Store"],
- @[@"XP Hero",@"26.2.0 · io.supercent.weaponrpg",@"gamecontroller.fill",@"TrollStore"],
- @[@"YouTube",@"20.02.3 · com.google.ios.youtube",@"play.rectangle.fill",@"TrollStore"],
- @[@"YY",@"8.62.0 · yyvoice",@"waveform",@"App Store"],
- @[@"zonoe",@"0.2.18 · com.GameStore.maicha.rebuild",@"pawprint.fill",@"TrollStore"],
- @[@"zonoe",@"3.0.0 · com.hfa.sign",@"pawprint.fill",@"App Store"]];
- for(NSArray *a in items)y=[self card:a[0] detail:a[1] symbol:a[2] badge:a[3] y:y];
+ NSArray<NSDictionary<NSString *,NSString *> *> *entries=[SourceCatalogUIBridge entries];
+ if(entries.count==0){
+   NSString *tip=[SourceCatalogUIBridge hasSources] ? @"暂无软件源应用，点击右上角刷新" : @"尚未添加软件源，请前往「设置 → 软件源」添加";
+   y=[self line:tip y:y x:30 color:C(0x8E8E93) size:15 bold:NO height:72]+10;
+ }else{
+   for(NSDictionary<NSString *,NSString *> *app in entries){
+     y=[self card:app[@"name"] detail:app[@"detail"] symbol:@"square.grid.2x2.fill" badge:app[@"category"] y:y];
+   }
+ }
  } else if(self.tab==1){
  y=[self card:@"1" detail:@"文件夹 · 2026-10-11 09:21（演示）" symbol:@"folder.fill" badge:nil y:y];
  y=[self card:@"Random Dice 2.ipa" detail:@"273.6 MB · 2026-10-10 02:35（演示）" symbol:@"doc.fill" badge:nil y:y];

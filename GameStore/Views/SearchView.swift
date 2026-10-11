@@ -44,7 +44,7 @@ struct SearchView: View {
                 }
 
                 ScrollView {
-                    LazyVStack(spacing: 9) {
+                    VStack(spacing: 9) {
                         ForEach(matches) { app in
                             NavigationLink(destination: SourceAppDetailView(app: app)) {
                                 HStack(spacing: 12) {

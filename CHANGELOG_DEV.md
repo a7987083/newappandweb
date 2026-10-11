@@ -1,3 +1,11 @@
+## 2026-10-11 — TrollSkin UIKit source integration
+
+- Commit: `7abe60d0e1bbad86f6123e95eaa596979b5758fb` on `refactor/headless-ui-foundation`.
+- Imported the five UIKit library source/header/include files from `lajixiang1/feature/trollstore-ui-replica` under `GameStore/UI` plus the Swift bridging header.
+- Registered `TrollSkinUI.m` in Xcode Sources and installed the controller as UIWindow root; excluded demo `main.m` to retain the existing GameStore app delegate and URL handling.
+- Services, Sources, Models and ViewModels remain unmodified. The imported screens contain demo placeholder actions, so business UI bindings are not yet implemented.
+- Dual toolchain CI run `38143302141` queued at recording time; no claim of build/runtime/device validation.
+
 ## 2026-10-11 — Remove legacy UI, retain backend and minimal bootstrap
 
 - Branch: `refactor/headless-ui-foundation`, based on `ca20bc6748d5ed9aba481ba385c76606cf402800`.

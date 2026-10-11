@@ -86,6 +86,9 @@ final class AppSigningService: AppSigning {
         // Match Zonoe/Ksign's default "Zip" extraction engine (minizip),
         // rather than forcing ZIPFoundation's UTF-8 path decoding.
         // Keep ZIPFoundation for IPA repacking and inspection.
+        // Zip's default whitelist is only "zip" and "cbz". IPA/TIPA are ZIP archives.
+        Zip.addCustomFileExtension("ipa")
+        Zip.addCustomFileExtension("tipa")
         try Zip.unzipFile(request.ipaURL, destination: payloadRoot, overwrite: true, password: nil)
         report("IPA 解压完成（Zonoe Zip/minizip）")
         let payload = payloadRoot.appendingPathComponent("Payload", isDirectory: true)

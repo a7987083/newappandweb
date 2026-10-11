@@ -208,10 +208,12 @@ private final class DeviceAuthDetailController: UIViewController {
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: row.leadingAnchor),
             label.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            result.trailingAnchor.constraint(equalTo: row.trailingAnchor),
             result.centerYAnchor.constraint(equalTo: row.centerYAnchor),
             result.leadingAnchor.constraint(greaterThanOrEqualTo: label.trailingAnchor, constant: 12)
         ])
+        if symbol == nil {
+            result.trailingAnchor.constraint(equalTo: row.trailingAnchor).isActive = true
+        }
         if let symbol = symbol {
             let icon = UIImageView(image: UIImage(systemName: symbol))
             icon.tintColor = SettingsStyle.blue

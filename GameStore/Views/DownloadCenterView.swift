@@ -6,7 +6,7 @@ struct DownloadCenterView: View {
     var body: some View {
         NavigationView {
             DownloadCenterContent(downloadCenter: store.downloadCenter)
-                .navigationBarTitle("下载管理")
+                .navigationBarTitle("下载")
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
@@ -109,10 +109,13 @@ private struct DownloadCenterContent: View {
                             .buttonStyle(BorderlessButtonStyle())
                         }
                     }
-                    .padding(.vertical, 5)
+                    .padding(.vertical, 8)
+                    .listRowBackground(Color(red: 0.11, green: 0.14, blue: 0.19))
                 }
+                .listStyle(GroupedListStyle())
             }
         }
+        .background(Color(red: 0.055, green: 0.070, blue: 0.095))
         .onAppear {
             downloadCenter.reloadDownloadedItems()
         }

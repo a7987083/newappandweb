@@ -91,7 +91,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     }
 
     private func showTab(_ index: Int) {
-        guard (0..<4).contains(index) else { return }
+        guard (0..<4).contains(index), searchPhase.phase != .restoring else { return }
         if searching { closeSearch(animated: false) }
         if let current = pages[selectedTab] {
             pages[selectedTab] = TabPage(

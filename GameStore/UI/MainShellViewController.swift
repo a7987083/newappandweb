@@ -72,6 +72,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
                 table.rowHeight = 78
                 table.contentInset = UIEdgeInsets(top: 0,left: 0,bottom: 100,right: 0)
                 table.dataSource = self
+                table.register(ShellPlaceholderCell.self, forCellReuseIdentifier: "Demo")
                 c.view.addSubview(table)
                 rows = index == 1 ? [
                     ("1","文件夹 · 2026-10-11 09:21（演示）","folder.fill"),
@@ -200,15 +201,10 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
 
     func tableView(_ tableView: UITableView,numberOfRowsInSection section: Int) -> Int { filtered.count }
     func tableView(_ tableView: UITableView,cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let c = tableView.dequeueReusableCell(withIdentifier: "Demo") ?? UITableViewCell(style: .subtitle,reuseIdentifier: "Demo")
-        let item = filtered[indexPath.row]
-        c.textLabel?.text = item.0
-        c.detailTextLabel?.text = item.1
-        c.imageView?.image = UIImage(systemName: item.2)
-        c.imageView?.tintColor = blue
-        c.backgroundColor = .white
-        c.selectionStyle = .none
-        return c
+        let cell = tableView.dequeueReusableCell(withIdentifier: "Demo",for: indexPath) as! ShellPlaceholderCell
+        let row = filtered[indexPath.row]
+        cell.configure(title: row.0,detail: row.1,symbol: row.2)
+        return cell
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -301,4 +297,50 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         }
     }
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) { searchBar.resignFirstResponder() }
+}
+
+private final class ShellPlaceholderCell: UITableViewCell {
+    private let card = UIView()
+    private let iconBackground = UIView()
+    private let image = UIImageView()
+    private let name = UILabel()
+    private let detail = UILabel()
+
+    override init(style: UITableViewCell.CellStyle,reuseIdentifier: String?) {
+        super.init(style: style,reuseIdentifier: reuseIdentifier)
+        backgroundColor = .clear
+        selectionStyle = .none
+        card.backgroundColor = .white
+        card.layer.cornerRadius = 16
+        contentView.addSubview(card)
+        iconBackground.backgroundColor = UIColor(red: 230/255,green: 240/255,blue: 1,alpha: 1)
+        iconBackground.layer.cornerRadius = 11
+        card.addSubview(iconBackground)
+        image.tintColor = UIColor(red: 51/255,green: 124/255,blue: 250/255,alpha: 1)
+        image.contentMode = .scaleAspectFit
+        iconBackground.addSubview(image)
+        name.font = .boldSystemFont(ofSize: 15)
+        name.textColor = .black
+        detail.font = .systemFont(ofSize: 11)
+        detail.textColor = .secondaryLabel
+        detail.adjustsFontSizeToFitWidth = true
+        detail.minimumScaleFactor = 0.75
+        card.addSubview(name)
+        card.addSubview(detail)
+    }
+    required init?(coder: NSCoder) { fatalError("Programmatic only") }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let w = contentView.bounds.width
+        card.frame = CGRect(x: 18,y: 0,width: max(0,w-36),height: 70)
+        iconBackground.frame = CGRect(x: 13,y: 12,width: 46,height: 46)
+        image.frame = iconBackground.bounds.insetBy(dx: 10,dy: 10)
+        name.frame = CGRect(x: 72,y: 8,width: max(0,w-118),height: 22)
+        detail.frame = CGRect(x: 72,y: 28,width: max(0,w-116),height: 17)
+    }
+    func configure(title: String,detail: String,symbol: String) {
+        name.text = title
+        self.detail.text = detail
+        image.image = UIImage(systemName: symbol)
+    }
 }

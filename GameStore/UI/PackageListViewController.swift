@@ -139,14 +139,16 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
         alert.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
             guard let self = self else { return }
-            do {
-                try self.center.deleteDownloadedItem(item)
-                self.items = self.center.items
-                self.applyFilter()
-            } catch {
-                let failure = UIAlertController(title: "删除失败", message: error.localizedDescription, preferredStyle: .alert)
-                failure.addAction(UIAlertAction(title: "确定", style: .default))
-                self.present(failure, animated: true)
+            self.center.deleteDownloadedItem(item) { [weak self] error in
+                guard let self = self else { return }
+                if let error = error {
+                    let failure = UIAlertController(title: "删除失败", message: error.localizedDescription, preferredStyle: .alert)
+                    failure.addAction(UIAlertAction(title: "确定", style: .default))
+                    self.present(failure, animated: true)
+                } else {
+                    self.items = self.center.items
+                    self.applyFilter()
+                }
             }
         })
         present(alert, animated: true)

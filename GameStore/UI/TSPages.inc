@@ -36,18 +36,14 @@
  self.searchRowsTop=y;
  self.normalSearchRowsTop=y;
  if(self.tab==0){
- self.catalogItems=[SourceCatalogUIBridge entries];
- self.visibleCatalogItems=self.catalogItems;
- UITableView *table=[[UITableView alloc]initWithFrame:CGRectMake(0,y,w,self.view.bounds.size.height-y) style:UITableViewStylePlain];
- table.backgroundColor=UIColor.clearColor;
- table.separatorStyle=UITableViewCellSeparatorStyleNone;
- table.dataSource=self;
- table.delegate=self;
- table.contentInset=UIEdgeInsetsMake(0,0,100,0);
- table.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
- self.catalogTable=table;
- [self.view addSubview:table];
- if (self.catalogItems.count==0) { table.backgroundView=[self catalogEmptyView]; }
+ AppCatalogViewController *catalog=[AppCatalogViewController new];
+ self.catalogController=catalog;
+ [self addChildViewController:catalog];
+ catalog.view.frame=CGRectMake(0,y,w,MAX(0,self.view.bounds.size.height-y));
+ catalog.view.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
+ self.catalogTable=catalog.tableView;
+ [self.view addSubview:catalog.view];
+ [catalog didMoveToParentViewController:self];
  } else if(self.tab==1){
  y=[self card:@"1" detail:@"文件夹 · 2026-10-11 09:21（演示）" symbol:@"folder.fill" badge:nil y:y];
  y=[self card:@"Random Dice 2.ipa" detail:@"273.6 MB · 2026-10-10 02:35（演示）" symbol:@"doc.fill" badge:nil y:y];

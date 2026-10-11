@@ -82,7 +82,7 @@
  }];
 }
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
- if (self.tab==0) { [self filterCatalog:searchText];[self.catalogTable reloadData];return; }
+ if (self.tab==0) { [self.catalogController filterWithQuery:searchText];return; }
  NSString *needle=[searchText stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
  CGFloat y=self.searchRowsTop;
  for (UIView *row in self.searchRows) {

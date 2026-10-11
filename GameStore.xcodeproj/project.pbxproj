@@ -6,6 +6,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AF000000000000000000000B /* AppCatalogViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF000000000000000000000C /* AppCatalogViewController.swift */; };
 		AF0000000000000000000009 /* AppCatalogCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF000000000000000000000A /* AppCatalogCell.swift */; };
 		AF0000000000000000000007 /* SourceCatalogUIBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0000000000000000000008 /* SourceCatalogUIBridge.swift */; };
 		AF0000000000000000000005 /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0000000000000000000006 /* SettingsViewController.swift */; };
@@ -36,6 +37,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		AF000000000000000000000C /* AppCatalogViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/AppCatalogViewController.swift; sourceTree = "<group>"; };
 		AF000000000000000000000A /* AppCatalogCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/AppCatalogCell.swift; sourceTree = "<group>"; };
 		AF0000000000000000000008 /* SourceCatalogUIBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/SourceCatalogUIBridge.swift; sourceTree = "<group>"; };
 		AF0000000000000000000006 /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/SettingsViewController.swift; sourceTree = "<group>"; };
@@ -91,6 +93,7 @@
 				AF0000000000000000000006 /* SettingsViewController.swift */,
 				AF0000000000000000000008 /* SourceCatalogUIBridge.swift */,
 				AF000000000000000000000A /* AppCatalogCell.swift */,
+				AF000000000000000000000C /* AppCatalogViewController.swift */,
 				AF0000000000000000000002 /* TrollSkinUI.m */,
 				E10000000000000000000002 /* CertificateStore.swift */,
 				C844D856FEFC392299F6D0F7 /* Products */,
@@ -136,6 +139,7 @@
 				AF0000000000000000000005 /* SettingsViewController.swift in Sources */,
 				AF0000000000000000000007 /* SourceCatalogUIBridge.swift in Sources */,
 				AF0000000000000000000009 /* AppCatalogCell.swift in Sources */,
+				AF000000000000000000000B /* AppCatalogViewController.swift in Sources */,
 				AF0000000000000000000001 /* TrollSkinUI.m in Sources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */

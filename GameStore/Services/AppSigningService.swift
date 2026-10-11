@@ -80,15 +80,6 @@ final class AppSigningService: AppSigning {
             self.report("开始处理 IPA：" + request.ipaURL.lastPathComponent)
             do {
                 try self.checkCancellation()
-                let options = SigningOptionsStore.shared.options
-                if !options.temporarySigning {
-                    emit(.verifyCertificate)
-                    self.report("验证 P12 与描述文件是否可读取")
-                    try self.validateCertificate(request.certificate, password: request.password)
-                }
-                emit(.prepareIPA)
-                let source = try IPAInspector.inspect(request.ipaURL)
-                self.report("原始 IPA 解析成功：\(source.bundleID) · \(source.version)")
                 let result = try self.signIPA(request: request, emit: emit)
                 try self.checkCancellation()
                 self.report("签名与打包流程完成；注意：尚未验证 iOS 系统能否安装")
@@ -110,7 +101,12 @@ final class AppSigningService: AppSigning {
         try fm.createDirectory(at: payloadRoot, withIntermediateDirectories: true, attributes: nil)
 
         emit(.extracting)
-        // IPAInspector validates archive structure and unsafe paths before extraction.
+        report("开始解压 IPA")
+        // The existing IPAInspector provides path and CRC checks, but
+        // IPAArchiveIntegrity's strict SC_Info preflight is intentionally removed.
+        let source = try IPAInspector.inspect(request.ipaURL)
+        report("原始 IPA 解析成功：\(source.bundleID) · \(source.version)")
+        try checkCancellation()
         // Do not reject nonstandard SC_Info directory metadata before unpacking.
         Zip.addCustomFileExtension("ipa")
         Zip.addCustomFileExtension("tipa")

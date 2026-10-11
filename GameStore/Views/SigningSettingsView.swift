@@ -30,7 +30,6 @@ struct SigningSettingsView: View {
                 footer: Text("“临时签署”使用 Zsign Ad-hoc 伪签名，不需要证书；注册回调用于向目标 App 注册 zonoe UDID URL Scheme。")
             ) {
                 Toggle("Ad-hoc 伪签名", isOn: binding(\.temporarySigning))
-                Toggle("签名完成自动安装", isOn: binding(\.autoInstallAfterSigning))
                 Toggle("注册回调", isOn: binding(\.registerCallback))
             }
 

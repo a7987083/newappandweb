@@ -1,5 +1,36 @@
 import UIKit
 
+/// Deterministic lifecycle for a shell search presentation.
+/// Stale animation completions cannot reactivate a restoring search.
+final class ShellSearchPhaseMachine {
+    enum Phase { case idle, activating, active, restoring }
+    private(set) var phase: Phase = .idle
+    var isSearching: Bool { phase == .activating || phase == .active }
+
+    @discardableResult func begin() -> Bool {
+        guard phase == .idle else { return false }
+        phase = .activating
+        return true
+    }
+
+    @discardableResult func activate() -> Bool {
+        guard phase == .activating else { return false }
+        phase = .active
+        return true
+    }
+
+    @discardableResult func startRestoring() -> Bool {
+        guard phase == .activating || phase == .active else { return false }
+        phase = .restoring
+        return true
+    }
+
+    func finishRestoring() {
+        guard phase == .restoring else { return }
+        phase = .idle
+    }
+}
+
 final class ShellSearchSession {
     struct Anchor {
         let row: Int?

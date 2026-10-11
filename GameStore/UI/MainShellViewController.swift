@@ -68,6 +68,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
                 table.autoresizingMask = [.flexibleWidth,.flexibleHeight]
                 table.separatorStyle = .none
                 table.backgroundColor = .clear
+                table.contentInsetAdjustmentBehavior = .never
                 table.rowHeight = 78
                 table.contentInset = UIEdgeInsets(top: 0,left: 0,bottom: 100,right: 0)
                 table.dataSource = self

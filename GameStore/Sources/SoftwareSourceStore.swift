@@ -170,13 +170,15 @@ struct SourceCatalogApp: Identifiable, Codable {
     let sizeBytes: Int64?
     let updatedAt: Date?
     let releaseNotes: String
-    let rawVersionDate: String?
     var versionDescription: String { releaseNotes }
-    var versionDate: String { rawVersionDate ?? updatedAt.map {
+    var versionDate: String {
+        guard let date = updatedAt else { return "—" }
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: $0)
-    } ?? "—" }
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 8 * 3600)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return formatter.string(from: date)
+    }
     let requiresUnlock: Bool?
     let unlockURL: URL?
 }
@@ -325,6 +327,8 @@ extension SoftwareSourceStore {
             let date: Date? = {
                 let iso = ISO8601DateFormatter()
                 if let d = iso.date(from: dateString) { return d }
+                iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                if let d = iso.date(from: dateString) { return d }
                 let formatter = DateFormatter()
                 formatter.locale = Locale(identifier: "en_US_POSIX")
                 for format in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd", "yyyy/MM/dd"] {
@@ -347,7 +351,6 @@ extension SoftwareSourceStore {
                 sizeBytes: bytes,
                 updatedAt: date,
                 releaseNotes: value(app, ["versionDescription", "releaseNotes"]),
-                rawVersionDate: dateString,
                 requiresUnlock: requiresUnlock,
                 unlockURL: unlockURL
             )

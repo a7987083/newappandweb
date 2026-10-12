@@ -1143,20 +1143,30 @@ final class PluginLibraryController: UIViewController, UITableViewDataSource, UI
             self.importing = true
             URLSession.shared.downloadTask(with: url) { [weak self] location, response, error in
                 guard let self = self else { return }
+                // URLSession owns the temporary download; relocate it before the callback returns.
+                let stagingDir = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("zonoe-plugin-" + UUID().uuidString, isDirectory: true)
+                let staging = stagingDir.appendingPathComponent(url.lastPathComponent)
+                var transferError: Error? = error
+                do {
+                    guard transferError == nil, let location = location,
+                          let code = (response as? HTTPURLResponse)?.statusCode,
+                          (200...299).contains(code) else {
+                        throw transferError ?? ZonoePluginLibrary.failure("下载失败")
+                    }
+                    try FileManager.default.createDirectory(at: stagingDir,
+                                                            withIntermediateDirectories: true, attributes: nil)
+                    try FileManager.default.moveItem(at: location, to: staging)
+                } catch {
+                    transferError = error
+                }
                 self.queue.async {
-                    var failure: Error? = error
-                    do {
-                        guard failure == nil, let location = location,
-                              let code = (response as? HTTPURLResponse)?.statusCode, (200...299).contains(code) else {
-                            throw failure ?? ZonoePluginLibrary.failure("下载失败")
-                        }
-                        let stagingDir = FileManager.default.temporaryDirectory.appendingPathComponent("zonoe-plugin-" + UUID().uuidString, isDirectory: true)
-                        try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true, attributes: nil)
-                        defer { try? FileManager.default.removeItem(at: stagingDir) }
-                        let staging = stagingDir.appendingPathComponent(url.lastPathComponent)
-                        try FileManager.default.copyItem(at: location, to: staging)
-                        try ZonoePluginLibrary.importFile(staging)
-                    } catch { failure = error }
+                    defer { try? FileManager.default.removeItem(at: stagingDir) }
+                    var failure = transferError
+                    if failure == nil {
+                        do { try ZonoePluginLibrary.importFile(staging) }
+                        catch { failure = error }
+                    }
                     DispatchQueue.main.async {
                         self.importing = false
                         self.refresh()

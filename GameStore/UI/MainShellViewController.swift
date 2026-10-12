@@ -308,9 +308,9 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
                 controller = c
                 install(c)
                 packages = c
-                c.onSignPackage = { [weak self] url in
+                c.onSignPackage = { [weak self] url, info in
                     guard let self = self else { return }
-                    self.present(SigningEditorViewController(ipaURL: url), animated: true)
+                    self.present(SigningEditorViewController(ipaURL: url, packageInfo: info), animated: true)
                 }
                 table = c.tableView
             } else {

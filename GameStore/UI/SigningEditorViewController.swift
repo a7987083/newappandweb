@@ -3,6 +3,11 @@ import UIKit
 /// Per-package signing editor. The signing engine and global settings remain shared.
 final class SigningEditorViewController: UIViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     private let ipaURL: URL
+    private let packageInfo: AppPackageInfo?
+    private var toggles = [WritableKeyPath<SigningOptions, Bool>: UISwitch]()
+    private var installMode: IPAInstallMode = .network
+    private let installButton = UIButton(type: .system)
+    private let cancelButton = UIButton(type: .system)
     private let service = AppSigningService()
     private let content = UIStackView()
     private let action = UIButton(type: .system)
@@ -16,11 +21,11 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
     private var replacementIcon: Data?
     private var running = false
     private var artifact: SignedArtifact?
-    private var report = [String]()
     private let blue = UIColor(red: 51/255, green: 124/255, blue: 250/255, alpha: 1)
 
-    init(ipaURL: URL) {
+    init(ipaURL: URL, packageInfo: AppPackageInfo? = nil) {
         self.ipaURL = ipaURL
+        self.packageInfo = packageInfo
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .fullScreen
     }
@@ -58,17 +63,33 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         summary.font = .systemFont(ofSize: 13)
         summary.textColor = .secondaryLabel
         addCard(summary)
-        addField("应用名称", key: "name", value: nil)
-        addField("应用标识符", key: "bundle", value: nil)
-        addField("版本号", key: "version", value: nil)
-        // IPAInspector may scan the entire archive; never run it during presentation.
-        loadPackageInfo()
-        addField("最低系统要求", key: "minimum", value: nil)
+        addField("应用名称", key: "name", value: packageInfo?.name)
+        addField("应用标识符", key: "bundle", value: packageInfo?.bundleID)
+        addField("版本号", key: "version", value: packageInfo?.version)
+        addField("最低系统要求", key: "minimum", value: packageInfo?.minimumOS)
+        if packageInfo == nil { loadPackageInfo() }
         format.selectedSegmentIndex = 0
         addControl("输出格式", control: format)
         compression.selectedSegmentIndex = 1
         addControl("压缩预设", control: compression)
         addControl("移除应用跳转", control: removeSchemes)
+        let options = SigningOptionsStore.shared.options
+        addToggle("文件共享", key: \.fileSharing, value: options.fileSharing)
+        addToggle("iTunes 文件共享", key: \.itunesFileSharing, value: options.itunesFileSharing)
+        addToggle("ProMotion", key: \.proMotion, value: options.proMotion)
+        addToggle("游戏模式", key: \.gameMode, value: options.gameMode)
+        addToggle("iPad 全屏", key: \.ipadFullscreen, value: options.ipadFullscreen)
+        addToggle("强制本地化", key: \.forceLocalization, value: options.forceLocalization)
+        addToggle("Ad-hoc 伪签名", key: \.temporarySigning, value: options.temporarySigning)
+        addToggle("注册 UDID 回调", key: \.registerCallback, value: options.registerCallback)
+        addToggle("签名完成自动安装", key: \.autoInstallAfterSigning, value: options.autoInstallAfterSigning)
+        let rule = UISegmentedControl(items: SigningPackagingRule.allCases.map { $0.title })
+        rule.selectedSegmentIndex = SigningPackagingRule.allCases.firstIndex(of: options.packagingRule) ?? 0
+        rule.addTarget(self, action: #selector(changePackagingRule(_:)), for: .valueChanged)
+        addControl("打包规则", control: rule)
+        let installLabel = UILabel()
+        installLabel.text = "安装方式：网络安装"
+        addCard(installLabel)
         let iconButton = UIButton(type: .system)
         iconButton.setTitle("选择替换图标", for: .normal)
         iconButton.addTarget(self, action: #selector(selectIcon), for: .touchUpInside)
@@ -84,10 +105,14 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         status.text = "准备就绪"
         status.numberOfLines = 0
         addCard(status)
-        let reportButton = UIButton(type: .system)
-        reportButton.setTitle("查看签名详细报告", for: .normal)
-        reportButton.addTarget(self, action: #selector(showReport), for: .touchUpInside)
-        addCard(reportButton)
+        installButton.setTitle("安装应用（网络）", for: .normal)
+        installButton.isHidden = true
+        installButton.addTarget(self, action: #selector(installResult), for: .touchUpInside)
+        addCard(installButton)
+        cancelButton.setTitle("取消签名", for: .normal)
+        cancelButton.isHidden = true
+        cancelButton.addTarget(self, action: #selector(cancelSigning), for: .touchUpInside)
+        addCard(cancelButton)
 
         action.setTitle("确认修改 / 开始签名", for: .normal)
         action.backgroundColor = blue
@@ -128,13 +153,62 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
     private func loadPackageInfo() {
         let archive = ipaURL
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let inspection = try? IPAInspector.inspect(archive)
+            guard let directory = try? DownloadIPAExtractor.preparedDirectory(for: archive),
+                  let app = (try? FileManager.default.contentsOfDirectory(
+                    at: directory.appendingPathComponent("Payload"), includingPropertiesForKeys: nil))?
+                    .first(where: { $0.pathExtension.lowercased() == "app" }),
+                  let info = NSDictionary(contentsOf: app.appendingPathComponent("Info.plist")) else { return }
             DispatchQueue.main.async {
-                guard let self = self, let info = inspection else { return }
-                // Do not overwrite text typed while metadata was being loaded.
-                if self.fields["name"]?.text?.isEmpty == true { self.fields["name"]?.text = info.displayName }
-                if self.fields["bundle"]?.text?.isEmpty == true { self.fields["bundle"]?.text = info.bundleID }
-                if self.fields["version"]?.text?.isEmpty == true { self.fields["version"]?.text = info.version }
+                guard let self = self else { return }
+                for (key, plist) in [("name", "CFBundleDisplayName"), ("bundle", "CFBundleIdentifier"),
+                                     ("version", "CFBundleShortVersionString"), ("minimum", "MinimumOSVersion")] {
+                    if self.fields[key]?.text?.isEmpty == true {
+                        self.fields[key]?.text = info[plist] as? String
+                    }
+                }
+            }
+        }
+    }
+
+    private func addToggle(_ title: String, key: WritableKeyPath<SigningOptions, Bool>, value: Bool) {
+        let control = UISwitch()
+        control.isOn = value
+        control.addAction(UIAction { _ in
+            var options = SigningOptionsStore.shared.options
+            options[keyPath: key] = control.isOn
+            SigningOptionsStore.shared.options = options
+        }, for: .valueChanged)
+        toggles[key] = control
+        let stack = UIStackView(arrangedSubviews: [UILabel(), control])
+        (stack.arrangedSubviews[0] as? UILabel)?.text = title
+        stack.axis = .horizontal
+        stack.distribution = .equalSpacing
+        addCard(stack)
+    }
+    @objc private func changePackagingRule(_ sender: UISegmentedControl) {
+        var options = SigningOptionsStore.shared.options
+        options.packagingRule = SigningPackagingRule.allCases[sender.selectedSegmentIndex]
+        SigningOptionsStore.shared.options = options
+    }
+    @objc private func cancelSigning() {
+        guard running else { return }
+        service.cancel()
+        status.text = "正在取消签名…"
+        cancelButton.isEnabled = false
+    }
+    @objc private func installResult() {
+        guard let artifact = artifact, !running else { return }
+        installButton.isEnabled = false
+        status.text = "正在启动网络安装…"
+        IPAInstallCoordinator.shared.begin(artifact: artifact, mode: installMode) { [weak self] response in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.installButton.isEnabled = true
+                switch response {
+                case .success(let accepted):
+                    self.status.text = accepted ? "已提交系统安装请求（不代表安装完成）" : "iOS 未接受安装请求"
+                case .failure(let error): self.showMessage(error.localizedDescription)
+                }
             }
         }
     }
@@ -204,11 +278,6 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         replacementIcon = (info[.originalImage] as? UIImage)?.pngData()
         picker.dismiss(animated: true)
     }
-    @objc private func showReport() {
-        let alert = UIAlertController(title: "签名报告", message: report.suffix(100).joined(separator: "\n"), preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "确定", style: .default))
-        present(alert, animated: true)
-    }
     @objc private func start() {
         guard !running else { return }
         let temporary = SigningOptionsStore.shared.options.temporarySigning
@@ -232,19 +301,21 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         )
         running = true
         action.isEnabled = false
+        cancelButton.isHidden = false
+        cancelButton.isEnabled = true
         status.text = "正在准备签名…"
-        report.removeAll()
-        service.onReport = { [weak self] line in self?.report.append(line) }
         service.sign(request: SigningRequest(ipaURL: ipaURL, certificate: selected, password: password, editing: editing),
             progress: { [weak self] state in self?.status.text = state.rawValue },
             completion: { [weak self] result in
                 guard let self = self else { return }
                 self.running = false
                 self.action.isEnabled = true
+                self.cancelButton.isHidden = true
                 switch result {
                 case .success(let file):
                     if !temporary && stored == nil { try? CertificatePasswordKeychain.save(password, for: selected.id) }
                     self.artifact = file
+                    self.installButton.isHidden = false
                     self.passwordField.text = ""
                     self.status.text = "签名完成：" + file.ipaURL.lastPathComponent
                     self.action.setTitle("签名完成", for: .normal)
@@ -253,8 +324,13 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
                     done.addAction(UIAlertAction(title: "分享", style: .default) { _ in
                         self.present(UIActivityViewController(activityItems: [file.ipaURL], applicationActivities: nil), animated: true)
                     })
-                    done.addAction(UIAlertAction(title: "确定", style: .cancel))
+                    done.addAction(UIAlertAction(title: "网络安装", style: .default) { _ in self.installResult() })
+                    done.addAction(UIAlertAction(title: "完成", style: .cancel))
                     self.present(done, animated: true)
+                    if SigningOptionsStore.shared.options.autoInstallAfterSigning {
+                        // Dismiss the result sheet first, then begin the network install.
+                        done.dismiss(animated: true) { self.installResult() }
+                    }
                 case .failure(let error):
                     self.status.text = "签名失败"
                     self.showMessage(error.localizedDescription)

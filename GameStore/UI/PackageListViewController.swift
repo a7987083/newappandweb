@@ -4,7 +4,7 @@ import Combine
 /// Live download tasks and locally retained IPA archives.
 final class PackageListViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
     let tableView = UITableView(frame: .zero, style: .plain)
-    var onSignPackage: ((URL) -> Void)?
+    var onSignPackage: ((URL, AppPackageInfo?) -> Void)?
     private let center = AppStoreViewModel.shared.downloadCenter
     private var items: [DownloadCenter.Item] = []
     private var visible: [DownloadCenter.Item] = []
@@ -197,7 +197,7 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
                         userInfo: [NSLocalizedDescriptionKey: "安装包尚未准备完成，请重新解压"]))
                     return
                 }
-                self?.onSignPackage?(url)
+                self?.onSignPackage?(url, self?.infoByPath[url.path])
             }
             if center.extractionStatus[url.lastPathComponent]?.hasPrefix("解压失败") == true ||
                 center.extractionStatus[url.lastPathComponent] == "缓存已删除" {
@@ -294,12 +294,13 @@ private final class PackageDownloadCell: UITableViewCell {
 }
 
 
-private struct AppPackageInfo {
+struct AppPackageInfo {
     let name: String
     let version: String
     let bundleID: String
     let sizeText: String
     let icon: UIImage?
+    let minimumOS: String?
 
     static func read(from archive: URL) -> AppPackageInfo? {
         guard let directory = try? DownloadIPAExtractor.preparedDirectory(for: archive) else { return nil }
@@ -341,6 +342,6 @@ private struct AppPackageInfo {
             }
             if icon != nil { break }
         }
-        return AppPackageInfo(name: name, version: version, bundleID: bundle, sizeText: size, icon: icon)
+        return AppPackageInfo(name: name, version: version, bundleID: bundle, sizeText: size, icon: icon, minimumOS: info["MinimumOSVersion"] as? String)
     }
 }

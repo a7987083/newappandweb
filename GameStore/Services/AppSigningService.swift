@@ -175,6 +175,56 @@ final class AppSigningService: AppSigning {
         }
     }
 
+    // Resolve only app-owned load paths. Never follow symlinks or remove system libraries.
+    private func removableEmbeddedItem(for loadPath: String, in app: URL) throws -> URL {
+        let suffix: String
+        if loadPath.hasPrefix("@executable_path/") {
+            suffix = String(loadPath.dropFirst("@executable_path/".count))
+        } else if loadPath.hasPrefix("@rpath/") {
+            suffix = String(loadPath.dropFirst("@rpath/".count))
+        } else {
+            throw ZonoePluginLibrary.failure("不支持删除系统库：" + loadPath)
+        }
+        let parts = suffix.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard !parts.isEmpty, parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
+            throw ZonoePluginLibrary.failure("非法库路径：" + loadPath)
+        }
+        // A framework load command references its binary; delete its whole bundle.
+        let frameworkIndex = parts.firstIndex(where: { $0.lowercased().hasSuffix(".framework") })
+        let relative = frameworkIndex.map { Array(parts[...$0]) } ?? parts
+        let candidates: [URL]
+        if loadPath.hasPrefix("@rpath/") {
+            candidates = [app.appendingPathComponent("Frameworks", isDirectory: true), app]
+        } else {
+            candidates = [app]
+        }
+        let fm = FileManager.default
+        var matches = [URL]()
+        for base in candidates {
+            var current = base
+            var safe = true
+            for component in relative {
+                current.appendPathComponent(component)
+                if (try? current.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+                    safe = false
+                    break
+                }
+            }
+            if safe && fm.fileExists(atPath: current.path) {
+                matches.append(current)
+            }
+        }
+        guard matches.count == 1, let target = matches.first else {
+            throw ZonoePluginLibrary.failure(matches.isEmpty ? "找不到对应实体文件：" + loadPath : "库路径存在多个候选文件，拒绝误删：" + loadPath)
+        }
+        // Verify target is inside the temporary .app (not the app root or a parent).
+        let rootPath = app.standardizedFileURL.path + "/"
+        guard target.standardizedFileURL.path.hasPrefix(rootPath), target.standardizedFileURL != app.standardizedFileURL else {
+            throw ZonoePluginLibrary.failure("拒绝移除 App 外部文件：" + loadPath)
+        }
+        return target
+    }
+
     private func signIPA(request: SigningRequest, emit: (SigningState) -> Void) throws -> SignedArtifact {
         let fm = FileManager.default
         let work = fm.temporaryDirectory.appendingPathComponent("zonoe-sign-" + UUID().uuidString, isDirectory: true)
@@ -243,11 +293,28 @@ final class AppSigningService: AppSigning {
             guard chosen.allSatisfy({ ($0.hasPrefix("@rpath/") || $0.hasPrefix("@executable_path/")) && existing.contains($0) }) else {
                 throw ZonoePluginLibrary.failure("包含系统依赖或不存在的加载路径")
             }
+            // Resolve and validate every file before changing Mach-O.
+            let removals = try chosen.map { (path: $0, file: try removableEmbeddedItem(for: $0, in: app)) }
+            let selectedPaths = Set(chosen)
+            let remaining = existing.filter { !selectedPaths.contains($0) }
+            for item in removals {
+                // Never delete a bundle still referenced by another main executable load command.
+                if remaining.contains(where: { other in
+                    guard let otherFile = try? removableEmbeddedItem(for: other, in: app) else { return false }
+                    return otherFile.standardizedFileURL == item.file.standardizedFileURL
+                }) {
+                    throw ZonoePluginLibrary.failure("仍有其他加载命令依赖该文件：" + item.file.lastPathComponent)
+                }
+            }
             guard ZNZsignKit.removeDylibs(from: executable, loadPaths: chosen),
                   chosen.allSatisfy({ !ZNZsignKit.linkedDylibs(in: executable).contains($0) }) else {
                 throw ZonoePluginLibrary.failure("Mach-O 移除已有库失败")
             }
-            report("已移除 " + String(chosen.count) + " 条加载命令")
+            for item in Set(removals.map { $0.file.standardizedFileURL }) {
+                try fm.removeItem(at: item)
+                report("已移除库文件：" + item.lastPathComponent)
+            }
+            report("已移除 " + String(chosen.count) + " 条加载命令及对应文件")
         }
         if request.automaticBuiltIn {
             let root = Bundle.main.bundleURL.appendingPathComponent("dylib", isDirectory: true)

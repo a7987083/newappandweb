@@ -326,7 +326,7 @@ final class SigningEditorViewController: UIViewController {
                     self.showMessage(failure.localizedDescription)
                     return
                 }
-                let sheet = UIAlertController(title: "移除已有库", message: "点击条目选择或取消；仅移除加载命令，不删除库文件。", preferredStyle: .actionSheet)
+                let sheet = UIAlertController(title: "移除已有库", message: "点击条目选择或取消；签名时同时移除加载命令与对应实体文件。无法安全定位时会中止签名。", preferredStyle: .actionSheet)
                 for path in paths {
                     let selected = self.removedLoadPaths.contains(path)
                     sheet.addAction(UIAlertAction(title: (selected ? "✓ " : "") + path, style: .default) { [weak self, weak sender] _ in

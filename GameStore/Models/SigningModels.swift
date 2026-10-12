@@ -29,6 +29,7 @@ struct SigningRequest {
     var editing: SigningAppEditing = SigningAppEditing()
     var injectedPlugins: [URL] = []
     var removedLoadPaths: [String] = []
+    var automaticBuiltIn: Bool = SigningInjectionPreferences.automaticBuiltIn
     var injectionUseRpath: Bool = SigningInjectionPreferences.useRpath
     var injectionFrameworks: Bool = SigningInjectionPreferences.useFrameworksFolder
 }

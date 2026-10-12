@@ -1,5 +1,73 @@
 import UIKit
 
+
+// Shared in-memory device authorization. UI screens observe one status and deduplicate requests.
+private final class DeviceAuthorizationMemory {
+    struct Snapshot {
+        let udid: String
+        let status: String
+        let expiry: Date?
+        let checkedAt: Date
+        var isActive: Bool { status == "激活" && (expiry ?? .distantPast) > Date() }
+        var expiryText: String? {
+            guard let expiry = expiry else { return nil }
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            return formatter.string(from: expiry)
+        }
+    }
+    static let shared = DeviceAuthorizationMemory()
+    static let didChange = Notification.Name("zonoe.device.authorization.updated")
+    private(set) var snapshot: Snapshot?
+    private var activeUDID: String?
+    private var inFlight = false
+    private init() {}
+    func refreshIfNeeded() {
+        assert(Thread.isMainThread)
+        guard let udid = UDIDService.shared.udid,
+              UDIDLocalServer.validUDID(udid) else {
+            snapshot = nil
+            activeUDID = nil
+            inFlight = false
+            NotificationCenter.default.post(name: Self.didChange, object: nil)
+            return
+        }
+        if snapshot?.udid == udid, let checkedAt = snapshot?.checkedAt,
+           Date().timeIntervalSince(checkedAt) < 600,
+           (snapshot?.expiry == nil || snapshot!.expiry! > Date() || snapshot?.status != "激活") {
+            return
+        }
+        if activeUDID == udid && inFlight { return }
+        activeUDID = udid
+        inFlight = true
+        var components = URLComponents(string: "https://app3.zonoeios.xyz/index/index/apiface")
+        components?.queryItems = [URLQueryItem(name: "udid", value: udid)]
+        guard let url = components?.url else { inFlight = false; return }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
+        request.httpMethod = "GET"
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            let code = (json?["code"] as? NSNumber)?.intValue ?? (json?["code"] as? String).flatMap(Int.init)
+            let message = (json?["msg"] as? String)?.lowercased()
+            let seconds = (json?["expire"] as? NSNumber)?.doubleValue ?? (json?["expire"] as? String).flatMap(Double.init)
+            let expiry = seconds.map { Date(timeIntervalSince1970: $0) }
+            let validResponse = error == nil && (response as? HTTPURLResponse).map { (200...299).contains($0.statusCode) } == true && json != nil
+            let status: String
+            if !validResponse { status = "查询失败" }
+            else if code == 1 && message == "ok", let expiry = expiry, expiry > Date() { status = "激活" }
+            else if let expiry = expiry, expiry <= Date() { status = "已过期" }
+            else { status = "未激活" }
+            DispatchQueue.main.async {
+                guard let self = self, self.activeUDID == udid,
+                      UDIDService.shared.udid == udid else { return }
+                self.inFlight = false
+                self.snapshot = Snapshot(udid: udid, status: status, expiry: expiry, checkedAt: Date())
+                NotificationCenter.default.post(name: Self.didChange, object: nil)
+            }
+        }.resume()
+    }
+}
+
 // Settings UI only. All status strings and actions below are presentation placeholders.
 // Keep both the settings page and its device-auth detail in this one Swift file.
 @objc(SettingsViewController)
@@ -8,16 +76,26 @@ final class SettingsViewController: UIViewController {
     private let stack = UIStackView()
     private var authStatusLabel: UILabel?
     private var authDescriptionLabel: UILabel?
+    private var authIcon: UIView?
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         updateAuthSummary()
     }
 
+    @objc private func authStateChanged() { updateAuthSummary() }
     private func updateAuthSummary() {
+        let snapshot = DeviceAuthorizationMemory.shared.snapshot
         let present = UDIDService.shared.udid.map { UDIDLocalServer.validUDID($0) } ?? false
-        authStatusLabel?.text = present ? "已获取 UDID" : "未认证"
-        authDescriptionLabel?.text = present ? "设备注册状态未知" : "udid未注册，不可正常安装应用"
+        let active = snapshot?.isActive == true
+        authStatusLabel?.text = active ? "已激活" : (snapshot?.status ?? (present ? "已获取 UDID" : "未认证"))
+        authStatusLabel?.textColor = active ? .systemGreen : .systemRed
+        authDescriptionLabel?.text = active ? "设备授权有效" : (present ? "设备授权状态：" + (snapshot?.status ?? "未知") : "udid未注册，不可正常安装应用")
+        authIcon?.backgroundColor = active ? .systemGreen : .systemRed
+        if let image = authIcon?.subviews.compactMap({ $0 as? UIImageView }).first {
+            image.image = UIImage(systemName: active ? "checkmark" : "xmark")
+        }
+        if present { DeviceAuthorizationMemory.shared.refreshIfNeeded() }
     }
 
     override func viewDidLoad() {
@@ -35,6 +113,7 @@ final class SettingsViewController: UIViewController {
         auth.layer.cornerRadius = 18
         auth.heightAnchor.constraint(equalToConstant: 96).isActive = true
         let icon = SettingsStyle.statusIcon(registered: false, diameter: 48)
+        authIcon = icon
         icon.translatesAutoresizingMaskIntoConstraints = false
         auth.addSubview(icon)
         let statusLabel = SettingsStyle.text("未认证", size: 14, color: .systemRed)
@@ -65,6 +144,8 @@ final class SettingsViewController: UIViewController {
         ])
         auth.addTarget(self, action: #selector(openDeviceAuth), for: .touchUpInside)
         stack.addArrangedSubview(auth)
+        NotificationCenter.default.addObserver(self, selector: #selector(authStateChanged), name: DeviceAuthorizationMemory.didChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(authStateChanged), name: UDIDService.didUpdateNotification, object: nil)
         updateAuthSummary()
 
         SettingsStyle.section("功能", in: stack)
@@ -295,7 +376,7 @@ private final class DeviceAuthDetailController: UIViewController {
     private var acquireButton: UIButton?
     private var authorizationStatusLabel: UILabel?
     private var authorizationExpiryLabel: UILabel?
-    private var authorizationGeneration = 0
+    private var stateIconView: UIView?
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
@@ -304,55 +385,20 @@ private final class DeviceAuthDetailController: UIViewController {
 
     @objc private func refreshUDID() {
         let valid = UDIDService.shared.udid.flatMap { UDIDLocalServer.validUDID($0) ? $0 : nil }
-        stateTitle?.text = valid == nil ? "未认证" : "已获取 UDID"
-        stateDescription?.text = valid == nil ? "udid未注册，不可正常安装应用" : "设备注册状态未知"
         udidDisplay?.text = valid ?? "未获取"
         acquireButton?.setTitle(valid == nil ? "获取设备 UDID" : "重新获取 UDID", for: .normal)
-        authorizationGeneration += 1
-        let generation = authorizationGeneration
-        guard let udid = valid else {
-            authorizationStatusLabel?.text = "未获取 UDID"
-            authorizationExpiryLabel?.text = "—"
-            return
+        let snapshot = DeviceAuthorizationMemory.shared.snapshot
+        let status = snapshot?.status ?? (valid == nil ? "未认证" : "查询中")
+        let active = snapshot?.isActive == true
+        stateTitle?.text = active ? "已激活" : status
+        stateDescription?.text = active ? "设备授权有效" : (valid == nil ? "请先获取设备 UDID" : "设备授权状态：" + status)
+        authorizationStatusLabel?.text = status
+        authorizationExpiryLabel?.text = snapshot?.expiryText ?? "—"
+        stateIconView?.backgroundColor = active ? .systemGreen : .systemRed
+        if let image = stateIconView?.subviews.compactMap({ $0 as? UIImageView }).first {
+            image.image = UIImage(systemName: active ? "checkmark" : "xmark")
         }
-        authorizationStatusLabel?.text = "查询中"
-        authorizationExpiryLabel?.text = "—"
-        var components = URLComponents(string: "https://app3.zonoeios.xyz/index/index/apiface")
-        components?.queryItems = [URLQueryItem(name: "udid", value: udid)]
-        guard let url = components?.url else { return }
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
-        request.httpMethod = "GET"
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            let object = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-            let code = (object?["code"] as? NSNumber)?.intValue ?? (object?["code"] as? String).flatMap(Int.init)
-            let msg = (object?["msg"] as? String) ?? ""
-            let rawExpiry = (object?["expire"] as? NSNumber)?.doubleValue ?? (object?["expire"] as? String).flatMap(Double.init)
-            DispatchQueue.main.async {
-                guard let self = self, generation == self.authorizationGeneration,
-                      UDIDService.shared.udid == udid else { return }
-                if error != nil || (response as? HTTPURLResponse).map({ !(200...299).contains($0.statusCode) }) != false || object == nil {
-                    self.authorizationStatusLabel?.text = "查询失败"
-                    self.stateTitle?.text = "查询失败"
-                    self.stateDescription?.text = "设备授权状态暂不可用"
-                } else if code == 1 && msg.lowercased() == "ok", let timestamp = rawExpiry, timestamp > Date().timeIntervalSince1970 {
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                    self.authorizationStatusLabel?.text = "激活"
-                    self.authorizationExpiryLabel?.text = formatter.string(from: Date(timeIntervalSince1970: timestamp))
-                    self.stateTitle?.text = "已激活"
-                    self.stateDescription?.text = "设备授权有效"
-                } else {
-                    self.authorizationStatusLabel?.text = (rawExpiry ?? 0) > 0 && (rawExpiry ?? 0) <= Date().timeIntervalSince1970 ? "已过期" : "未激活"
-                    self.stateTitle?.text = self.authorizationStatusLabel?.text
-                    self.stateDescription?.text = "设备尚无有效授权"
-                    if let timestamp = rawExpiry, timestamp > 0 {
-                        let formatter = DateFormatter()
-                        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                        self.authorizationExpiryLabel?.text = formatter.string(from: Date(timeIntervalSince1970: timestamp))
-                    }
-                }
-            }
-        }.resume()
+        DeviceAuthorizationMemory.shared.refreshIfNeeded()
     }
 
     override func viewDidLoad() {
@@ -360,11 +406,14 @@ private final class DeviceAuthDetailController: UIViewController {
         view.backgroundColor = SettingsStyle.background
         NotificationCenter.default.addObserver(self, selector: #selector(refreshUDID),
                                                name: UDIDService.didUpdateNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshUDID),
+                                               name: DeviceAuthorizationMemory.didChange, object: nil)
         let header = SettingsDetailLayout.header(in: self, title: "设备认证", back: #selector(close))
         SettingsStyle.embed(scroll: scroll, stack: stack, in: view, top: header.bottomAnchor, bottomInset: 20)
 
         let stateCard = SettingsStyle.card()
         let stateIcon = SettingsStyle.statusIcon(registered: false, diameter: 60)
+        stateIconView = stateIcon
         stateIcon.translatesAutoresizingMaskIntoConstraints = false
         let title = SettingsStyle.text("未认证", size: 21, bold: true)
         let desc = SettingsStyle.text("udid未注册，不可正常安装应用", size: 14, color: SettingsStyle.secondary)

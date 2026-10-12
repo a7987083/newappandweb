@@ -248,7 +248,7 @@ final class AppSigningService: AppSigning {
             }
             report("已移除 " + String(chosen.count) + " 条加载命令")
         }
-        if SigningInjectionPreferences.automaticBuiltIn {
+        if request.automaticBuiltIn {
             let root = Bundle.main.bundleURL.appendingPathComponent("dylib", isDirectory: true)
             let fm = FileManager.default
             if fm.fileExists(atPath: root.path) {
@@ -269,7 +269,7 @@ final class AppSigningService: AppSigning {
                     report("自动注入完成：" + String(accepted.count) + " 个组件")
                 }
             } else {
-                report("内置 dylib 目录不存在，本次跳过自动注入")
+                throw ZonoePluginLibrary.failure("已开启注入修改器和菜单，但 App 内缺少 dylib 文件夹")
             }
         }
         if !request.injectedPlugins.isEmpty {

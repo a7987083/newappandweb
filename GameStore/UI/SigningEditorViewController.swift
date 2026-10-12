@@ -6,6 +6,7 @@ final class SigningEditorViewController: UIViewController {
     private let ipaURL: URL
     private let packageInfo: AppPackageInfo?
     private var toggles = [WritableKeyPath<SigningOptions, Bool>: UISwitch]()
+    private let automaticInjectionToggle = UISwitch()
     private var installMode: IPAInstallMode = .network
     private let cancelButton = UIButton(type: .system)
     private let service = AppSigningService()
@@ -85,6 +86,9 @@ final class SigningEditorViewController: UIViewController {
         addToggle("Ad-hoc 伪签名", key: \.temporarySigning, value: options.temporarySigning)
         addToggle("注册 UDID 回调", key: \.registerCallback, value: options.registerCallback)
         addToggle("签名完成自动安装", key: \.autoInstallAfterSigning, value: options.autoInstallAfterSigning)
+        automaticInjectionToggle.isOn = SigningInjectionPreferences.automaticBuiltIn
+        automaticInjectionToggle.addTarget(self, action: #selector(changeAutomaticInjection(_:)), for: .valueChanged)
+        addStandaloneToggle("注入修改器和菜单", control: automaticInjectionToggle)
         let rule = UISegmentedControl(items: SigningPackagingRule.allCases.map { $0.title })
         rule.selectedSegmentIndex = SigningPackagingRule.allCases.firstIndex(of: options.packagingRule) ?? 0
         rule.addTarget(self, action: #selector(changePackagingRule(_:)), for: .valueChanged)
@@ -195,6 +199,13 @@ final class SigningEditorViewController: UIViewController {
         control.addTarget(self, action: #selector(toggleChanged(_:)), for: .valueChanged)
         toggles[key] = control
         addToggleRow(title, control: control)
+    }
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        automaticInjectionToggle.isOn = SigningInjectionPreferences.automaticBuiltIn
+    }
+    @objc private func changeAutomaticInjection(_ sender: UISwitch) {
+        SigningInjectionPreferences.automaticBuiltIn = sender.isOn
     }
     @objc private func toggleChanged(_ sender: UISwitch) {
         guard let key = toggles.first(where: { $0.value === sender })?.key else { return }
@@ -401,7 +412,8 @@ final class SigningEditorViewController: UIViewController {
         cancelButton.isEnabled = true
         status.text = "正在准备签名…"
         service.sign(request: SigningRequest(ipaURL: ipaURL, certificate: selected, password: password, editing: editing,
-                                             injectedPlugins: selectedPlugins, removedLoadPaths: removedLoadPaths),
+                                             injectedPlugins: selectedPlugins, removedLoadPaths: removedLoadPaths,
+                                             automaticBuiltIn: automaticInjectionToggle.isOn),
             progress: { [weak self] state in self?.status.text = state.rawValue },
             completion: { [weak self] result in
                 guard let self = self else { return }

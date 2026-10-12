@@ -2,7 +2,7 @@ import UIKit
 import Zip
 
 /// Per-package signing editor. The signing engine and global settings remain shared.
-final class SigningEditorViewController: UIViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+final class SigningEditorViewController: UIViewController {
     private let ipaURL: URL
     private let packageInfo: AppPackageInfo?
     private var toggles = [WritableKeyPath<SigningOptions, Bool>: UISwitch]()
@@ -17,7 +17,6 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
     private var format = UISegmentedControl(items: ["IPA", "ZIP", "TIPA"])
     private var compression = UISegmentedControl(items: IPACompressionPreset.allCases.map { $0.title })
     private var removeSchemes = UISwitch()
-    private var replacementIcon: Data?
     private var selectedPlugins: [URL] = []
     private var removedLoadPaths: [String] = []
     private var running = false
@@ -90,10 +89,6 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         rule.selectedSegmentIndex = SigningPackagingRule.allCases.firstIndex(of: options.packagingRule) ?? 0
         rule.addTarget(self, action: #selector(changePackagingRule(_:)), for: .valueChanged)
         addControl("打包规则", control: rule)
-        let iconButton = UIButton(type: .system)
-        iconButton.setTitle("选择替换图标", for: .normal)
-        iconButton.addTarget(self, action: #selector(selectIcon), for: .touchUpInside)
-        addCard(iconButton)
         let pluginButton = UIButton(type: .system)
         pluginButton.setTitle("选择注入动态库", for: .normal)
         pluginButton.addTarget(self, action: #selector(selectPlugins), for: .touchUpInside)
@@ -354,18 +349,6 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         sheet.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
         present(sheet, animated: true)
     }
-    @objc private func selectIcon() {
-        guard !running else { return }
-        let picker = UIImagePickerController()
-        picker.sourceType = .photoLibrary
-        picker.delegate = self
-        present(picker, animated: true)
-    }
-    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { picker.dismiss(animated: true) }
-    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-        replacementIcon = (info[.originalImage] as? UIImage)?.pngData()
-        picker.dismiss(animated: true)
-    }
     private func promptPassword(for certificate: DeviceCertificate) {
         let alert = UIAlertController(title: "输入证书密码", message: "此证书尚未保存 P12 密码", preferredStyle: .alert)
         alert.addTextField {
@@ -410,7 +393,7 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
             removeURLSchemes: removeSchemes.isOn,
             outputFormat: formats[format.selectedSegmentIndex],
             compressionPreset: IPACompressionPreset.allCases[compression.selectedSegmentIndex],
-            replacementIconPNG: replacementIcon
+            replacementIconPNG: nil
         )
         running = true
         action.isEnabled = false

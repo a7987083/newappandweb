@@ -145,6 +145,11 @@ final class SigningOptionsStore: ObservableObject {
 enum SigningInjectionPreferences {
     private static let pathKey = "zonoe.injection.path.v1"
     private static let folderKey = "zonoe.injection.folder.v1"
+    private static let autoKey = "zonoe.injection.builtin.v1"
+    static var automaticBuiltIn: Bool {
+        get { UserDefaults.standard.bool(forKey: autoKey) }
+        set { UserDefaults.standard.set(newValue, forKey: autoKey) }
+    }
     static var useRpath: Bool {
         get { UserDefaults.standard.bool(forKey: pathKey) }
         set { UserDefaults.standard.set(newValue, forKey: pathKey) }

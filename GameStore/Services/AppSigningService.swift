@@ -93,7 +93,7 @@ final class AppSigningService: AppSigning {
     }
 
     private func injectSelectedPlugins(_ files: [URL], into app: URL,
-                                       useRpath: Bool, frameworks: Bool) throws {
+                                       useRpath: Bool, frameworks: Bool, trustedDirectory: URL? = nil) throws {
         let fm = FileManager.default
         guard let executable = Bundle(url: app)?.executableURL,
               fm.fileExists(atPath: executable.path) else {
@@ -111,7 +111,7 @@ final class AppSigningService: AppSigning {
             guard ext == "dylib" || ext == "framework" else {
                 throw ZonoePluginLibrary.failure("P1-A 仅支持 dylib / framework：" + file.lastPathComponent)
             }
-            guard file.deletingLastPathComponent().standardizedFileURL == ZonoePluginLibrary.directory.standardizedFileURL,
+            guard file.deletingLastPathComponent().standardizedFileURL == (trustedDirectory ?? ZonoePluginLibrary.directory).standardizedFileURL,
                   fm.fileExists(atPath: file.path),
                   (try? file.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == (ext == "framework"),
                   (try? file.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else {
@@ -247,6 +247,30 @@ final class AppSigningService: AppSigning {
                 throw ZonoePluginLibrary.failure("Mach-O 移除已有库失败")
             }
             report("已移除 " + String(chosen.count) + " 条加载命令")
+        }
+        if SigningInjectionPreferences.automaticBuiltIn {
+            let root = Bundle.main.bundleURL.appendingPathComponent("dylib", isDirectory: true)
+            let fm = FileManager.default
+            if fm.fileExists(atPath: root.path) {
+                guard (try? root.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]).isDirectory) == true,
+                      (try? root.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else {
+                    throw ZonoePluginLibrary.failure("内置 dylib 路径不是有效文件夹")
+                }
+                let entries = try fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isSymbolicLinkKey])
+                    .filter { !$0.lastPathComponent.hasPrefix(".") }
+                    .sorted { $0.lastPathComponent < $1.lastPathComponent }
+                let accepted = entries.filter { ["dylib", "framework"].contains($0.pathExtension.lowercased()) }
+                let unsupported = entries.filter { !["dylib", "framework"].contains($0.pathExtension.lowercased()) }
+                if !unsupported.isEmpty {
+                    report("内置目录忽略 " + String(unsupported.count) + " 个非 dylib/framework 项目")
+                }
+                if !accepted.isEmpty {
+                    try injectSelectedPlugins(accepted, into: app, useRpath: false, frameworks: false, trustedDirectory: root)
+                    report("自动注入完成：" + String(accepted.count) + " 个组件")
+                }
+            } else {
+                report("内置 dylib 目录不存在，本次跳过自动注入")
+            }
         }
         if !request.injectedPlugins.isEmpty {
             try injectSelectedPlugins(request.injectedPlugins, into: app,

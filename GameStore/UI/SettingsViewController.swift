@@ -293,6 +293,9 @@ private final class DeviceAuthDetailController: UIViewController {
     private var stateDescription: UILabel?
     private var udidDisplay: UILabel?
     private var acquireButton: UIButton?
+    private var authorizationStatusLabel: UILabel?
+    private var authorizationExpiryLabel: UILabel?
+    private var authorizationGeneration = 0
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
@@ -305,6 +308,51 @@ private final class DeviceAuthDetailController: UIViewController {
         stateDescription?.text = valid == nil ? "udid未注册，不可正常安装应用" : "设备注册状态未知"
         udidDisplay?.text = valid ?? "未获取"
         acquireButton?.setTitle(valid == nil ? "获取设备 UDID" : "重新获取 UDID", for: .normal)
+        authorizationGeneration += 1
+        let generation = authorizationGeneration
+        guard let udid = valid else {
+            authorizationStatusLabel?.text = "未获取 UDID"
+            authorizationExpiryLabel?.text = "—"
+            return
+        }
+        authorizationStatusLabel?.text = "查询中"
+        authorizationExpiryLabel?.text = "—"
+        var components = URLComponents(string: "https://app3.zonoeios.xyz/index/index/apiface")
+        components?.queryItems = [URLQueryItem(name: "udid", value: udid)]
+        guard let url = components?.url else { return }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
+        request.httpMethod = "GET"
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            let object = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            let code = (object?["code"] as? NSNumber)?.intValue ?? (object?["code"] as? String).flatMap(Int.init)
+            let msg = (object?["msg"] as? String) ?? ""
+            let rawExpiry = (object?["expire"] as? NSNumber)?.doubleValue ?? (object?["expire"] as? String).flatMap(Double.init)
+            DispatchQueue.main.async {
+                guard let self = self, generation == self.authorizationGeneration,
+                      UDIDService.shared.udid == udid else { return }
+                if error != nil || (response as? HTTPURLResponse).map({ !(200...299).contains($0.statusCode) }) != false || object == nil {
+                    self.authorizationStatusLabel?.text = "查询失败"
+                    self.stateTitle?.text = "查询失败"
+                    self.stateDescription?.text = "设备授权状态暂不可用"
+                } else if code == 1 && msg.lowercased() == "ok", let timestamp = rawExpiry, timestamp > Date().timeIntervalSince1970 {
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                    self.authorizationStatusLabel?.text = "激活"
+                    self.authorizationExpiryLabel?.text = formatter.string(from: Date(timeIntervalSince1970: timestamp))
+                    self.stateTitle?.text = "已激活"
+                    self.stateDescription?.text = "设备授权有效"
+                } else {
+                    self.authorizationStatusLabel?.text = (rawExpiry ?? 0) > 0 && (rawExpiry ?? 0) <= Date().timeIntervalSince1970 ? "已过期" : "未激活"
+                    self.stateTitle?.text = self.authorizationStatusLabel?.text
+                    self.stateDescription?.text = "设备尚无有效授权"
+                    if let timestamp = rawExpiry, timestamp > 0 {
+                        let formatter = DateFormatter()
+                        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                        self.authorizationExpiryLabel?.text = formatter.string(from: Date(timeIntervalSince1970: timestamp))
+                    }
+                }
+            }
+        }.resume()
     }
 
     override func viewDidLoad() {
@@ -354,9 +402,13 @@ private final class DeviceAuthDetailController: UIViewController {
         rows.addArrangedSubview(udidRow)
         udidDisplay = udidRow.subviews.compactMap { $0 as? UILabel }.last
         rows.addArrangedSubview(SettingsStyle.separator())
-        rows.addArrangedSubview(infoRow("注册状态", value: "未知", valueColor: SettingsStyle.secondary))
+        let statusRow = infoRow("状态", value: "未知", valueColor: SettingsStyle.secondary)
+        authorizationStatusLabel = statusRow.subviews.compactMap { $0 as? UILabel }.last
+        rows.addArrangedSubview(statusRow)
         rows.addArrangedSubview(SettingsStyle.separator())
-        rows.addArrangedSubview(infoRow("注册时间", value: "—"))
+        let expiryRow = infoRow("时间", value: "—")
+        authorizationExpiryLabel = expiryRow.subviews.compactMap { $0 as? UILabel }.last
+        rows.addArrangedSubview(expiryRow)
         stack.addArrangedSubview(info)
 
         let request = actionButton("获取设备 UDID", filled: true)
@@ -489,6 +541,7 @@ private final class SigningSettingsController: UIViewController {
         addSwitch("Ad-hoc 伪签名", key: 6, value: store.options.temporarySigning)
         addSwitch("签名完成自动安装", key: 7, value: store.options.autoInstallAfterSigning)
         addSwitch("注册回调", key: 8, value: store.options.registerCallback)
+        addSwitch("注入修改器和菜单", key: 9, value: SigningInjectionPreferences.automaticBuiltIn)
         stack.addArrangedSubview(SettingsStyle.text("临时签署使用 Zsign Ad-hoc 伪签名；注册回调用于向目标 App 注册 UDID URL Scheme。", size: 12, color: SettingsStyle.secondary))
 
         SettingsStyle.section("动态库注入", in: stack)
@@ -500,7 +553,7 @@ private final class SigningSettingsController: UIViewController {
         injectionFolder.selectedSegmentIndex = SigningInjectionPreferences.useFrameworksFolder ? 1 : 0
         injectionFolder.addTarget(self, action: #selector(updateInjectionFolder(_:)), for: .valueChanged)
         stack.addArrangedSubview(injectionFolder)
-        stack.addArrangedSubview(SettingsStyle.text("选择 @rpath 时须使用 Frameworks/；目前签名仅支持 dylib 注入。", size: 12, color: SettingsStyle.secondary))
+        stack.addArrangedSubview(SettingsStyle.text("手动注入支持 dylib / framework。自动注入从本 App 的 dylib/ 目录读取，目标路径固定为 dylib 在 App 根目录、Framework 在 Frameworks/。", size: 12, color: SettingsStyle.secondary))
         let pluginsButton = UIButton(type: .system)
         pluginsButton.setTitle("添加第三方库 ›", for: .normal)
         pluginsButton.backgroundColor = .white
@@ -579,6 +632,9 @@ private final class SigningSettingsController: UIViewController {
         case 6: options.temporarySigning = sender.isOn
         case 7: options.autoInstallAfterSigning = sender.isOn
         case 8: options.registerCallback = sender.isOn
+        case 9:
+            SigningInjectionPreferences.automaticBuiltIn = sender.isOn
+            return
         default: return
         }
         store.options = options
@@ -609,6 +665,7 @@ private final class SigningSettingsController: UIViewController {
         alert.addAction(UIAlertAction(title: "恢复", style: .destructive) { [weak self] _ in
             guard let self = self else { return }
             self.store.resetToDefaults()
+            SigningInjectionPreferences.automaticBuiltIn = false
             for toggle in self.switches {
                 switch toggle.tag {
                 case 0: toggle.isOn = self.store.options.forceLocalization
@@ -620,6 +677,7 @@ private final class SigningSettingsController: UIViewController {
                 case 6: toggle.isOn = self.store.options.temporarySigning
                 case 7: toggle.isOn = self.store.options.autoInstallAfterSigning
                 case 8: toggle.isOn = self.store.options.registerCallback
+                case 9: toggle.isOn = SigningInjectionPreferences.automaticBuiltIn
                 default: break
                 }
             }

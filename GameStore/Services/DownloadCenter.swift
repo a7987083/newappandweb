@@ -214,31 +214,33 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                 userInfo: [NSLocalizedDescriptionKey: "请选择 IPA 或 TIPA 文件"]))
             return
         }
-        let scoped = source.startAccessingSecurityScopedResource()
-        let stage = Self.downloadsDirectory().appendingPathComponent(".incoming-" + UUID().uuidString + ".ipa")
-        do {
-            try FileManager.default.createDirectory(at: stage.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try FileManager.default.copyItem(at: source, to: stage)
-        } catch {
-            if scoped { source.stopAccessingSecurityScopedResource() }
-            completion(error)
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.importLocalPackage(source, completion: completion) }
             return
         }
-        if scoped { source.stopAccessingSecurityScopedResource() }
-        extractionStatus[stage.lastPathComponent] = "正在解压"
-        archiveQueue.async {
+        let stage = Self.downloadsDirectory().appendingPathComponent(".incoming-" + UUID().uuidString + ".ipa")
+        let key = stage.lastPathComponent
+        extractionStatus[key] = "正在导入"
+        archiveQueue.async { [weak self] in
+            guard let self = self else { return }
             defer { try? FileManager.default.removeItem(at: stage) }
+            let scoped = source.startAccessingSecurityScopedResource()
+            defer { if scoped { source.stopAccessingSecurityScopedResource() } }
             do {
+                try FileManager.default.createDirectory(at: stage.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try FileManager.default.copyItem(at: source, to: stage)
+                DispatchQueue.main.async { self.extractionStatus[key] = "正在解压" }
                 let destination = try self.validateAndPublish(stage, filename: source.lastPathComponent)
                 DispatchQueue.main.async {
-                    self.extractionStatus[stage.lastPathComponent] = "解压完成"
+                    self.extractionStatus[key] = "正在校验并入库"
                     self.extractionStatus[destination.lastPathComponent] = "解压完成"
                     self.reloadDownloadedItems()
+                    self.extractionStatus[key] = "解压完成"
                     completion(nil)
                 }
             } catch {
                 DispatchQueue.main.async {
-                    self.extractionStatus[stage.lastPathComponent] = "解压失败：" + error.localizedDescription
+                    self.extractionStatus[key] = "解压失败：" + error.localizedDescription
                     completion(error)
                 }
             }

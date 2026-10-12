@@ -308,8 +308,20 @@ private struct AppPackageInfo {
         let iconNames = (info["CFBundleIcons"] as? [String: Any])
             .flatMap { $0["CFBundlePrimaryIcon"] as? [String: Any] }
             .flatMap { $0["CFBundleIconFiles"] as? [String] } ?? []
-        let candidates = (iconNames + ["AppIcon60x60", "AppIcon", "Icon"]).reversed()
+        let primaryName = (info["CFBundleIcons"] as? [String: Any])
+            .flatMap { $0["CFBundlePrimaryIcon"] as? [String: Any] }
+            .flatMap { $0["CFBundleIconName"] as? String }
+        let candidates = (iconNames + [primaryName].compactMap { $0 } + ["AppIcon60x60", "AppIcon", "Icon"]).reversed()
         var icon: UIImage?
+        // UIKit can resolve named images from a compiled Assets.car in the app bundle.
+        if let bundle = Bundle(url: app) {
+            for name in candidates {
+                if let asset = UIImage(named: name, in: bundle, compatibleWith: nil) {
+                    icon = asset
+                    break
+                }
+            }
+        }
         for candidate in candidates {
             for suffix in ["", "@3x", "@2x"] {
                 let name = candidate + suffix + ".png"

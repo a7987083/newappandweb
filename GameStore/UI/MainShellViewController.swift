@@ -98,7 +98,8 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         guard let file = urls.first else { return }
         AppStoreViewModel.shared.downloadCenter.importLocalPackage(file) { [weak self] error in
-            if let error = error { self?.showImportError(error.localizedDescription) }
+            // The unified progress observer reports import failures.
+            _ = error
         }
     }
     private func showImportError(_ message: String) {
@@ -169,9 +170,13 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     private func updateExtractionAlert(_ status: [String: String]) {
         // Only foreground extraction events produce alerts; restored entries have
         // already completed by the time their UI is first observed.
-        let active = status.filter { $0.value == "正在解压" }.keys.sorted()
+        let active = status.filter {
+            ["正在导入", "正在解压", "正在校验并入库"].contains($0.value)
+                && $0.key.hasPrefix(".incoming-")
+        }.keys.sorted()
         if let displayed = displayedExtraction {
-            if let result = status[displayed], result != "正在解压" {
+            if let result = status[displayed],
+               !["正在导入", "正在解压", "正在校验并入库"].contains(result) {
                 displayedExtraction = nil
                 let alert = extractionAlert
                 extractionAlert = nil
@@ -186,13 +191,18 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
                     }
                 }
             }
+            } else if let phase = status[displayed] {
+                extractionAlert?.title = phase == "正在导入" ? "正在导入安装包" :
+                    phase == "正在校验并入库" ? "正在校验并入库" : "正在解压安装包"
+                extractionAlert?.message = "正在准备本地安装包…"
+            }
             return
         }
         guard extractionAlert == nil, presentedViewController == nil,
               let name = active.first else { return }
         displayedExtraction = name
-        let alert = UIAlertController(title: "正在解压安装包",
-                                      message: name + "\n正在准备签名文件…",
+        let alert = UIAlertController(title: status[name] == "正在导入" ? "正在导入安装包" : "正在解压安装包",
+                                      message: "正在准备本地安装包…",
                                       preferredStyle: .alert)
         extractionAlert = alert
         present(alert, animated: true)

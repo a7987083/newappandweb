@@ -173,17 +173,20 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
     private func addToggle(_ title: String, key: WritableKeyPath<SigningOptions, Bool>, value: Bool) {
         let control = UISwitch()
         control.isOn = value
-        control.addAction(UIAction { _ in
-            var options = SigningOptionsStore.shared.options
-            options[keyPath: key] = control.isOn
-            SigningOptionsStore.shared.options = options
-        }, for: .valueChanged)
+        control.tag = toggles.count
+        control.addTarget(self, action: #selector(toggleChanged(_:)), for: .valueChanged)
         toggles[key] = control
         let stack = UIStackView(arrangedSubviews: [UILabel(), control])
         (stack.arrangedSubviews[0] as? UILabel)?.text = title
         stack.axis = .horizontal
         stack.distribution = .equalSpacing
         addCard(stack)
+    }
+    @objc private func toggleChanged(_ sender: UISwitch) {
+        guard let key = toggles.first(where: { $0.value === sender })?.key else { return }
+        var options = SigningOptionsStore.shared.options
+        options[keyPath: key] = sender.isOn
+        SigningOptionsStore.shared.options = options
     }
     @objc private func changePackagingRule(_ sender: UISegmentedControl) {
         var options = SigningOptionsStore.shared.options

@@ -1150,8 +1150,10 @@ final class PluginLibraryController: UIViewController, UITableViewDataSource, UI
                               let code = (response as? HTTPURLResponse)?.statusCode, (200...299).contains(code) else {
                             throw failure ?? ZonoePluginLibrary.failure("下载失败")
                         }
-                        let staging = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + url.pathExtension.lowercased())
-                        defer { try? FileManager.default.removeItem(at: staging) }
+                        let stagingDir = FileManager.default.temporaryDirectory.appendingPathComponent("zonoe-plugin-" + UUID().uuidString, isDirectory: true)
+                        try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true, attributes: nil)
+                        defer { try? FileManager.default.removeItem(at: stagingDir) }
+                        let staging = stagingDir.appendingPathComponent(url.lastPathComponent)
                         try FileManager.default.copyItem(at: location, to: staging)
                         try ZonoePluginLibrary.importFile(staging)
                     } catch { failure = error }

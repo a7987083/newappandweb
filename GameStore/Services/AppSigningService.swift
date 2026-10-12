@@ -146,7 +146,7 @@ final class AppSigningService: AppSigning {
             guard copied.insert(name).inserted else {
                 throw ZonoePluginLibrary.failure("重复的动态库名称：" + name)
             }
-            let targetFolder = ext == "framework" ? app.appendingPathComponent("Frameworks", isDirectory: true) : destinationFolder
+            let targetFolder = destinationFolder
             try fm.createDirectory(at: targetFolder, withIntermediateDirectories: true)
             let destination = targetFolder.appendingPathComponent(name)
             guard !fm.fileExists(atPath: destination.path) else {
@@ -158,7 +158,8 @@ final class AppSigningService: AppSigning {
                 guard let executable = Bundle(url: destination)?.executableURL else {
                     throw ZonoePluginLibrary.failure("Framework 复制后无法定位可执行文件：" + name)
                 }
-                loadPath = "@executable_path/Frameworks/" + name + "/" + executable.lastPathComponent
+                let relativePath = (frameworks ? "Frameworks/" : "") + name + "/" + executable.lastPathComponent
+                loadPath = useRpath ? "@rpath/" + relativePath : "@executable_path/" + relativePath
             } else {
                 loadPath = useRpath ? "@rpath/" + name :
                     (frameworks ? "@executable_path/Frameworks/" : "@executable_path/") + name
@@ -265,7 +266,10 @@ final class AppSigningService: AppSigning {
                     report("内置目录忽略 " + String(unsupported.count) + " 个非 dylib/framework 项目")
                 }
                 if !accepted.isEmpty {
-                    try injectSelectedPlugins(accepted, into: app, useRpath: false, frameworks: false, trustedDirectory: root)
+                    try injectSelectedPlugins(accepted, into: app,
+                                              useRpath: request.injectionUseRpath,
+                                              frameworks: request.injectionFrameworks,
+                                              trustedDirectory: root)
                     report("自动注入完成：" + String(accepted.count) + " 个组件")
                 }
             } else {

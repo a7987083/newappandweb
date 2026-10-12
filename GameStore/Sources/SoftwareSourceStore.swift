@@ -8,6 +8,8 @@ final class SoftwareSourceStore: ObservableObject {
     private static let storageKey = "zonoe.sources"
     private static let identitiesKey = "zonoe.sourceIdentities"
     private static let namesKey = "zonoe.sourceNames"
+    private static let bundledSource = "https://app3.zonoeios.xyz/appstore"
+    private static let bundledSeedKey = "zonoe.bundledSourceSeed.v1"
 
     @Published private(set) var sources: [String]
     @Published private(set) var isLoading = false
@@ -24,7 +26,16 @@ final class SoftwareSourceStore: ObservableObject {
 
     init(session: URLSession = .shared) {
         self.session = session
-        sources = UserDefaults.standard.stringArray(forKey: Self.storageKey) ?? []
+        var savedSources = UserDefaults.standard.stringArray(forKey: Self.storageKey) ?? []
+        // Seed once: preserve the user's existing sources and respect later manual removal.
+        if !UserDefaults.standard.bool(forKey: Self.bundledSeedKey) {
+            if !savedSources.contains(Self.bundledSource) {
+                savedSources.insert(Self.bundledSource, at: 0)
+            }
+            UserDefaults.standard.set(savedSources, forKey: Self.storageKey)
+            UserDefaults.standard.set(true, forKey: Self.bundledSeedKey)
+        }
+        sources = savedSources
         registeredIdentities = UserDefaults.standard.dictionary(forKey: Self.identitiesKey) as? [String: String] ?? [:]
         sourceNames = UserDefaults.standard.dictionary(forKey: Self.namesKey) as? [String: String] ?? [:]
         catalogsBySource = SourceCatalogCache.load().filter { sources.contains($0.key) }

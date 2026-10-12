@@ -603,7 +603,7 @@ private final class SigningSettingsController: UIViewController {
         injectionFolder.selectedSegmentIndex = SigningInjectionPreferences.useFrameworksFolder ? 1 : 0
         injectionFolder.addTarget(self, action: #selector(updateInjectionFolder(_:)), for: .valueChanged)
         stack.addArrangedSubview(injectionFolder)
-        stack.addArrangedSubview(SettingsStyle.text("手动注入支持 dylib / framework。自动注入从本 App 的 dylib/ 目录读取，目标路径固定为 dylib 在 App 根目录、Framework 在 Frameworks/。", size: 12, color: SettingsStyle.secondary))
+        stack.addArrangedSubview(SettingsStyle.text("手动注入和自动注入共用上述加载路径及存放目录；自动注入读取本 App 的 dylib/ 文件夹。@rpath 需要目标 App 的 LC_RPATH 能正确解析。", size: 12, color: SettingsStyle.secondary))
         let pluginsButton = UIButton(type: .system)
         pluginsButton.setTitle("添加第三方库 ›", for: .normal)
         pluginsButton.backgroundColor = .white

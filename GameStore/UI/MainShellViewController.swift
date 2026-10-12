@@ -190,7 +190,6 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
                         self.updateExtractionAlert(status)
                     }
                 }
-            }
             } else if let phase = status[displayed] {
                 extractionAlert?.title = phase == "正在导入" ? "正在导入安装包" :
                     phase == "正在校验并入库" ? "正在校验并入库" : "正在解压安装包"

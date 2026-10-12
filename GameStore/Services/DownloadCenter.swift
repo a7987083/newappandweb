@@ -21,6 +21,8 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
     @Published private(set) var completedItems: [Item] = []
     @Published private(set) var terminalItems: [Item] = []
     @Published private(set) var extractionStatus: [String: String] = [:]
+    // Task-bound post-download phase. A transfer at 100% is not a completed import.
+    @Published private(set) var processingPhaseByTask: [Int: String] = [:]
 
     private var resumeDataByURL: [URL: Data] = [:]
     private var pausingTaskIDs = Set<Int>()
@@ -649,6 +651,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             let originalSource = downloadTask.originalRequest?.url
             DispatchQueue.main.async {
                 self.extractionStatus[stage.lastPathComponent] = "正在解压"
+                self.processingPhaseByTask[taskIdentifier] = "正在解压安装包"
             }
             archiveQueue.async {
                 defer { try? FileManager.default.removeItem(at: stage) }
@@ -659,6 +662,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                 do {
                     let validated = try self.validateAndPublish(stage, filename: destination.lastPathComponent)
                     DispatchQueue.main.async {
+                        self.processingPhaseByTask[taskIdentifier] = "正在校验并入库"
                         self.extractionStatus[stage.lastPathComponent] = "解压完成"
                         self.extractionStatus[validated.lastPathComponent] = "解压完成"
                         guard self.activeItems.contains(where: { $0.taskIdentifier == taskIdentifier }) else {
@@ -757,6 +761,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
 
         resumedTaskIDs.remove(taskIdentifier)
         pausingTaskIDs.remove(taskIdentifier)
+        processingPhaseByTask.removeValue(forKey: taskIdentifier)
         var item = activeItems.remove(at: index)
         let appKey = appKeyByTask.removeValue(forKey: taskIdentifier) ?? activeAppKeys[item.id]
         activeAppKeys.removeValue(forKey: item.id)

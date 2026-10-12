@@ -122,19 +122,24 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         linkDownloadSubscription = nil
         linkDownloadURL = url
         let center = AppStoreViewModel.shared.downloadCenter
-        linkDownloadSubscription = Publishers.CombineLatest3(center.$activeItems, center.$completedItems, center.$terminalItems)
+        linkDownloadSubscription = Publishers.CombineLatest4(center.$activeItems, center.$completedItems,
+            center.$terminalItems, center.$processingPhaseByTask)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] active, completed, terminal in
+            .sink { [weak self] active, completed, terminal, phases in
                 guard let self = self, self.linkDownloadURL == url else { return }
                 if let item = active.first(where: { $0.sourceURL == url }) {
-                    guard self.linkDownloadAlert == nil, self.presentedViewController == nil else {
-                        if self.linkDownloadAlert != nil {
-                            self.linkDownloadAlert?.message = "\(Int(item.progress * 100))% · 正在下载"
-                        }
+                    let phase = item.taskIdentifier.flatMap { phases[$0] }
+                    let title = phase ?? "正在下载安装包"
+                    let message = phase == nil
+                        ? "\(Int(min(1, max(0, item.progress)) * 100))% · 正在下载"
+                        : "下载完成 · \(phase!)"
+                    if let alert = self.linkDownloadAlert {
+                        alert.title = title
+                        alert.message = message
                         return
                     }
-                    let alert = UIAlertController(title: "正在下载安装包",
-                        message: "0% · 正在下载", preferredStyle: .alert)
+                    guard self.presentedViewController == nil else { return }
+                    let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
                     self.linkDownloadAlert = alert
                     self.present(alert, animated: true)
                 } else if let result = completed.first(where: { $0.sourceURL == url }) ??

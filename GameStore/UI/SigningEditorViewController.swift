@@ -53,7 +53,7 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         scroll.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scroll)
         content.axis = .vertical
-        content.spacing = 12
+        content.spacing = 10
         content.translatesAutoresizingMaskIntoConstraints = false
         scroll.addSubview(content)
 
@@ -174,14 +174,14 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         row.addSubview(label)
         row.addSubview(control)
         NSLayoutConstraint.activate([
-            row.heightAnchor.constraint(equalToConstant: 46),
+            row.heightAnchor.constraint(equalToConstant: 38),
             label.leadingAnchor.constraint(equalTo: row.leadingAnchor),
             label.centerYAnchor.constraint(equalTo: row.centerYAnchor),
             label.trailingAnchor.constraint(lessThanOrEqualTo: control.leadingAnchor, constant: -12),
             control.trailingAnchor.constraint(equalTo: row.trailingAnchor),
             control.centerYAnchor.constraint(equalTo: row.centerYAnchor)
         ])
-        addCard(row)
+        addCard(row, verticalInset: 6)
     }
     private func addToggle(_ title: String, key: WritableKeyPath<SigningOptions, Bool>, value: Bool) {
         let control = UISwitch()
@@ -229,7 +229,7 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
     }
 
     @discardableResult
-    private func addCard(_ child: UIView) -> UIView {
+    private func addCard(_ child: UIView, verticalInset: CGFloat = 12) -> UIView {
         let wrapper = UIView()
         wrapper.backgroundColor = .white
         wrapper.layer.cornerRadius = 14
@@ -239,8 +239,8 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         NSLayoutConstraint.activate([
             child.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor, constant: 14),
             child.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor, constant: -14),
-            child.topAnchor.constraint(equalTo: wrapper.topAnchor, constant: 12),
-            child.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor, constant: -12)
+            child.topAnchor.constraint(equalTo: wrapper.topAnchor, constant: verticalInset),
+            child.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor, constant: -verticalInset)
         ])
         return wrapper
     }

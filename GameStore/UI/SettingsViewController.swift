@@ -493,6 +493,24 @@ private final class SigningSettingsController: UIViewController {
         addSwitch("注册回调", key: 8, value: store.options.registerCallback)
         stack.addArrangedSubview(SettingsStyle.text("临时签署使用 Zsign Ad-hoc 伪签名；注册回调用于向目标 App 注册 UDID URL Scheme。", size: 12, color: SettingsStyle.secondary))
 
+        SettingsStyle.section("动态库注入", in: stack)
+        let injectionPath = UISegmentedControl(items: ["@executable_path", "@rpath"])
+        injectionPath.selectedSegmentIndex = SigningInjectionPreferences.useRpath ? 1 : 0
+        injectionPath.addTarget(self, action: #selector(updateInjectionPath(_:)), for: .valueChanged)
+        stack.addArrangedSubview(injectionPath)
+        let injectionFolder = UISegmentedControl(items: ["/", "Frameworks/"])
+        injectionFolder.selectedSegmentIndex = SigningInjectionPreferences.useFrameworksFolder ? 1 : 0
+        injectionFolder.addTarget(self, action: #selector(updateInjectionFolder(_:)), for: .valueChanged)
+        stack.addArrangedSubview(injectionFolder)
+        stack.addArrangedSubview(SettingsStyle.text("选择 @rpath 时须使用 Frameworks/；目前签名仅支持 dylib 注入。", size: 12, color: SettingsStyle.secondary))
+        let pluginsButton = UIButton(type: .system)
+        pluginsButton.setTitle("添加第三方库 ›", for: .normal)
+        pluginsButton.backgroundColor = .white
+        pluginsButton.layer.cornerRadius = 16
+        pluginsButton.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        pluginsButton.addTarget(self, action: #selector(openPluginLibrary), for: .touchUpInside)
+        stack.addArrangedSubview(pluginsButton)
+
         SettingsStyle.section("打包规则", in: stack)
         let packaging = UIButton(type: .system)
         packaging.backgroundColor = .white
@@ -537,6 +555,18 @@ private final class SigningSettingsController: UIViewController {
             label.trailingAnchor.constraint(lessThanOrEqualTo: toggle.leadingAnchor, constant: -8)
         ])
         stack.addArrangedSubview(row)
+    }
+
+    @objc private func updateInjectionPath(_ sender: UISegmentedControl) {
+        SigningInjectionPreferences.useRpath = sender.selectedSegmentIndex == 1
+    }
+    @objc private func updateInjectionFolder(_ sender: UISegmentedControl) {
+        SigningInjectionPreferences.useFrameworksFolder = sender.selectedSegmentIndex == 1
+    }
+    @objc private func openPluginLibrary() {
+        let controller = PluginLibraryController()
+        controller.modalPresentationStyle = .fullScreen
+        present(controller, animated: true)
     }
 
     @objc private func changeOption(_ sender: UISwitch) {

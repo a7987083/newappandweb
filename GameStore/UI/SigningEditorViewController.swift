@@ -17,6 +17,7 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
     private var compression = UISegmentedControl(items: IPACompressionPreset.allCases.map { $0.title })
     private var removeSchemes = UISwitch()
     private var replacementIcon: Data?
+    private var selectedPlugins: [URL] = []
     private var running = false
     private var artifact: SignedArtifact?
     private var installing = false
@@ -92,7 +93,7 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         iconButton.addTarget(self, action: #selector(selectIcon), for: .touchUpInside)
         addCard(iconButton)
         let pluginButton = UIButton(type: .system)
-        pluginButton.setTitle("选择注入插件（待接入注入引擎）", for: .normal)
+        pluginButton.setTitle("选择注入动态库", for: .normal)
         pluginButton.addTarget(self, action: #selector(selectPlugins), for: .touchUpInside)
         addCard(pluginButton)
         let certButton = UIButton(type: .system)
@@ -277,7 +278,8 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         let library = PluginLibraryController()
         library.modalPresentationStyle = .fullScreen
         library.onSelection = { [weak self] chosen in
-            self?.status.text = chosen.isEmpty ? "未选择插件" : "已选择 " + String(chosen.count) + " 个插件；当前版本尚未注入"
+            self?.selectedPlugins = chosen
+            self?.status.text = chosen.isEmpty ? "未选择插件" : "已选择 " + String(chosen.count) + " 个插件（目前仅支持 dylib 注入）"
         }
         present(library, animated: true)
     }
@@ -359,7 +361,8 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         cancelCard?.isHidden = false
         cancelButton.isEnabled = true
         status.text = "正在准备签名…"
-        service.sign(request: SigningRequest(ipaURL: ipaURL, certificate: selected, password: password, editing: editing),
+        service.sign(request: SigningRequest(ipaURL: ipaURL, certificate: selected, password: password, editing: editing,
+                                             injectedPlugins: selectedPlugins),
             progress: { [weak self] state in self?.status.text = state.rawValue },
             completion: { [weak self] result in
                 guard let self = self else { return }

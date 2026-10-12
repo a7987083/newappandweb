@@ -92,6 +92,62 @@ final class AppSigningService: AppSigning {
         }
     }
 
+    private func injectSelectedPlugins(_ files: [URL], into app: URL,
+                                       useRpath: Bool, frameworks: Bool) throws {
+        let fm = FileManager.default
+        guard let executable = Bundle(url: app)?.executableURL,
+              fm.fileExists(atPath: executable.path) else {
+            throw ZonoePluginLibrary.failure("找不到 App 主程序，无法注入")
+        }
+        if useRpath && !frameworks {
+            throw ZonoePluginLibrary.failure("@rpath 注入必须选择 Frameworks 目录，以确保路径可解析")
+        }
+        let destinationFolder = frameworks ? app.appendingPathComponent("Frameworks", isDirectory: true) : app
+        try fm.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
+        var copied = Set<String>()
+        for file in files {
+            try checkCancellation()
+            guard file.pathExtension.lowercased() == "dylib" else {
+                throw ZonoePluginLibrary.failure("当前仅支持注入 .dylib，暂不支持 .deb 或 .framework：" + file.lastPathComponent)
+            }
+            guard file.deletingLastPathComponent().standardizedFileURL == ZonoePluginLibrary.directory.standardizedFileURL,
+                  fm.fileExists(atPath: file.path),
+                  (try? file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]).isRegularFile) == true,
+                  (try? file.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else {
+                throw ZonoePluginLibrary.failure("插件不在仓库中或不是普通文件：" + file.lastPathComponent)
+            }
+            let handle = try FileHandle(forReadingFrom: file)
+            let header = handle.readData(ofLength: 4)
+            handle.closeFile()
+            let magic = header.withUnsafeBytes { raw -> UInt32 in
+                guard raw.count == 4 else { return 0 }
+                return raw.loadUnaligned(as: UInt32.self)
+            }
+            guard [0xfeedfacf, 0xcffaedfe, 0xcafebabe, 0xbebafeca, 0xcafebabf, 0xbfbafeca].contains(magic) else {
+                throw ZonoePluginLibrary.failure("插件不是支持的 Mach-O 动态库：" + file.lastPathComponent)
+            }
+            let name = file.lastPathComponent
+            guard copied.insert(name).inserted else {
+                throw ZonoePluginLibrary.failure("重复的动态库名称：" + name)
+            }
+            let destination = destinationFolder.appendingPathComponent(name)
+            guard !fm.fileExists(atPath: destination.path) else {
+                throw ZonoePluginLibrary.failure("目标 App 已存在同名动态库：" + name)
+            }
+            try fm.copyItem(at: file, to: destination)
+            let loadPath = useRpath ? "@rpath/" + name :
+                (frameworks ? "@executable_path/Frameworks/" : "@executable_path/") + name
+            let existing = ZNZsignKit.linkedDylibs(in: executable)
+            guard !existing.contains(loadPath) else {
+                throw ZonoePluginLibrary.failure("主程序已引用动态库：" + loadPath)
+            }
+            guard ZNZsignKit.injectDylib(into: executable, loadPath: loadPath, weak: false),
+                  ZNZsignKit.linkedDylibs(in: executable).contains(loadPath) else {
+                throw ZonoePluginLibrary.failure("Mach-O 注入失败：" + name)
+            }
+        }
+    }
+
     private func signIPA(request: SigningRequest, emit: (SigningState) -> Void) throws -> SignedArtifact {
         let fm = FileManager.default
         let work = fm.temporaryDirectory.appendingPathComponent("zonoe-sign-" + UUID().uuidString, isDirectory: true)
@@ -150,6 +206,13 @@ final class AppSigningService: AppSigning {
 
         let beforeNested = nestedDiagnosticSnapshot(in: app, phase: "签名前")
 
+        try checkCancellation()
+        if !request.injectedPlugins.isEmpty {
+            try injectSelectedPlugins(request.injectedPlugins, into: app,
+                                      useRpath: request.injectionUseRpath,
+                                      frameworks: request.injectionFrameworks)
+            report("注入完成：\\(request.injectedPlugins.count) 个动态库")
+        }
         try checkCancellation()
         if !options.temporarySigning {
             emit(.verifyCertificate)

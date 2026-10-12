@@ -76,6 +76,10 @@ final class SettingsViewController: UIViewController {
         signing.removeTarget(self, action: #selector(placeholderTapped(_:)), for: .touchUpInside)
         signing.addTarget(self, action: #selector(openSigningSettings), for: .touchUpInside)
         stack.addArrangedSubview(signing)
+        let plugins = placeholder("动态库/插件", icon: "puzzlepiece.extension.fill")
+        plugins.removeTarget(self, action: #selector(placeholderTapped(_:)), for: .touchUpInside)
+        plugins.addTarget(self, action: #selector(openPlugins), for: .touchUpInside)
+        stack.addArrangedSubview(plugins)
         let about = placeholder("关于我们", icon: "info.circle.fill")
         about.removeTarget(self, action: #selector(placeholderTapped(_:)), for: .touchUpInside)
         about.addTarget(self, action: #selector(openAbout), for: .touchUpInside)
@@ -112,6 +116,12 @@ final class SettingsViewController: UIViewController {
         let alert = UIAlertController(title: sender.accessibilityIdentifier, message: "当前仅为 UI 占位。", preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "知道了", style: .default))
         present(alert, animated: true)
+    }
+
+    @objc private func openPlugins() {
+        let page = PluginLibraryController()
+        page.modalPresentationStyle = .fullScreen
+        present(page, animated: true)
     }
 
     @objc private func openAbout() {
@@ -931,5 +941,266 @@ private enum SettingsStyle {
             stack.bottomAnchor.constraint(equalTo: scroll.bottomAnchor, constant: -22),
             stack.widthAnchor.constraint(equalTo: scroll.widthAnchor, constant: -16)
         ])
+    }
+}
+
+
+/// A separate plugin warehouse. No IPA archive is published into this directory.
+enum ZonoePluginLibrary {
+    static var directory: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("zonoedylib", isDirectory: true)
+    }
+    static func validName(_ url: URL) -> Bool {
+        ["dylib", "deb", "framework"].contains(url.pathExtension.lowercased())
+    }
+    static func files() -> [URL] {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: directory, withIntermediateDirectories: true, attributes: nil)
+        return ((try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isSymbolicLinkKey], options: [.skipsHiddenFiles])) ?? [])
+            .filter { validName($0) && (try? $0.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true }
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+    }
+    static func importFile(_ source: URL) throws {
+        guard validName(source) else { throw failure("仅支持 dylib、deb、framework") }
+        let fm = FileManager.default
+        let security = source.startAccessingSecurityScopedResource()
+        defer { if security { source.stopAccessingSecurityScopedResource() } }
+        guard fm.fileExists(atPath: source.path) else { throw failure("导入文件不存在") }
+        if (try? source.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+            throw failure("不支持符号链接")
+        }
+        let ext = source.pathExtension.lowercased()
+        let isDirectory = (try? source.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        guard (ext == "framework") == isDirectory else { throw failure("Framework 必须为完整目录，其他插件必须是文件") }
+        if isDirectory {
+            let contents = fm.enumerator(at: source, includingPropertiesForKeys: [.isSymbolicLinkKey])
+            while let item = contents?.nextObject() as? URL {
+                if (try? item.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+                    throw failure("Framework 内包含符号链接，暂不支持导入")
+                }
+            }
+        }
+        try fm.createDirectory(at: directory, withIntermediateDirectories: true, attributes: nil)
+        let stage = directory.appendingPathComponent(".incoming-" + UUID().uuidString)
+        defer { try? fm.removeItem(at: stage) }
+        try fm.copyItem(at: source, to: stage)
+        var destination = directory.appendingPathComponent(source.lastPathComponent)
+        while fm.fileExists(atPath: destination.path) {
+            destination = directory.appendingPathComponent(UUID().uuidString.prefix(8) + "-" + source.lastPathComponent)
+        }
+        try fm.moveItem(at: stage, to: destination)
+    }
+    static func failure(_ message: String) -> NSError {
+        NSError(domain: "ZonoePluginLibrary", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+}
+
+final class PluginLibraryController: UIViewController, UITableViewDataSource, UITableViewDelegate, UIDocumentPickerDelegate {
+    var onSelection: (([URL]) -> Void)?
+    private var entries = [URL]()
+    private var selected = Set<URL>()
+    private var editingFiles = false
+    private let table = UITableView(frame: .zero, style: .plain)
+    private let editButton = UIButton(type: .system)
+    private let plusButton = UIButton(type: .system)
+    private let selectionBar = UIStackView()
+    private let queue = DispatchQueue(label: "zonoe.plugins.io", qos: .utility)
+    private var importing = false
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = UIColor.systemGroupedBackground
+        let nav = UIView()
+        nav.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(nav)
+        let back = UIButton(type: .system)
+        back.setTitle("返回", for: .normal)
+        back.addTarget(self, action: #selector(close), for: .touchUpInside)
+        back.translatesAutoresizingMaskIntoConstraints = false
+        nav.addSubview(back)
+        let title = UILabel()
+        title.text = onSelection == nil ? "动态库/插件" : "选择注入插件"
+        title.font = .boldSystemFont(ofSize: 18)
+        title.translatesAutoresizingMaskIntoConstraints = false
+        nav.addSubview(title)
+        editButton.setTitle("编辑", for: .normal)
+        editButton.addTarget(self, action: #selector(toggleEdit), for: .touchUpInside)
+        editButton.translatesAutoresizingMaskIntoConstraints = false
+        nav.addSubview(editButton)
+        plusButton.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
+        plusButton.addTarget(self, action: #selector(showImport), for: .touchUpInside)
+        plusButton.translatesAutoresizingMaskIntoConstraints = false
+        nav.addSubview(plusButton)
+        table.translatesAutoresizingMaskIntoConstraints = false
+        table.dataSource = self
+        table.delegate = self
+        table.rowHeight = 67
+        view.addSubview(table)
+        selectionBar.axis = .horizontal
+        selectionBar.distribution = .fillEqually
+        selectionBar.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(selectionBar)
+        for name in ["全选", onSelection == nil ? "删除" : "确定选择", "完成"] {
+            let button = UIButton(type: .system)
+            button.setTitle(name, for: .normal)
+            if name == "删除" { button.setTitleColor(.systemRed, for: .normal) }
+            button.addTarget(self, action: name == "全选" ? #selector(selectAll) : name == "删除" ? #selector(removeSelected) : name == "完成" ? #selector(toggleEdit) : #selector(commitSelection), for: .touchUpInside)
+            selectionBar.addArrangedSubview(button)
+        }
+        NSLayoutConstraint.activate([
+            nav.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            nav.leadingAnchor.constraint(equalTo: view.leadingAnchor), nav.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            nav.heightAnchor.constraint(equalToConstant: 54),
+            back.leadingAnchor.constraint(equalTo: nav.leadingAnchor, constant: 18), back.centerYAnchor.constraint(equalTo: nav.centerYAnchor),
+            title.centerXAnchor.constraint(equalTo: nav.centerXAnchor), title.centerYAnchor.constraint(equalTo: nav.centerYAnchor),
+            plusButton.trailingAnchor.constraint(equalTo: nav.trailingAnchor, constant: -16), plusButton.centerYAnchor.constraint(equalTo: nav.centerYAnchor),
+            plusButton.widthAnchor.constraint(equalToConstant: 34), plusButton.heightAnchor.constraint(equalToConstant: 42),
+            editButton.trailingAnchor.constraint(equalTo: plusButton.leadingAnchor, constant: -15), editButton.centerYAnchor.constraint(equalTo: nav.centerYAnchor),
+            table.topAnchor.constraint(equalTo: nav.bottomAnchor), table.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            table.trailingAnchor.constraint(equalTo: view.trailingAnchor), table.bottomAnchor.constraint(equalTo: selectionBar.topAnchor),
+            selectionBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            selectionBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            selectionBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            selectionBar.heightAnchor.constraint(equalToConstant: 48)
+        ])
+        if onSelection != nil { editingFiles = true }
+        refresh()
+        updateEditing()
+    }
+    private func refresh() {
+        entries = ZonoePluginLibrary.files()
+        selected.formIntersection(Set(entries))
+        table.reloadData()
+    }
+    private func updateEditing() {
+        selectionBar.isHidden = !editingFiles
+        editButton.setTitle(editingFiles ? "完成" : "编辑", for: .normal)
+    }
+    @objc private func close() { dismiss(animated: true) }
+    @objc private func toggleEdit() {
+        editingFiles.toggle()
+        if !editingFiles { selected.removeAll() }
+        updateEditing()
+        table.reloadData()
+    }
+    @objc private func selectAll() {
+        selected = Set(entries)
+        table.reloadData()
+    }
+    @objc private func commitSelection() {
+        onSelection?(entries.filter { selected.contains($0) })
+        dismiss(animated: true)
+    }
+    @objc private func removeSelected() {
+        guard !selected.isEmpty else { return }
+        let alert = UIAlertController(title: "删除选中的插件", message: "将删除 " + String(selected.count) + " 个文件或目录，确定继续？", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
+            guard let self = self else { return }
+            let files = Array(self.selected)
+            self.queue.async {
+                var failure: Error?
+                for file in files {
+                    do { try FileManager.default.removeItem(at: file) } catch { failure = error }
+                }
+                DispatchQueue.main.async {
+                    self.selected.removeAll()
+                    self.refresh()
+                    if let failure = failure { self.message(failure.localizedDescription) }
+                }
+            }
+        })
+        present(alert, animated: true)
+    }
+    @objc private func showImport() {
+        let alert = UIAlertController(title: "添加第三方库", message: nil, preferredStyle: .actionSheet)
+        alert.addAction(UIAlertAction(title: "从文件安装", style: .default) { [weak self] _ in
+            guard let self = self else { return }
+            let picker = UIDocumentPickerViewController(documentTypes: ["public.data", "public.folder"], in: .import)
+            picker.allowsMultipleSelection = true
+            picker.delegate = self
+            self.present(picker, animated: true)
+        })
+        alert.addAction(UIAlertAction(title: "从链接安装", style: .default) { [weak self] _ in self?.importLink() })
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.popoverPresentationController?.sourceView = plusButton
+        alert.popoverPresentationController?.sourceRect = plusButton.bounds
+        present(alert, animated: true)
+    }
+    private func importLink() {
+        let alert = UIAlertController(title: "从链接安装", message: "支持直接下载 dylib 或 deb；Framework 请从文件导入", preferredStyle: .alert)
+        alert.addTextField { $0.placeholder = "https://example.com/example.dylib" }
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "下载", style: .default) { [weak self, weak alert] _ in
+            guard let self = self, let raw = alert?.textFields?.first?.text,
+                  let url = URL(string: raw), ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+                  url.host != nil, ["dylib", "deb"].contains(url.pathExtension.lowercased()) else {
+                self?.message("请输入有效的 dylib 或 deb 下载链接")
+                return
+            }
+            guard !self.importing else { self.message("正在导入插件，请稍后重试"); return }
+            self.importing = true
+            URLSession.shared.downloadTask(with: url) { [weak self] location, response, error in
+                guard let self = self else { return }
+                self.queue.async {
+                    var failure: Error? = error
+                    do {
+                        guard failure == nil, let location = location,
+                              let code = (response as? HTTPURLResponse)?.statusCode, (200...299).contains(code) else {
+                            throw failure ?? ZonoePluginLibrary.failure("下载失败")
+                        }
+                        let staging = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + url.pathExtension.lowercased())
+                        defer { try? FileManager.default.removeItem(at: staging) }
+                        try FileManager.default.copyItem(at: location, to: staging)
+                        try ZonoePluginLibrary.importFile(staging)
+                    } catch { failure = error }
+                    DispatchQueue.main.async {
+                        self.importing = false
+                        self.refresh()
+                        if let failure = failure { self.message(failure.localizedDescription) }
+                    }
+                }
+            }.resume()
+        })
+        present(alert, animated: true)
+    }
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard !urls.isEmpty, !importing else { return }
+        importing = true
+        queue.async {
+            var failure: Error?
+            for url in urls {
+                do { try ZonoePluginLibrary.importFile(url) } catch { failure = error }
+            }
+            DispatchQueue.main.async {
+                self.importing = false
+                self.refresh()
+                if let failure = failure { self.message(failure.localizedDescription) }
+            }
+        }
+    }
+    private func message(_ text: String) {
+        let alert = UIAlertController(title: "插件管理", message: text, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确定", style: .default))
+        present(alert, animated: true)
+    }
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { entries.count }
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "Plugin") ?? UITableViewCell(style: .subtitle, reuseIdentifier: "Plugin")
+        let file = entries[indexPath.row]
+        cell.textLabel?.text = file.lastPathComponent
+        let resource = try? file.resourceValues(forKeys: [.fileSizeKey])
+        cell.detailTextLabel?.text = file.pathExtension.uppercased() + " · " + ByteCountFormatter.string(fromByteCount: Int64(resource?.fileSize ?? 0), countStyle: .file)
+        cell.imageView?.image = UIImage(systemName: file.pathExtension.lowercased() == "framework" ? "folder" : "doc.zipper")
+        cell.accessoryType = selected.contains(file) ? .checkmark : .none
+        return cell
+    }
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        let file = entries[indexPath.row]
+        if editingFiles {
+            if !selected.insert(file).inserted { selected.remove(file) }
+            tableView.reloadRows(at: [indexPath], with: .none)
+        }
     }
 }

@@ -91,6 +91,10 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         iconButton.setTitle("选择替换图标", for: .normal)
         iconButton.addTarget(self, action: #selector(selectIcon), for: .touchUpInside)
         addCard(iconButton)
+        let pluginButton = UIButton(type: .system)
+        pluginButton.setTitle("选择注入插件（待接入注入引擎）", for: .normal)
+        pluginButton.addTarget(self, action: #selector(selectPlugins), for: .touchUpInside)
+        addCard(pluginButton)
         let certButton = UIButton(type: .system)
         certButton.setTitle("选择签名证书", for: .normal)
         certButton.addTarget(self, action: #selector(selectCertificate), for: .touchUpInside)
@@ -267,6 +271,15 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
     @objc private func close() {
         guard !running else { return }
         dismiss(animated: true)
+    }
+    @objc private func selectPlugins() {
+        guard !running else { return }
+        let library = PluginLibraryController()
+        library.modalPresentationStyle = .fullScreen
+        library.onSelection = { [weak self] chosen in
+            self?.status.text = chosen.isEmpty ? "未选择插件" : "已选择 " + String(chosen.count) + " 个插件；当前版本尚未注入"
+        }
+        present(library, animated: true)
     }
     @objc private func selectCertificate() {
         guard !running else { return }

@@ -6,7 +6,6 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
     private let packageInfo: AppPackageInfo?
     private var toggles = [WritableKeyPath<SigningOptions, Bool>: UISwitch]()
     private var installMode: IPAInstallMode = .network
-    private let installButton = UIButton(type: .system)
     private let cancelButton = UIButton(type: .system)
     private let service = AppSigningService()
     private let content = UIStackView()
@@ -14,13 +13,14 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
     private let status = UILabel()
     private var fields = [String: UITextField]()
     private var certificate: DeviceCertificate?
-    private var passwordField = UITextField()
     private var format = UISegmentedControl(items: ["IPA", "ZIP", "TIPA"])
     private var compression = UISegmentedControl(items: IPACompressionPreset.allCases.map { $0.title })
     private var removeSchemes = UISwitch()
     private var replacementIcon: Data?
     private var running = false
     private var artifact: SignedArtifact?
+    private var installing = false
+    private var cancelCard: UIView?
     private let blue = UIColor(red: 51/255, green: 124/255, blue: 250/255, alpha: 1)
 
     init(ipaURL: URL, packageInfo: AppPackageInfo? = nil) {
@@ -72,7 +72,7 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         addControl("输出格式", control: format)
         compression.selectedSegmentIndex = 1
         addControl("压缩预设", control: compression)
-        addControl("移除应用跳转", control: removeSchemes)
+        addStandaloneToggle("移除应用跳转", control: removeSchemes)
         let options = SigningOptionsStore.shared.options
         addToggle("文件共享", key: \.fileSharing, value: options.fileSharing)
         addToggle("iTunes 文件共享", key: \.itunesFileSharing, value: options.itunesFileSharing)
@@ -87,9 +87,6 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         rule.selectedSegmentIndex = SigningPackagingRule.allCases.firstIndex(of: options.packagingRule) ?? 0
         rule.addTarget(self, action: #selector(changePackagingRule(_:)), for: .valueChanged)
         addControl("打包规则", control: rule)
-        let installLabel = UILabel()
-        installLabel.text = "安装方式：网络安装"
-        addCard(installLabel)
         let iconButton = UIButton(type: .system)
         iconButton.setTitle("选择替换图标", for: .normal)
         iconButton.addTarget(self, action: #selector(selectIcon), for: .touchUpInside)
@@ -98,21 +95,13 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         certButton.setTitle("选择签名证书", for: .normal)
         certButton.addTarget(self, action: #selector(selectCertificate), for: .touchUpInside)
         addCard(certButton)
-        passwordField.placeholder = "旧证书 P12 密码（如需要）"
-        passwordField.isSecureTextEntry = true
-        passwordField.borderStyle = .roundedRect
-        addCard(passwordField)
         status.text = "准备就绪"
         status.numberOfLines = 0
         addCard(status)
-        installButton.setTitle("安装应用（网络）", for: .normal)
-        installButton.isHidden = true
-        installButton.addTarget(self, action: #selector(installResult), for: .touchUpInside)
-        addCard(installButton)
         cancelButton.setTitle("取消签名", for: .normal)
-        cancelButton.isHidden = true
         cancelButton.addTarget(self, action: #selector(cancelSigning), for: .touchUpInside)
-        addCard(cancelButton)
+        cancelCard = addCard(cancelButton)
+        cancelCard?.isHidden = true
 
         action.setTitle("确认修改 / 开始签名", for: .normal)
         action.backgroundColor = blue
@@ -170,17 +159,36 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         }
     }
 
+    private func addStandaloneToggle(_ title: String, control: UISwitch) {
+        addToggleRow(title, control: control)
+    }
+    private func addToggleRow(_ title: String, control: UISwitch) {
+        let row = UIView()
+        let label = UILabel()
+        label.text = title
+        label.font = .systemFont(ofSize: 16)
+        label.numberOfLines = 1
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        control.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(label)
+        row.addSubview(control)
+        NSLayoutConstraint.activate([
+            row.heightAnchor.constraint(equalToConstant: 46),
+            label.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+            label.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: control.leadingAnchor, constant: -12),
+            control.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+            control.centerYAnchor.constraint(equalTo: row.centerYAnchor)
+        ])
+        addCard(row)
+    }
     private func addToggle(_ title: String, key: WritableKeyPath<SigningOptions, Bool>, value: Bool) {
         let control = UISwitch()
         control.isOn = value
-        control.tag = toggles.count
         control.addTarget(self, action: #selector(toggleChanged(_:)), for: .valueChanged)
         toggles[key] = control
-        let stack = UIStackView(arrangedSubviews: [UILabel(), control])
-        (stack.arrangedSubviews[0] as? UILabel)?.text = title
-        stack.axis = .horizontal
-        stack.distribution = .equalSpacing
-        addCard(stack)
+        addToggleRow(title, control: control)
     }
     @objc private func toggleChanged(_ sender: UISwitch) {
         guard let key = toggles.first(where: { $0.value === sender })?.key else { return }
@@ -201,12 +209,16 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
     }
     @objc private func installResult() {
         guard let artifact = artifact, !running else { return }
-        installButton.isEnabled = false
+        installing = true
+        action.isEnabled = false
+        action.setTitle("正在启动安装…", for: .normal)
         status.text = "正在启动网络安装…"
         IPAInstallCoordinator.shared.begin(artifact: artifact, mode: installMode) { [weak self] response in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                self.installButton.isEnabled = true
+                self.installing = false
+                self.action.isEnabled = true
+                self.action.setTitle("安装", for: .normal)
                 switch response {
                 case .success(let accepted):
                     self.status.text = accepted ? "已提交系统安装请求（不代表安装完成）" : "iOS 未接受安装请求"
@@ -216,7 +228,8 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         }
     }
 
-    private func addCard(_ child: UIView) {
+    @discardableResult
+    private func addCard(_ child: UIView) -> UIView {
         let wrapper = UIView()
         wrapper.backgroundColor = .white
         wrapper.layer.cornerRadius = 14
@@ -229,6 +242,7 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
             child.topAnchor.constraint(equalTo: wrapper.topAnchor, constant: 12),
             child.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor, constant: -12)
         ])
+        return wrapper
     }
     private func addField(_ label: String, key: String, value: String?) {
         let field = UITextField()
@@ -281,7 +295,32 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         replacementIcon = (info[.originalImage] as? UIImage)?.pngData()
         picker.dismiss(animated: true)
     }
+    private func promptPassword(for certificate: DeviceCertificate) {
+        let alert = UIAlertController(title: "输入证书密码", message: "此证书尚未保存 P12 密码", preferredStyle: .alert)
+        alert.addTextField {
+            $0.isSecureTextEntry = true
+            $0.placeholder = "P12 密码"
+        }
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "继续签名", style: .default) { [weak self, weak alert] _ in
+            self?.performSigning(passwordOverride: alert?.textFields?.first?.text ?? "")
+        })
+        present(alert, animated: true)
+    }
     @objc private func start() {
+        if artifact != nil {
+            if !installing { installResult() }
+            return
+        }
+        guard !running else { return }
+        if !SigningOptionsStore.shared.options.temporarySigning,
+           let cert = certificate, CertificatePasswordKeychain.read(for: cert.id) == nil {
+            promptPassword(for: cert)
+            return
+        }
+        performSigning(passwordOverride: nil)
+    }
+    private func performSigning(passwordOverride: String?) {
         guard !running else { return }
         let temporary = SigningOptionsStore.shared.options.temporarySigning
         guard temporary || certificate != nil else {
@@ -290,7 +329,7 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         }
         let selected = certificate ?? DeviceCertificate(id: "modify-only", name: "仅修改", p12URL: nil, mobileProvisionURL: nil)
         let stored = CertificatePasswordKeychain.read(for: selected.id)
-        let password = temporary ? "" : (stored ?? passwordField.text ?? "")
+        let password = temporary ? "" : (stored ?? passwordOverride ?? "")
         let formats = ["ipa", "zip", "tipa"]
         let editing = SigningAppEditing(
             displayName: fields["name"]?.text,
@@ -304,7 +343,7 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         )
         running = true
         action.isEnabled = false
-        cancelButton.isHidden = false
+        cancelCard?.isHidden = false
         cancelButton.isEnabled = true
         status.text = "正在准备签名…"
         service.sign(request: SigningRequest(ipaURL: ipaURL, certificate: selected, password: password, editing: editing),
@@ -313,26 +352,18 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
                 guard let self = self else { return }
                 self.running = false
                 self.action.isEnabled = true
-                self.cancelButton.isHidden = true
+                self.cancelCard?.isHidden = true
                 switch result {
                 case .success(let file):
-                    if !temporary && stored == nil { try? CertificatePasswordKeychain.save(password, for: selected.id) }
+                    if !temporary && stored == nil {
+                        try? CertificatePasswordKeychain.save(password, for: selected.id)
+                    }
                     self.artifact = file
-                    self.installButton.isHidden = false
-                    self.passwordField.text = ""
                     self.status.text = "签名完成：" + file.ipaURL.lastPathComponent
-                    self.action.setTitle("签名完成", for: .normal)
-                    self.action.isEnabled = false
-                    let done = UIAlertController(title: "签名完成", message: file.ipaURL.lastPathComponent, preferredStyle: .alert)
-                    done.addAction(UIAlertAction(title: "分享", style: .default) { _ in
-                        self.present(UIActivityViewController(activityItems: [file.ipaURL], applicationActivities: nil), animated: true)
-                    })
-                    done.addAction(UIAlertAction(title: "网络安装", style: .default) { _ in self.installResult() })
-                    done.addAction(UIAlertAction(title: "完成", style: .cancel))
-                    self.present(done, animated: true)
+                    self.action.setTitle("安装", for: .normal)
+                    self.action.isEnabled = true
                     if SigningOptionsStore.shared.options.autoInstallAfterSigning {
-                        // Dismiss the result sheet first, then begin the network install.
-                        done.dismiss(animated: true) { self.installResult() }
+                        self.installResult()
                     }
                 case .failure(let error):
                     self.status.text = "签名失败"

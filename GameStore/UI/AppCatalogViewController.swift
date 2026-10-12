@@ -340,7 +340,7 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
         }
         cell.configure(name: app.name,
                        metadata: "\(app.version.isEmpty ? "—" : app.version) · \(size) · \(date)",
-                       descriptionText: app.description,
+                       descriptionText: app.versionDescription,
                        iconURL: app.iconURL?.absoluteString ?? "")
         return cell
     }

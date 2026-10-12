@@ -113,8 +113,8 @@ final class AppDetailViewController: UIViewController {
             }
         refreshDownloadStatus()
 
-        content.addArrangedSubview(section("应用介绍", text: app.description))
-        content.addArrangedSubview(section("更新日志", text: app.releaseNotes))
+        content.addArrangedSubview(section("应用介绍", text: app.versionDescription))
+        content.addArrangedSubview(section("更新日志", text: app.versionDate))
         let developer = app.developer.isEmpty ? "—" : app.developer
         let bundle = app.bundleIdentifier.isEmpty ? "—" : app.bundleIdentifier
         content.addArrangedSubview(section("应用信息", text: "开发者：\(developer)\nBundle ID：\(bundle)"))

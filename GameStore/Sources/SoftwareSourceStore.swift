@@ -170,6 +170,13 @@ struct SourceCatalogApp: Identifiable, Codable {
     let sizeBytes: Int64?
     let updatedAt: Date?
     let releaseNotes: String
+    let rawVersionDate: String?
+    var versionDescription: String { releaseNotes }
+    var versionDate: String { rawVersionDate ?? updatedAt.map {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: $0)
+    } ?? "—" }
     let requiresUnlock: Bool?
     let unlockURL: URL?
 }
@@ -340,6 +347,7 @@ extension SoftwareSourceStore {
                 sizeBytes: bytes,
                 updatedAt: date,
                 releaseNotes: value(app, ["versionDescription", "releaseNotes"]),
+                rawVersionDate: dateString,
                 requiresUnlock: requiresUnlock,
                 unlockURL: unlockURL
             )

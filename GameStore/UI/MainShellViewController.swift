@@ -1,4 +1,5 @@
 import UIKit
+import Combine
 
 /// Four-tab UIKit shell: retains page controllers and coordinates shared UI.
 final class MainShellViewController: UIViewController, UISearchBarDelegate, UIScrollViewDelegate, UITableViewDataSource, UITableViewDelegate, UIDocumentPickerDelegate {
@@ -36,6 +37,10 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     private let bg = UIColor(red: 242/255, green: 242/255, blue: 247/255, alpha: 1)
     private var rows: [(String,String,String)] = []
     private var filtered: [(String,String,String)] = []
+    private var extractionSubscription: AnyCancellable?
+    private var extractionAlert: UIAlertController?
+    private var displayedExtraction: String?
+    private var extractionNames = [String]()
     private var signedEditing = false
     private var signedSelected = Set<URL>()
     private var headerActions = [Int: [UIButton]]()
@@ -92,10 +97,52 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         super.viewDidLoad()
         view.backgroundColor = bg
         SourceCatalogUIBridge.start()
+        observeExtractions()
         showTab(0)
         if !SoftwareSourceStore.shared.sources.isEmpty && SoftwareSourceStore.shared.catalogApps.isEmpty && !SoftwareSourceStore.shared.isCatalogLoading {
             SoftwareSourceStore.shared.refreshCatalog()
         }
+    }
+
+    private func observeExtractions() {
+        let center = AppStoreViewModel.shared.downloadCenter
+        extractionSubscription = center.$extractionStatus
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] status in
+                self?.updateExtractionAlert(status)
+            }
+    }
+
+    private func updateExtractionAlert(_ status: [String: String]) {
+        // Only foreground extraction events produce alerts; restored entries have
+        // already completed by the time their UI is first observed.
+        let active = status.filter { $0.value == "正在解压" }.keys.sorted()
+        if let displayed = displayedExtraction {
+            if let result = status[displayed], result != "正在解压" {
+                displayedExtraction = nil
+                let alert = extractionAlert
+                extractionAlert = nil
+                alert?.dismiss(animated: true) { [weak self] in
+                    guard let self = self else { return }
+                    if result.hasPrefix("解压失败") {
+                        let error = UIAlertController(title: "解压失败", message: result, preferredStyle: .alert)
+                        error.addAction(UIAlertAction(title: "确定", style: .default))
+                        self.present(error, animated: true)
+                    } else {
+                        self.updateExtractionAlert(status)
+                    }
+                }
+            }
+            return
+        }
+        guard extractionAlert == nil, presentedViewController == nil,
+              let name = active.first else { return }
+        displayedExtraction = name
+        let alert = UIAlertController(title: "正在解压安装包",
+                                      message: name + "\n正在准备签名文件…",
+                                      preferredStyle: .alert)
+        extractionAlert = alert
+        present(alert, animated: true)
     }
 
     override func viewDidLayoutSubviews() {

@@ -222,16 +222,23 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             return
         }
         if scoped { source.stopAccessingSecurityScopedResource() }
+        extractionStatus[stage.lastPathComponent] = "正在解压"
         archiveQueue.async {
             defer { try? FileManager.default.removeItem(at: stage) }
             do {
                 let destination = try self.validateAndPublish(stage, filename: source.lastPathComponent)
                 DispatchQueue.main.async {
+                    self.extractionStatus[stage.lastPathComponent] = "解压完成"
                     self.extractionStatus[destination.lastPathComponent] = "解压完成"
                     self.reloadDownloadedItems()
                     completion(nil)
                 }
-            } catch { DispatchQueue.main.async { completion(error) } }
+            } catch {
+                DispatchQueue.main.async {
+                    self.extractionStatus[stage.lastPathComponent] = "解压失败：" + error.localizedDescription
+                    completion(error)
+                }
+            }
         }
     }
 
@@ -623,11 +630,15 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             let stage = Self.downloadsDirectory().appendingPathComponent(".incoming-" + UUID().uuidString + ".ipa")
             try FileManager.default.moveItem(at: location, to: stage)
             let originalSource = downloadTask.originalRequest?.url
+            DispatchQueue.main.async {
+                self.extractionStatus[stage.lastPathComponent] = "正在解压"
+            }
             archiveQueue.async {
                 defer { try? FileManager.default.removeItem(at: stage) }
                 do {
                     let validated = try self.validateAndPublish(stage, filename: destination.lastPathComponent)
                     DispatchQueue.main.async {
+                        self.extractionStatus[stage.lastPathComponent] = "解压完成"
                         self.extractionStatus[validated.lastPathComponent] = "解压完成"
                         guard self.activeItems.contains(where: { $0.taskIdentifier == taskIdentifier }) else { return }
                         Self.updateCompletedSource(filename: validated.lastPathComponent, source: originalSource)
@@ -636,6 +647,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                     }
                 } catch {
                     DispatchQueue.main.async {
+                        self.extractionStatus[stage.lastPathComponent] = "解压失败：" + error.localizedDescription
                         self.finishActiveItem(taskIdentifier: taskIdentifier, state: .failed,
                                               localURL: nil, errorDescription: "安装包验证或解压失败：" + error.localizedDescription)
                     }

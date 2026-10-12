@@ -78,7 +78,11 @@ final class AppCatalogCell: UITableViewCell {
 
     func configureAction(title: String, enabled: Bool) {
         downloadButton.setTitle(title, for: .normal)
-        downloadButton.isEnabled = enabled
+        // Keep the button hit-testable even when its action is unavailable.
+        // Otherwise a disabled button forwards taps to the table row.
+        downloadButton.isEnabled = true
+        downloadButton.isUserInteractionEnabled = true
+        downloadButton.accessibilityTraits = enabled ? [.button] : [.button, .notEnabled]
         downloadButton.backgroundColor = title == "重试" ? .systemOrange :
             (enabled ? UIColor(red: 51/255, green: 124/255, blue: 250/255, alpha: 1) : .systemGray3)
     }

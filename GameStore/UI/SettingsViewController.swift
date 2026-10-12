@@ -363,7 +363,9 @@ private final class DeviceAuthDetailController: UIViewController {
         request.addTarget(self, action: #selector(requestUDID), for: .touchUpInside)
         acquireButton = request
         stack.addArrangedSubview(request)
-        stack.addArrangedSubview(actionButton("打开官网注册", filled: false))
+        let unbind = actionButton("换绑", filled: false)
+        unbind.addTarget(self, action: #selector(openUnbindPage), for: .touchUpInside)
+        stack.addArrangedSubview(unbind)
 
         let tips = SettingsStyle.card()
         let hint = SettingsStyle.text("提示\n\n1. 点击「获取设备 UDID」获取本机 UDID\n2. 在官网注册并绑定设备\n3. 注册成功后即可安装应用", size: 14, color: SettingsStyle.secondary)
@@ -439,16 +441,12 @@ private final class DeviceAuthDetailController: UIViewController {
         button.setTitleColor(filled ? .white : SettingsStyle.blue, for: .normal)
         button.titleLabel?.font = .boldSystemFont(ofSize: 17)
         button.heightAnchor.constraint(equalToConstant: 56).isActive = true
-        if !filled {
-            button.addTarget(self, action: #selector(showNotConnected), for: .touchUpInside)
-        }
         return button
     }
 
-    @objc private func showNotConnected() {
-        let alert = UIAlertController(title: "界面占位", message: "此按钮暂未接入业务逻辑。", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "知道了", style: .default))
-        present(alert, animated: true)
+    @objc private func openUnbindPage() {
+        guard let url = URL(string: "https://app3.zonoeios.xyz/unbind") else { return }
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
     }
 
     @objc private func close() { dismiss(animated: true) }

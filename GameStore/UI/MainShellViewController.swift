@@ -45,13 +45,23 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     private var signedSelected = Set<URL>()
     private var headerActions = [Int: [UIButton]]()
     private var signedFiles = [URL]()
+    private var signedVisible = [URL]()
+    private var signedQuery = ""
     private func reloadSignedFiles() {
         let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Signed", isDirectory: true)
         signedFiles = ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
             .filter { ["ipa", "tipa", "zip"].contains($0.pathExtension.lowercased()) }
         rows = signedFiles.map { ($0.lastPathComponent, "已签名安装包", "doc.fill") }
-        filtered = rows
+        applySignedFilter()
+    }
+    private func applySignedFilter() {
+        let q = signedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        signedVisible = q.isEmpty ? signedFiles : signedFiles.filter {
+            $0.lastPathComponent.localizedCaseInsensitiveContains(q)
+        }
+        filtered = signedVisible.map { ($0.lastPathComponent, "已签名安装包", "doc.fill") }
+        signedSelected = signedSelected.intersection(Set(signedFiles))
     }
     private func showPackageImport(_ sender: UIButton) {
         let sheet = UIAlertController(title: "导入安装包", message: nil, preferredStyle: .actionSheet)
@@ -200,10 +210,6 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             page.views.forEach { $0.isHidden = true }
         }
         selectedTab = index
-        if index == 2 && pages[index] != nil {
-            reloadSignedFiles()
-            pages[index]?.table?.reloadData()
-        }
         if let existing = pages[index] {
             currentTable = existing.table
             catalog = existing.catalog
@@ -216,6 +222,11 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             rows = existing.rows
             filtered = existing.filtered
             existing.views.forEach { $0.isHidden = false }
+            if index == 2 {
+                reloadSignedFiles()
+                currentTable?.reloadData()
+            }
+            layoutHeaderActions(index)
             if let table = currentTable { scrollViewDidScroll(table) }
             return
         }
@@ -320,7 +331,14 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             ["编辑", "全选", "删除", "完成"]
         let buttons = labels.map { label -> UIButton in
             let button = UIButton(type: .system)
-            button.setTitle(label, for: .normal)
+            if label == "+" {
+                button.setImage(UIImage(systemName: "plus.circle.fill",
+                    withConfiguration: UIImage.SymbolConfiguration(pointSize: 27)), for: .normal)
+                button.tintColor = blue
+            } else {
+                button.setTitle(label, for: .normal)
+                button.setTitleColor(label == "删除" ? .systemRed : blue, for: .normal)
+            }
             button.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
             button.accessibilityIdentifier = "\(index):\(label)"
             button.addTarget(self, action: #selector(headerTapped(_:)), for: .touchUpInside)
@@ -337,8 +355,11 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         let names = index == 0 ? ["刷新"] : editing ?
             (index == 1 ? ["全选","签名","删除","完成"] : ["全选","删除","完成"]) :
             (index == 1 ? ["编辑","+"] : ["编辑"])
-        let visible = buttons.filter { names.contains($0.title(for: .normal) ?? "") }
-        for button in buttons { button.isHidden = !visible.contains(button) }
+        let visible = buttons.filter { button in
+            let token = button.accessibilityIdentifier?.split(separator: ":").last.map(String.init) ?? ""
+            return names.contains(token)
+        }
+        for button in buttons { button.isHidden = index != selectedTab || !visible.contains(button) }
         for (i, button) in visible.enumerated() {
             button.frame = CGRect(x: view.bounds.width - 9 - CGFloat(visible.count-i)*56,
                                   y: view.safeAreaInsets.top + 8, width: 52, height: 36)
@@ -360,14 +381,22 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             if index == 1 { packages?.setSelecting(false) }
             else { signedEditing = false; signedSelected.removeAll(); currentTable?.reloadData() }
         case "全选":
-            if index == 1 { packages?.selectAll() }
-            else { signedSelected = Set(signedFiles); currentTable?.reloadData() }
+            if index == 1 { packages?.toggleSelectAll() }
+            else {
+                let visibleSet = Set(signedVisible)
+                if visibleSet.isSubset(of: signedSelected) { signedSelected.subtract(visibleSet) }
+                else { signedSelected.formUnion(visibleSet) }
+                currentTable?.reloadData()
+            }
         case "删除":
             if index == 1 { packages?.deleteSelected() }
             else { deleteSignedSelection() }
         case "签名":
             let selected = packages?.selectedPackages().filter { $0.state == .completed } ?? []
-            guard !selected.isEmpty else { return }
+            guard !selected.isEmpty else {
+                showImportError("请先选择已下载的安装包")
+                return
+            }
             showSigningCertificateSelection(selected.compactMap { $0.localURL })
         default: break
         }
@@ -376,14 +405,22 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
 
     private func deleteSignedSelection() {
         let targets = signedFiles.filter { signedSelected.contains($0) }
-        guard !targets.isEmpty else { return }
+        guard !targets.isEmpty else {
+            showImportError("请先选择要删除的文件")
+            return
+        }
         let alert = UIAlertController(title: "删除已签名文件", message: "确定删除 \(targets.count) 个文件？", preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
         alert.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
-            for url in targets { try? FileManager.default.removeItem(at: url) }
+            var failures = [String]()
+            for url in targets {
+                do { try FileManager.default.removeItem(at: url) }
+                catch { failures.append(url.lastPathComponent + "：" + error.localizedDescription) }
+            }
             self?.signedSelected.removeAll()
             self?.reloadSignedFiles()
             self?.currentTable?.reloadData()
+            if !failures.isEmpty { self?.showImportError(failures.joined(separator: "\n")) }
         })
         present(alert, animated: true)
     }
@@ -454,8 +491,8 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         if selectedTab == 0 { catalog?.openDetail(atVisibleRow: indexPath.row) }
-        else if selectedTab == 2 && signedFiles.indices.contains(indexPath.row) {
-            let file = signedFiles[indexPath.row]
+        else if selectedTab == 2 && signedVisible.indices.contains(indexPath.row) {
+            let file = signedVisible[indexPath.row]
             if signedEditing {
                 if !signedSelected.insert(file).inserted { signedSelected.remove(file) }
                 tableView.reloadRows(at: [indexPath], with: .none)
@@ -471,10 +508,11 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     func tableView(_ tableView: UITableView,numberOfRowsInSection section: Int) -> Int { filtered.count }
     func tableView(_ tableView: UITableView,cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Demo",for: indexPath) as! ShellPlaceholderCell
+        guard filtered.indices.contains(indexPath.row) else { return UITableViewCell() }
         let row = filtered[indexPath.row]
         cell.configure(title: row.0,detail: row.1,symbol: row.2)
-        cell.accessoryType = selectedTab == 2 && signedEditing && signedFiles.indices.contains(indexPath.row) &&
-            signedSelected.contains(signedFiles[indexPath.row]) ? .checkmark : .none
+        cell.accessoryType = selectedTab == 2 && signedEditing && signedVisible.indices.contains(indexPath.row) &&
+            signedSelected.contains(signedVisible[indexPath.row]) ? .checkmark : .none
         return cell
     }
 
@@ -586,8 +624,8 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         } else if selectedTab == 1 {
             packages?.filter(query: value)
         } else {
-            let q = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            filtered = q.isEmpty ? rows : rows.filter { ($0.0+" "+$0.1).localizedCaseInsensitiveContains(q) }
+            signedQuery = value
+            applySignedFilter()
             currentTable?.reloadData()
         }
     }

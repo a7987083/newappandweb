@@ -17,8 +17,10 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
         selectedIDs.removeAll()
         tableView.reloadData()
     }
-    func selectAll() {
-        selectedIDs = Set(visible.map { $0.id })
+    func toggleSelectAll() {
+        let visibleIDs = Set(visible.map { $0.id })
+        if visibleIDs.isSubset(of: selectedIDs) { selectedIDs.subtract(visibleIDs) }
+        else { selectedIDs.formUnion(visibleIDs) }
         tableView.reloadData()
     }
     func selectedPackages() -> [DownloadCenter.Item] {
@@ -26,7 +28,12 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
     }
     func deleteSelected() {
         let targets = selectedPackages()
-        guard !targets.isEmpty else { return }
+        guard !targets.isEmpty else {
+            let notice = UIAlertController(title: "未选择安装包", message: "请先选择要删除的项目", preferredStyle: .alert)
+            notice.addAction(UIAlertAction(title: "确定", style: .default))
+            present(notice, animated: true)
+            return
+        }
         let confirm = UIAlertController(title: "删除安装包", message: "删除选中的 \(targets.count) 项？", preferredStyle: .alert)
         confirm.addAction(UIAlertAction(title: "取消", style: .cancel))
         confirm.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
@@ -40,6 +47,7 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
                 }
             }
             self.selectedIDs.removeAll()
+            self.tableView.reloadData()
         })
         present(confirm, animated: true)
     }
@@ -121,6 +129,7 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
         cell.configure(name: title(item), status: state, progress: item.progress,
                        failed: failure, showProgress: item.state == .downloading)
         cell.accessoryType = selectionMode && selectedIDs.contains(item.id) ? .checkmark : .none
+        cell.tintColor = .systemBlue
         return cell
     }
 

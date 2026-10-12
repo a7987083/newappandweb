@@ -1,4 +1,5 @@
 import UIKit
+import Zip
 
 /// Per-package signing editor. The signing engine and global settings remain shared.
 final class SigningEditorViewController: UIViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
@@ -18,6 +19,7 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
     private var removeSchemes = UISwitch()
     private var replacementIcon: Data?
     private var selectedPlugins: [URL] = []
+    private var removedLoadPaths: [String] = []
     private var running = false
     private var artifact: SignedArtifact?
     private var installing = false
@@ -96,6 +98,10 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         pluginButton.setTitle("选择注入动态库", for: .normal)
         pluginButton.addTarget(self, action: #selector(selectPlugins), for: .touchUpInside)
         addCard(pluginButton)
+        let removeButton = UIButton(type: .system)
+        removeButton.setTitle("移除已有库（0）", for: .normal)
+        removeButton.addTarget(self, action: #selector(pickExistingLibraries(_:)), for: .touchUpInside)
+        addCard(removeButton)
         let certButton = UIButton(type: .system)
         certButton.setTitle("选择签名证书", for: .normal)
         certButton.addTarget(self, action: #selector(selectCertificate), for: .touchUpInside)
@@ -279,10 +285,60 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         library.modalPresentationStyle = .fullScreen
         library.onSelection = { [weak self] chosen in
             self?.selectedPlugins = chosen
-            self?.status.text = chosen.isEmpty ? "未选择插件" : "已选择 " + String(chosen.count) + " 个插件（目前仅支持 dylib 注入）"
+            self?.status.text = chosen.isEmpty ? "未选择插件" : "已选择 " + String(chosen.count) + " 个插件（支持 dylib / framework）"
         }
         present(library, animated: true)
     }
+    @objc private func pickExistingLibraries(_ sender: UIButton) {
+        guard !running else { return }
+        sender.isEnabled = false
+        status.text = "正在读取现有动态库…"
+        DispatchQueue.global(qos: .userInitiated).async { [weak self, weak sender] in
+            guard let self = self else { return }
+            let fm = FileManager.default
+            let scratch = fm.temporaryDirectory.appendingPathComponent("zonoe-dylib-scan-" + UUID().uuidString, isDirectory: true)
+            var paths = [String]()
+            var failure: Error?
+            do {
+                try fm.createDirectory(at: scratch, withIntermediateDirectories: true)
+                defer { try? fm.removeItem(at: scratch) }
+                Zip.addCustomFileExtension("ipa")
+                Zip.addCustomFileExtension("tipa")
+                try Zip.unzipFile(self.ipaURL, destination: scratch, overwrite: true, password: nil)
+                let payload = scratch.appendingPathComponent("Payload")
+                let apps = try fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: nil).filter { $0.pathExtension.lowercased() == "app" }
+                guard apps.count == 1, let binary = Bundle(url: apps[0])?.executableURL else {
+                    throw ZonoePluginLibrary.failure("IPA 主程序不存在")
+                }
+                paths = Array(Set(ZNZsignKit.linkedDylibs(in: binary).filter {
+                    $0.hasPrefix("@rpath/") || $0.hasPrefix("@executable_path/")
+                })).sorted()
+            } catch { failure = error }
+            DispatchQueue.main.async {
+                sender?.isEnabled = true
+                if let failure = failure {
+                    self.showMessage(failure.localizedDescription)
+                    return
+                }
+                let sheet = UIAlertController(title: "移除已有库", message: "点击条目选择或取消；仅移除加载命令，不删除库文件。", preferredStyle: .actionSheet)
+                for path in paths {
+                    let selected = self.removedLoadPaths.contains(path)
+                    sheet.addAction(UIAlertAction(title: (selected ? "✓ " : "") + path, style: .default) { [weak self, weak sender] _ in
+                        guard let self = self else { return }
+                        if let i = self.removedLoadPaths.firstIndex(of: path) { self.removedLoadPaths.remove(at: i) }
+                        else { self.removedLoadPaths.append(path) }
+                        sender?.setTitle("移除已有库（" + String(self.removedLoadPaths.count) + "）", for: .normal)
+                        if let sender = sender { self.pickExistingLibraries(sender) }
+                    })
+                }
+                sheet.addAction(UIAlertAction(title: "完成", style: .cancel))
+                sheet.popoverPresentationController?.sourceView = sender
+                sheet.popoverPresentationController?.sourceRect = sender?.bounds ?? .zero
+                self.present(sheet, animated: true)
+            }
+        }
+    }
+
     @objc private func selectCertificate() {
         guard !running else { return }
         CertificateStore.shared.reload()
@@ -362,7 +418,7 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         cancelButton.isEnabled = true
         status.text = "正在准备签名…"
         service.sign(request: SigningRequest(ipaURL: ipaURL, certificate: selected, password: password, editing: editing,
-                                             injectedPlugins: selectedPlugins),
+                                             injectedPlugins: selectedPlugins, removedLoadPaths: removedLoadPaths),
             progress: { [weak self] state in self?.status.text = state.rawValue },
             completion: { [weak self] result in
                 guard let self = self else { return }

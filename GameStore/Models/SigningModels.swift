@@ -28,6 +28,7 @@ struct SigningRequest {
     let password: String
     var editing: SigningAppEditing = SigningAppEditing()
     var injectedPlugins: [URL] = []
+    var removedLoadPaths: [String] = []
     var injectionUseRpath: Bool = SigningInjectionPreferences.useRpath
     var injectionFrameworks: Bool = SigningInjectionPreferences.useFrameworksFolder
 }

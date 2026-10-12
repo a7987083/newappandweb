@@ -107,16 +107,32 @@ final class AppSigningService: AppSigning {
         var copied = Set<String>()
         for file in files {
             try checkCancellation()
-            guard file.pathExtension.lowercased() == "dylib" else {
-                throw ZonoePluginLibrary.failure("当前仅支持注入 .dylib，暂不支持 .deb 或 .framework：" + file.lastPathComponent)
+            let ext = file.pathExtension.lowercased()
+            guard ext == "dylib" || ext == "framework" else {
+                throw ZonoePluginLibrary.failure("P1-A 仅支持 dylib / framework：" + file.lastPathComponent)
             }
             guard file.deletingLastPathComponent().standardizedFileURL == ZonoePluginLibrary.directory.standardizedFileURL,
                   fm.fileExists(atPath: file.path),
-                  (try? file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]).isRegularFile) == true,
+                  (try? file.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == (ext == "framework"),
                   (try? file.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else {
                 throw ZonoePluginLibrary.failure("插件不在仓库中或不是普通文件：" + file.lastPathComponent)
             }
-            let handle = try FileHandle(forReadingFrom: file)
+            let binary: URL
+            if ext == "framework" {
+                guard let executable = Bundle(url: file)?.executableURL,
+                      executable.standardizedFileURL.path.hasPrefix(file.standardizedFileURL.path + "/"),
+                      fm.fileExists(atPath: executable.path) else {
+                    throw ZonoePluginLibrary.failure("Framework 缺少有效可执行文件：" + file.lastPathComponent)
+                }
+                let members = fm.enumerator(at: file, includingPropertiesForKeys: [.isSymbolicLinkKey])
+                while let member = members?.nextObject() as? URL {
+                    if (try? member.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+                        throw ZonoePluginLibrary.failure("Framework 包含符号链接：" + file.lastPathComponent)
+                    }
+                }
+                binary = executable
+            } else { binary = file }
+            let handle = try FileHandle(forReadingFrom: binary)
             let header = handle.readData(ofLength: 4)
             handle.closeFile()
             let magic = header.withUnsafeBytes { raw -> UInt32 in
@@ -130,13 +146,23 @@ final class AppSigningService: AppSigning {
             guard copied.insert(name).inserted else {
                 throw ZonoePluginLibrary.failure("重复的动态库名称：" + name)
             }
-            let destination = destinationFolder.appendingPathComponent(name)
+            let targetFolder = ext == "framework" ? app.appendingPathComponent("Frameworks", isDirectory: true) : destinationFolder
+            try fm.createDirectory(at: targetFolder, withIntermediateDirectories: true)
+            let destination = targetFolder.appendingPathComponent(name)
             guard !fm.fileExists(atPath: destination.path) else {
                 throw ZonoePluginLibrary.failure("目标 App 已存在同名动态库：" + name)
             }
             try fm.copyItem(at: file, to: destination)
-            let loadPath = useRpath ? "@rpath/" + name :
-                (frameworks ? "@executable_path/Frameworks/" : "@executable_path/") + name
+            let loadPath: String
+            if ext == "framework" {
+                guard let executable = Bundle(url: destination)?.executableURL else {
+                    throw ZonoePluginLibrary.failure("Framework 复制后无法定位可执行文件：" + name)
+                }
+                loadPath = "@executable_path/Frameworks/" + name + "/" + executable.lastPathComponent
+            } else {
+                loadPath = useRpath ? "@rpath/" + name :
+                    (frameworks ? "@executable_path/Frameworks/" : "@executable_path/") + name
+            }
             let existing = ZNZsignKit.linkedDylibs(in: executable)
             guard !existing.contains(loadPath) else {
                 throw ZonoePluginLibrary.failure("主程序已引用动态库：" + loadPath)
@@ -207,6 +233,21 @@ final class AppSigningService: AppSigning {
         let beforeNested = nestedDiagnosticSnapshot(in: app, phase: "签名前")
 
         try checkCancellation()
+        if !request.removedLoadPaths.isEmpty {
+            guard let executable = Bundle(url: app)?.executableURL else {
+                throw ZonoePluginLibrary.failure("找不到主程序，无法移除已有库")
+            }
+            let existing = ZNZsignKit.linkedDylibs(in: executable)
+            let chosen = Array(Set(request.removedLoadPaths))
+            guard chosen.allSatisfy({ ($0.hasPrefix("@rpath/") || $0.hasPrefix("@executable_path/")) && existing.contains($0) }) else {
+                throw ZonoePluginLibrary.failure("包含系统依赖或不存在的加载路径")
+            }
+            guard ZNZsignKit.removeDylibs(from: executable, loadPaths: chosen),
+                  chosen.allSatisfy({ !ZNZsignKit.linkedDylibs(in: executable).contains($0) }) else {
+                throw ZonoePluginLibrary.failure("Mach-O 移除已有库失败")
+            }
+            report("已移除 " + String(chosen.count) + " 条加载命令")
+        }
         if !request.injectedPlugins.isEmpty {
             try injectSelectedPlugins(request.injectedPlugins, into: app,
                                       useRpath: request.injectionUseRpath,

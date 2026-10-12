@@ -58,10 +58,11 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         summary.font = .systemFont(ofSize: 13)
         summary.textColor = .secondaryLabel
         addCard(summary)
-        let inspection = try? IPAInspector.inspect(ipaURL)
-        addField("应用名称", key: "name", value: inspection?.displayName)
-        addField("应用标识符", key: "bundle", value: inspection?.bundleID)
-        addField("版本号", key: "version", value: inspection?.version)
+        addField("应用名称", key: "name", value: nil)
+        addField("应用标识符", key: "bundle", value: nil)
+        addField("版本号", key: "version", value: nil)
+        // IPAInspector may scan the entire archive; never run it during presentation.
+        loadPackageInfo()
         addField("最低系统要求", key: "minimum", value: nil)
         format.selectedSegmentIndex = 0
         addControl("输出格式", control: format)
@@ -122,6 +123,20 @@ final class SigningEditorViewController: UIViewController, UIImagePickerControll
         ])
         CertificateStore.shared.reload()
         certificate = CertificateStore.shared.certificates.first
+    }
+
+    private func loadPackageInfo() {
+        let archive = ipaURL
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let inspection = try? IPAInspector.inspect(archive)
+            DispatchQueue.main.async {
+                guard let self = self, let info = inspection else { return }
+                // Do not overwrite text typed while metadata was being loaded.
+                if self.fields["name"]?.text?.isEmpty == true { self.fields["name"]?.text = info.displayName }
+                if self.fields["bundle"]?.text?.isEmpty == true { self.fields["bundle"]?.text = info.bundleID }
+                if self.fields["version"]?.text?.isEmpty == true { self.fields["version"]?.text = info.version }
+            }
+        }
     }
 
     private func addCard(_ child: UIView) {

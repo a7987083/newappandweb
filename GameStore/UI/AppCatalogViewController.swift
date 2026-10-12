@@ -11,9 +11,18 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
     private var query = ""
     private var observer: NSObjectProtocol?
     private var refreshSubscription: AnyCancellable?
+    private var downloadSubscription: AnyCancellable?
     private weak var refreshAlert: UIAlertController?
     private var refreshRequested = false
     private var catalogHeader: UIView?
+    private var verifiedUDID: String?
+    private var authorizationExpiry: Date?
+    private var authorizationGeneration = 0
+    private var pendingRequests = Set<String>()
+    private var lastRequestAt = [String: Date]()
+    private func downloadKey(_ app: SourceCatalogApp) -> String {
+        app.sourceURL + "#" + app.id
+    }
 
     override func loadView() {
         view = UIView()
@@ -38,6 +47,12 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
             object: nil, queue: .main
         ) { [weak self] _ in self?.reloadCatalog() }
         reloadCatalog()
+        downloadSubscription = AppStoreViewModel.shared.downloadCenter.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.tableView.reloadData() }
+            }
+        if !SoftwareSourceStore.shared.sources.isEmpty { SoftwareSourceStore.shared.refreshCatalog() }
     }
 
     @objc(installHeader:)
@@ -116,6 +131,118 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
     private func reloadCatalog() {
         applications = SoftwareSourceStore.shared.catalogApps
         applyFilter()
+        refreshAuthorization()
+    }
+
+    private func refreshAuthorization() {
+        authorizationGeneration += 1
+        let generation = authorizationGeneration
+        verifiedUDID = nil
+        authorizationExpiry = nil
+        tableView.reloadData()
+        guard let udid = UDIDService.shared.udid, UDIDLocalServer.validUDID(udid) else { return }
+        SourceUnlockService.shared.verifyAuthorization(udid: udid) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self, generation == self.authorizationGeneration,
+                      UDIDService.shared.udid == udid else { return }
+                if case .success(let expiry) = result {
+                    self.verifiedUDID = udid
+                    self.authorizationExpiry = expiry
+                }
+                self.tableView.reloadData()
+            }
+        }
+    }
+
+    private var authorizationValid: Bool {
+        guard let udid = UDIDService.shared.udid else { return false }
+        return verifiedUDID == udid && (authorizationExpiry ?? .distantPast) > Date()
+    }
+
+    private func downloadPresentation(for app: SourceCatalogApp) -> (String, Bool)? {
+        let center = AppStoreViewModel.shared.downloadCenter
+        // Prefer a current URL match; signed URLs can change, so resolve the
+        // retained file's original download URL as well when possible.
+        guard let item = center.item(forAppKey: downloadKey(app)) ??
+            validDownloadURL(app.downloadURL).flatMap({ center.item(for: $0) }) else { return nil }
+        switch item.state {
+        case .queued: return ("等待中", false)
+        case .downloading: return ("\(Int(item.progress * 100))%", false)
+        case .paused: return ("继续", true)
+        case .completed: return ("已下载", false)
+        case .failed, .cancelled: return ("重试", true)
+        }
+    }
+
+    private func validDownloadURL(_ url: URL?) -> URL? {
+        guard let url = url, ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              url.host != nil else { return nil }
+        return url
+    }
+
+    private func latestApp(matching app: SourceCatalogApp) -> SourceCatalogApp? {
+        SoftwareSourceStore.shared.catalogApps.first {
+            $0.sourceURL == app.sourceURL && $0.id == app.id
+        }
+    }
+
+    private func requestGet(for app: SourceCatalogApp) {
+        guard let current = latestApp(matching: app) else { return }
+        let key = downloadKey(current)
+        guard !pendingRequests.contains(key),
+              Date().timeIntervalSince(lastRequestAt[key] ?? .distantPast) >= 2 else { return }
+        let center = AppStoreViewModel.shared.downloadCenter
+        if let existing = center.item(forAppKey: key) ??
+            validDownloadURL(current.downloadURL).flatMap({ center.item(for: $0) }),
+           existing.state == .completed || existing.state == .downloading ||
+           existing.state == .queued || existing.state == .paused { return }
+        lastRequestAt[key] = Date()
+        pendingRequests.insert(key)
+        tableView.reloadData()
+        if current.requiresUnlock == true {
+            guard let udid = UDIDService.shared.udid, UDIDLocalServer.validUDID(udid) else {
+                pendingRequests.remove(key)
+                promptForUDID()
+                return
+            }
+            SourceUnlockService.shared.verifyAuthorization(udid: udid) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self = self, UDIDService.shared.udid == udid else { return }
+                    // Hold this request lock until the catalog refresh has returned.
+                    switch result {
+                    case .success(let expiry):
+                        self.verifiedUDID = udid
+                        self.authorizationExpiry = expiry
+                        SoftwareSourceStore.shared.refreshCatalog {
+                            defer { self.pendingRequests.remove(key); self.tableView.reloadData() }
+                            guard SoftwareSourceStore.shared.catalogError == nil,
+                                  let fresh = self.latestApp(matching: app),
+                                  fresh.requiresUnlock == true,
+                                  let url = self.validDownloadURL(fresh.downloadURL) else {
+                                self.showRefreshMessage("暂不可获取", "软件源未返回最新可用下载地址")
+                                return
+                            }
+                            AppStoreViewModel.shared.downloadCenter.enqueue(url, appKey: key)
+                        }
+                    case .failure:
+                        self.verifiedUDID = nil
+                        self.authorizationExpiry = nil
+                        self.tableView.reloadData()
+                        self.pendingRequests.remove(key)
+                        self.presentUnlock(for: current)
+                    }
+                }
+            }
+            return
+        }
+        guard current.requiresUnlock == false,
+              let url = validDownloadURL(current.downloadURL) else {
+            pendingRequests.remove(key)
+            showRefreshMessage("暂不可获取", "请刷新软件源确认应用权限及下载地址")
+            return
+        }
+        pendingRequests.remove(key)
+        AppStoreViewModel.shared.downloadCenter.enqueue(url, appKey: key)
     }
 
     private func applyFilter() {
@@ -175,19 +302,105 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
         } else {
             date = "—"
         }
-        let unlocked = SourceUnlockService.shared.isUnlocked(app, udid: UDIDService.shared.udid)
-        cell.configureUnlock(app.requiresUnlock == true && !unlocked, available: app.unlockURL != nil)
-        cell.onUnlock = { [weak self] in self?.presentUnlock(for: app) }
+        let hasDownload = validDownloadURL(app.downloadURL) != nil
+        let pending = pendingRequests.contains(downloadKey(app))
+        if pending {
+            cell.configureAction(title: "等待中", enabled: false)
+        } else if let state = downloadPresentation(for: app) {
+            cell.configureAction(title: state.0, enabled: state.1)
+        } else { switch app.requiresUnlock {
+        case .none:
+            cell.configureAction(title: "待刷新", enabled: false)
+        case .some(false):
+            cell.configureAction(title: "获取", enabled: hasDownload)
+        case .some(true):
+            if authorizationValid && hasDownload {
+                cell.configureAction(title: "获取", enabled: true)
+            } else {
+                cell.configureAction(title: "解锁", enabled: app.unlockURL != nil)
+            }
+        }
+        }
+        cell.onAction = { [weak self] in
+            guard let self = self else { return }
+            if let item = AppStoreViewModel.shared.downloadCenter.item(forAppKey: self.downloadKey(app)) ??
+                self.validDownloadURL(app.downloadURL).flatMap({ AppStoreViewModel.shared.downloadCenter.item(for: $0) }) {
+                switch item.state {
+                case .paused: AppStoreViewModel.shared.downloadCenter.resume(item); return
+                case .failed, .cancelled: self.requestGet(for: app); return
+                default: return
+                }
+            }
+            if app.requiresUnlock == true &&
+                (!self.authorizationValid || self.validDownloadURL(app.downloadURL) == nil) {
+                self.presentUnlock(for: app)
+            } else {
+                self.requestGet(for: app)
+            }
+        }
         cell.configure(name: app.name,
                        metadata: "\(app.version.isEmpty ? "—" : app.version) · \(size) · \(date)",
-                       descriptionText: app.description,
+                       descriptionText: app.versionDescription,
                        iconURL: app.iconURL?.absoluteString ?? "")
         return cell
     }
+    func openDetail(atVisibleRow row: Int) {
+        guard visibleIndices.indices.contains(row) else { return }
+        let app = applications[visibleIndices[row]]
+        let hasURL = validDownloadURL(app.downloadURL) != nil
+        let state = downloadPresentation(for: app)
+        let title: String
+        let enabled: Bool
+        switch app.requiresUnlock {
+        case .none: title = "待刷新"; enabled = false
+        case .some(false): title = "获取"; enabled = hasURL
+        case .some(true):
+            title = authorizationValid && hasURL ? "获取" : "解锁"
+            enabled = title == "获取" || app.unlockURL != nil
+        }
+        let detail = AppDetailViewController(app: app, actionTitle: state?.0 ?? title, actionEnabled: state?.1 ?? enabled)
+        detail.modalPresentationStyle = .fullScreen
+        detail.onAction = { [weak self, weak detail] in
+            guard let self = self, let detail = detail else { return }
+            // The catalog continues to own authorization and download actions.
+            detail.dismiss(animated: true) { [weak self] in
+                guard let self = self else { return }
+                if let url = self.validDownloadURL(app.downloadURL),
+                   let item = AppStoreViewModel.shared.downloadCenter.item(for: url) {
+                    switch item.state {
+                    case .paused: AppStoreViewModel.shared.downloadCenter.resume(item); return
+                    case .failed, .cancelled: self.requestGet(for: app); return
+                    default: return
+                    }
+                }
+                if app.requiresUnlock == true &&
+                    (!self.authorizationValid || self.validDownloadURL(app.downloadURL) == nil) {
+                    self.presentUnlock(for: app)
+                } else {
+                    self.requestGet(for: app)
+                }
+            }
+        }
+        present(detail, animated: true)
+    }
+
+    private func promptForUDID() {
+        let alert = UIAlertController(
+            title: "需要获取设备 UDID",
+            message: "解锁此应用需要设备 UDID，是否立即获取？",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "确定", style: .default) { _ in
+            UDIDService.shared.requestProfileConfiguration()
+        })
+        present(alert, animated: true)
+    }
+
     private func presentUnlock(for app: SourceCatalogApp) {
         guard app.requiresUnlock == true, app.unlockURL != nil else { return }
-        guard let udid = UDIDService.shared.udid, !udid.isEmpty else {
-            showRefreshMessage("需要设备 UDID", "请先在设置中获取设备 UDID")
+        guard let udid = UDIDService.shared.udid, UDIDLocalServer.validUDID(udid) else {
+            promptForUDID()
             return
         }
         let alert = UIAlertController(title: "使用解锁码", message: nil, preferredStyle: .alert)
@@ -201,8 +414,9 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
                     switch result {
                     case .success:
                         self.showRefreshMessage("解锁成功", "已通过服务器授权校验，正在刷新软件源")
-                        SoftwareSourceStore.shared.refreshCatalog()
-                        self.tableView.reloadData()
+                        SoftwareSourceStore.shared.refreshCatalog { [weak self] in
+                            self?.refreshAuthorization()
+                        }
                     case .failure(let error):
                         self.showRefreshMessage("解锁失败", error.localizedDescription)
                     }

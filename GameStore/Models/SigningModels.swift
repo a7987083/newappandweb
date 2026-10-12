@@ -27,6 +27,11 @@ struct SigningRequest {
     let certificate: DeviceCertificate
     let password: String
     var editing: SigningAppEditing = SigningAppEditing()
+    var injectedPlugins: [URL] = []
+    var removedLoadPaths: [String] = []
+    var automaticBuiltIn: Bool = SigningInjectionPreferences.automaticBuiltIn
+    var injectionUseRpath: Bool = SigningInjectionPreferences.useRpath
+    var injectionFrameworks: Bool = SigningInjectionPreferences.useFrameworksFolder
 }
 
 enum IPACompressionPreset: String, CaseIterable, Identifiable {
@@ -134,5 +139,24 @@ final class SigningOptionsStore: ObservableObject {
     private func save() {
         guard let data = try? JSONEncoder().encode(options) else { return }
         UserDefaults.standard.set(data, forKey: Self.storageKey)
+    }
+}
+
+// Global persistent injection preferences, independent of legacy SigningOptions decoding.
+enum SigningInjectionPreferences {
+    private static let pathKey = "zonoe.injection.path.v1"
+    private static let folderKey = "zonoe.injection.folder.v1"
+    private static let autoKey = "zonoe.injection.builtin.v1"
+    static var automaticBuiltIn: Bool {
+        get { UserDefaults.standard.bool(forKey: autoKey) }
+        set { UserDefaults.standard.set(newValue, forKey: autoKey) }
+    }
+    static var useRpath: Bool {
+        get { UserDefaults.standard.bool(forKey: pathKey) }
+        set { UserDefaults.standard.set(newValue, forKey: pathKey) }
+    }
+    static var useFrameworksFolder: Bool {
+        get { UserDefaults.standard.bool(forKey: folderKey) }
+        set { UserDefaults.standard.set(newValue, forKey: folderKey) }
     }
 }

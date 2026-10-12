@@ -1,5 +1,74 @@
 import UIKit
 
+
+// Shared in-memory device authorization. UI screens observe one status and deduplicate requests.
+private final class DeviceAuthorizationMemory {
+    struct Snapshot {
+        let udid: String
+        let status: String
+        let expiry: Date?
+        let checkedAt: Date
+        var isActive: Bool { status == "激活" && (expiry ?? .distantPast) > Date() }
+        var expiryText: String? {
+            guard let expiry = expiry else { return nil }
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            return formatter.string(from: expiry)
+        }
+    }
+    static let shared = DeviceAuthorizationMemory()
+    static let didChange = Notification.Name("zonoe.device.authorization.updated")
+    private(set) var snapshot: Snapshot?
+    private var activeUDID: String?
+    private var inFlight = false
+    private init() {}
+    func refreshIfNeeded() {
+        assert(Thread.isMainThread)
+        guard let udid = UDIDService.shared.udid,
+              UDIDLocalServer.validUDID(udid) else {
+            let hadState = snapshot != nil || activeUDID != nil
+            snapshot = nil
+            activeUDID = nil
+            inFlight = false
+            if hadState { NotificationCenter.default.post(name: Self.didChange, object: nil) }
+            return
+        }
+        if snapshot?.udid == udid, let checkedAt = snapshot?.checkedAt,
+           Date().timeIntervalSince(checkedAt) < 600,
+           (snapshot?.expiry == nil || snapshot!.expiry! > Date() || snapshot?.status != "激活") {
+            return
+        }
+        if activeUDID == udid && inFlight { return }
+        activeUDID = udid
+        inFlight = true
+        var components = URLComponents(string: "https://app3.zonoeios.xyz/index/index/apiface")
+        components?.queryItems = [URLQueryItem(name: "udid", value: udid)]
+        guard let url = components?.url else { inFlight = false; return }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
+        request.httpMethod = "GET"
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            let code = (json?["code"] as? NSNumber)?.intValue ?? (json?["code"] as? String).flatMap(Int.init)
+            let message = (json?["msg"] as? String)?.lowercased()
+            let seconds = (json?["expire"] as? NSNumber)?.doubleValue ?? (json?["expire"] as? String).flatMap(Double.init)
+            let expiry = seconds.map { Date(timeIntervalSince1970: $0) }
+            let validResponse = error == nil && (response as? HTTPURLResponse).map { (200...299).contains($0.statusCode) } == true && json != nil
+            let status: String
+            if !validResponse { status = "查询失败" }
+            else if code == 1 && message == "ok", let expiry = expiry, expiry > Date() { status = "激活" }
+            else if let expiry = expiry, expiry <= Date() { status = "已过期" }
+            else { status = "未激活" }
+            DispatchQueue.main.async {
+                guard let self = self, self.activeUDID == udid,
+                      UDIDService.shared.udid == udid else { return }
+                self.inFlight = false
+                self.snapshot = Snapshot(udid: udid, status: status, expiry: expiry, checkedAt: Date())
+                NotificationCenter.default.post(name: Self.didChange, object: nil)
+            }
+        }.resume()
+    }
+}
+
 // Settings UI only. All status strings and actions below are presentation placeholders.
 // Keep both the settings page and its device-auth detail in this one Swift file.
 @objc(SettingsViewController)
@@ -8,16 +77,26 @@ final class SettingsViewController: UIViewController {
     private let stack = UIStackView()
     private var authStatusLabel: UILabel?
     private var authDescriptionLabel: UILabel?
+    private var authIcon: UIView?
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         updateAuthSummary()
     }
 
+    @objc private func authStateChanged() { updateAuthSummary() }
     private func updateAuthSummary() {
+        let snapshot = DeviceAuthorizationMemory.shared.snapshot
         let present = UDIDService.shared.udid.map { UDIDLocalServer.validUDID($0) } ?? false
-        authStatusLabel?.text = present ? "已获取 UDID" : "未认证"
-        authDescriptionLabel?.text = present ? "设备注册状态未知" : "udid未注册，不可正常安装应用"
+        let active = snapshot?.isActive == true
+        authStatusLabel?.text = active ? "已激活" : (snapshot?.status ?? (present ? "已获取 UDID" : "未认证"))
+        authStatusLabel?.textColor = active ? .systemGreen : .systemRed
+        authDescriptionLabel?.text = active ? "设备授权有效" : (present ? "设备授权状态：" + (snapshot?.status ?? "未知") : "udid未注册，不可正常安装应用")
+        authIcon?.backgroundColor = active ? .systemGreen : .systemRed
+        if let image = authIcon?.subviews.compactMap({ $0 as? UIImageView }).first {
+            image.image = UIImage(systemName: active ? "checkmark" : "xmark")
+        }
+        if present { DeviceAuthorizationMemory.shared.refreshIfNeeded() }
     }
 
     override func viewDidLoad() {
@@ -35,6 +114,7 @@ final class SettingsViewController: UIViewController {
         auth.layer.cornerRadius = 18
         auth.heightAnchor.constraint(equalToConstant: 96).isActive = true
         let icon = SettingsStyle.statusIcon(registered: false, diameter: 48)
+        authIcon = icon
         icon.translatesAutoresizingMaskIntoConstraints = false
         auth.addSubview(icon)
         let statusLabel = SettingsStyle.text("未认证", size: 14, color: .systemRed)
@@ -65,6 +145,8 @@ final class SettingsViewController: UIViewController {
         ])
         auth.addTarget(self, action: #selector(openDeviceAuth), for: .touchUpInside)
         stack.addArrangedSubview(auth)
+        NotificationCenter.default.addObserver(self, selector: #selector(authStateChanged), name: DeviceAuthorizationMemory.didChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(authStateChanged), name: UDIDService.didUpdateNotification, object: nil)
         updateAuthSummary()
 
         SettingsStyle.section("功能", in: stack)
@@ -76,6 +158,10 @@ final class SettingsViewController: UIViewController {
         signing.removeTarget(self, action: #selector(placeholderTapped(_:)), for: .touchUpInside)
         signing.addTarget(self, action: #selector(openSigningSettings), for: .touchUpInside)
         stack.addArrangedSubview(signing)
+        let plugins = placeholder("动态库/插件", icon: "puzzlepiece.extension.fill")
+        plugins.removeTarget(self, action: #selector(placeholderTapped(_:)), for: .touchUpInside)
+        plugins.addTarget(self, action: #selector(openPlugins), for: .touchUpInside)
+        stack.addArrangedSubview(plugins)
         let about = placeholder("关于我们", icon: "info.circle.fill")
         about.removeTarget(self, action: #selector(placeholderTapped(_:)), for: .touchUpInside)
         about.addTarget(self, action: #selector(openAbout), for: .touchUpInside)
@@ -112,6 +198,12 @@ final class SettingsViewController: UIViewController {
         let alert = UIAlertController(title: sender.accessibilityIdentifier, message: "当前仅为 UI 占位。", preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "知道了", style: .default))
         present(alert, animated: true)
+    }
+
+    @objc private func openPlugins() {
+        let page = PluginLibraryController()
+        page.modalPresentationStyle = .fullScreen
+        present(page, animated: true)
     }
 
     @objc private func openAbout() {
@@ -283,6 +375,9 @@ private final class DeviceAuthDetailController: UIViewController {
     private var stateDescription: UILabel?
     private var udidDisplay: UILabel?
     private var acquireButton: UIButton?
+    private var authorizationStatusLabel: UILabel?
+    private var authorizationExpiryLabel: UILabel?
+    private var stateIconView: UIView?
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
@@ -291,10 +386,20 @@ private final class DeviceAuthDetailController: UIViewController {
 
     @objc private func refreshUDID() {
         let valid = UDIDService.shared.udid.flatMap { UDIDLocalServer.validUDID($0) ? $0 : nil }
-        stateTitle?.text = valid == nil ? "未认证" : "已获取 UDID"
-        stateDescription?.text = valid == nil ? "udid未注册，不可正常安装应用" : "设备注册状态未知"
         udidDisplay?.text = valid ?? "未获取"
         acquireButton?.setTitle(valid == nil ? "获取设备 UDID" : "重新获取 UDID", for: .normal)
+        let snapshot = DeviceAuthorizationMemory.shared.snapshot
+        let status = snapshot?.status ?? (valid == nil ? "未认证" : "查询中")
+        let active = snapshot?.isActive == true
+        stateTitle?.text = active ? "已激活" : status
+        stateDescription?.text = active ? "设备授权有效" : (valid == nil ? "请先获取设备 UDID" : "设备授权状态：" + status)
+        authorizationStatusLabel?.text = status
+        authorizationExpiryLabel?.text = snapshot?.expiryText ?? "—"
+        stateIconView?.backgroundColor = active ? .systemGreen : .systemRed
+        if let image = stateIconView?.subviews.compactMap({ $0 as? UIImageView }).first {
+            image.image = UIImage(systemName: active ? "checkmark" : "xmark")
+        }
+        DeviceAuthorizationMemory.shared.refreshIfNeeded()
     }
 
     override func viewDidLoad() {
@@ -302,11 +407,14 @@ private final class DeviceAuthDetailController: UIViewController {
         view.backgroundColor = SettingsStyle.background
         NotificationCenter.default.addObserver(self, selector: #selector(refreshUDID),
                                                name: UDIDService.didUpdateNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshUDID),
+                                               name: DeviceAuthorizationMemory.didChange, object: nil)
         let header = SettingsDetailLayout.header(in: self, title: "设备认证", back: #selector(close))
         SettingsStyle.embed(scroll: scroll, stack: stack, in: view, top: header.bottomAnchor, bottomInset: 20)
 
         let stateCard = SettingsStyle.card()
         let stateIcon = SettingsStyle.statusIcon(registered: false, diameter: 60)
+        stateIconView = stateIcon
         stateIcon.translatesAutoresizingMaskIntoConstraints = false
         let title = SettingsStyle.text("未认证", size: 21, bold: true)
         let desc = SettingsStyle.text("udid未注册，不可正常安装应用", size: 14, color: SettingsStyle.secondary)
@@ -344,16 +452,22 @@ private final class DeviceAuthDetailController: UIViewController {
         rows.addArrangedSubview(udidRow)
         udidDisplay = udidRow.subviews.compactMap { $0 as? UILabel }.last
         rows.addArrangedSubview(SettingsStyle.separator())
-        rows.addArrangedSubview(infoRow("注册状态", value: "未知", valueColor: SettingsStyle.secondary))
+        let statusRow = infoRow("状态", value: "未知", valueColor: SettingsStyle.secondary)
+        authorizationStatusLabel = statusRow.subviews.compactMap { $0 as? UILabel }.last
+        rows.addArrangedSubview(statusRow)
         rows.addArrangedSubview(SettingsStyle.separator())
-        rows.addArrangedSubview(infoRow("注册时间", value: "—"))
+        let expiryRow = infoRow("时间", value: "—")
+        authorizationExpiryLabel = expiryRow.subviews.compactMap { $0 as? UILabel }.last
+        rows.addArrangedSubview(expiryRow)
         stack.addArrangedSubview(info)
 
         let request = actionButton("获取设备 UDID", filled: true)
         request.addTarget(self, action: #selector(requestUDID), for: .touchUpInside)
         acquireButton = request
         stack.addArrangedSubview(request)
-        stack.addArrangedSubview(actionButton("打开官网注册", filled: false))
+        let unbind = actionButton("换绑", filled: false)
+        unbind.addTarget(self, action: #selector(openUnbindPage), for: .touchUpInside)
+        stack.addArrangedSubview(unbind)
 
         let tips = SettingsStyle.card()
         let hint = SettingsStyle.text("提示\n\n1. 点击「获取设备 UDID」获取本机 UDID\n2. 在官网注册并绑定设备\n3. 注册成功后即可安装应用", size: 14, color: SettingsStyle.secondary)
@@ -429,16 +543,12 @@ private final class DeviceAuthDetailController: UIViewController {
         button.setTitleColor(filled ? .white : SettingsStyle.blue, for: .normal)
         button.titleLabel?.font = .boldSystemFont(ofSize: 17)
         button.heightAnchor.constraint(equalToConstant: 56).isActive = true
-        if !filled {
-            button.addTarget(self, action: #selector(showNotConnected), for: .touchUpInside)
-        }
         return button
     }
 
-    @objc private func showNotConnected() {
-        let alert = UIAlertController(title: "界面占位", message: "此按钮暂未接入业务逻辑。", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "知道了", style: .default))
-        present(alert, animated: true)
+    @objc private func openUnbindPage() {
+        guard let url = URL(string: "https://app3.zonoeios.xyz/unbind") else { return }
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
     }
 
     @objc private func close() { dismiss(animated: true) }
@@ -481,7 +591,26 @@ private final class SigningSettingsController: UIViewController {
         addSwitch("Ad-hoc 伪签名", key: 6, value: store.options.temporarySigning)
         addSwitch("签名完成自动安装", key: 7, value: store.options.autoInstallAfterSigning)
         addSwitch("注册回调", key: 8, value: store.options.registerCallback)
+        addSwitch("注入修改器和菜单", key: 9, value: SigningInjectionPreferences.automaticBuiltIn)
         stack.addArrangedSubview(SettingsStyle.text("临时签署使用 Zsign Ad-hoc 伪签名；注册回调用于向目标 App 注册 UDID URL Scheme。", size: 12, color: SettingsStyle.secondary))
+
+        SettingsStyle.section("动态库注入", in: stack)
+        let injectionPath = UISegmentedControl(items: ["@executable_path", "@rpath"])
+        injectionPath.selectedSegmentIndex = SigningInjectionPreferences.useRpath ? 1 : 0
+        injectionPath.addTarget(self, action: #selector(updateInjectionPath(_:)), for: .valueChanged)
+        stack.addArrangedSubview(injectionPath)
+        let injectionFolder = UISegmentedControl(items: ["/", "Frameworks/"])
+        injectionFolder.selectedSegmentIndex = SigningInjectionPreferences.useFrameworksFolder ? 1 : 0
+        injectionFolder.addTarget(self, action: #selector(updateInjectionFolder(_:)), for: .valueChanged)
+        stack.addArrangedSubview(injectionFolder)
+        stack.addArrangedSubview(SettingsStyle.text("手动注入和自动注入共用上述加载路径及存放目录；自动注入读取本 App 的 dylib/ 文件夹。@rpath 需要目标 App 的 LC_RPATH 能正确解析。", size: 12, color: SettingsStyle.secondary))
+        let pluginsButton = UIButton(type: .system)
+        pluginsButton.setTitle("添加第三方库 ›", for: .normal)
+        pluginsButton.backgroundColor = .white
+        pluginsButton.layer.cornerRadius = 16
+        pluginsButton.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        pluginsButton.addTarget(self, action: #selector(openPluginLibrary), for: .touchUpInside)
+        stack.addArrangedSubview(pluginsButton)
 
         SettingsStyle.section("打包规则", in: stack)
         let packaging = UIButton(type: .system)
@@ -529,6 +658,18 @@ private final class SigningSettingsController: UIViewController {
         stack.addArrangedSubview(row)
     }
 
+    @objc private func updateInjectionPath(_ sender: UISegmentedControl) {
+        SigningInjectionPreferences.useRpath = sender.selectedSegmentIndex == 1
+    }
+    @objc private func updateInjectionFolder(_ sender: UISegmentedControl) {
+        SigningInjectionPreferences.useFrameworksFolder = sender.selectedSegmentIndex == 1
+    }
+    @objc private func openPluginLibrary() {
+        let controller = PluginLibraryController()
+        controller.modalPresentationStyle = .fullScreen
+        present(controller, animated: true)
+    }
+
     @objc private func changeOption(_ sender: UISwitch) {
         var options = store.options
         switch sender.tag {
@@ -541,6 +682,9 @@ private final class SigningSettingsController: UIViewController {
         case 6: options.temporarySigning = sender.isOn
         case 7: options.autoInstallAfterSigning = sender.isOn
         case 8: options.registerCallback = sender.isOn
+        case 9:
+            SigningInjectionPreferences.automaticBuiltIn = sender.isOn
+            return
         default: return
         }
         store.options = options
@@ -571,6 +715,7 @@ private final class SigningSettingsController: UIViewController {
         alert.addAction(UIAlertAction(title: "恢复", style: .destructive) { [weak self] _ in
             guard let self = self else { return }
             self.store.resetToDefaults()
+            SigningInjectionPreferences.automaticBuiltIn = false
             for toggle in self.switches {
                 switch toggle.tag {
                 case 0: toggle.isOn = self.store.options.forceLocalization
@@ -582,6 +727,7 @@ private final class SigningSettingsController: UIViewController {
                 case 6: toggle.isOn = self.store.options.temporarySigning
                 case 7: toggle.isOn = self.store.options.autoInstallAfterSigning
                 case 8: toggle.isOn = self.store.options.registerCallback
+                case 9: toggle.isOn = SigningInjectionPreferences.automaticBuiltIn
                 default: break
                 }
             }
@@ -741,6 +887,23 @@ private final class CertificateSettingsController: UIViewController, UIDocumentP
         list.spacing = 8
         stack.addArrangedSubview(list)
         renderCertificates()
+        NotificationCenter.default.addObserver(self, selector: #selector(loadIncomingCertificates), name: .zonoeIncomingCertificate, object: nil)
+        loadIncomingCertificates()
+    }
+
+    @objc private func loadIncomingCertificates() {
+        let inbox = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("IncomingCertificates", isDirectory: true)
+        let incomingP12 = inbox.appendingPathComponent("incoming.p12")
+        let incomingProvision = inbox.appendingPathComponent("incoming.mobileprovision")
+        if FileManager.default.fileExists(atPath: incomingP12.path) {
+            p12 = incomingP12
+            p12Button.setTitle("P12：已通过 AirDrop 接收", for: .normal)
+        }
+        if FileManager.default.fileExists(atPath: incomingProvision.path) {
+            provision = incomingProvision
+            provisionButton.setTitle("描述文件：已通过 AirDrop 接收", for: .normal)
+        }
     }
 
     private func makeButton(_ title: String, selector: Selector) -> UIButton {
@@ -931,5 +1094,278 @@ private enum SettingsStyle {
             stack.bottomAnchor.constraint(equalTo: scroll.bottomAnchor, constant: -22),
             stack.widthAnchor.constraint(equalTo: scroll.widthAnchor, constant: -16)
         ])
+    }
+}
+
+
+/// A separate plugin warehouse. No IPA archive is published into this directory.
+enum ZonoePluginLibrary {
+    static var directory: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("zonoedylib", isDirectory: true)
+    }
+    static func validName(_ url: URL) -> Bool {
+        ["dylib", "deb", "framework"].contains(url.pathExtension.lowercased())
+    }
+    static func files() -> [URL] {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: directory, withIntermediateDirectories: true, attributes: nil)
+        return ((try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isSymbolicLinkKey], options: [.skipsHiddenFiles])) ?? [])
+            .filter { validName($0) && (try? $0.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true }
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+    }
+    static func importFile(_ source: URL) throws {
+        guard validName(source) else { throw failure("仅支持 dylib、deb、framework") }
+        let fm = FileManager.default
+        let security = source.startAccessingSecurityScopedResource()
+        defer { if security { source.stopAccessingSecurityScopedResource() } }
+        guard fm.fileExists(atPath: source.path) else { throw failure("导入文件不存在") }
+        if (try? source.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+            throw failure("不支持符号链接")
+        }
+        let ext = source.pathExtension.lowercased()
+        let isDirectory = (try? source.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        guard (ext == "framework") == isDirectory else { throw failure("Framework 必须为完整目录，其他插件必须是文件") }
+        if isDirectory {
+            let contents = fm.enumerator(at: source, includingPropertiesForKeys: [.isSymbolicLinkKey])
+            while let item = contents?.nextObject() as? URL {
+                if (try? item.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+                    throw failure("Framework 内包含符号链接，暂不支持导入")
+                }
+            }
+        }
+        try fm.createDirectory(at: directory, withIntermediateDirectories: true, attributes: nil)
+        let stage = directory.appendingPathComponent(".incoming-" + UUID().uuidString)
+        defer { try? fm.removeItem(at: stage) }
+        try fm.copyItem(at: source, to: stage)
+        var destination = directory.appendingPathComponent(source.lastPathComponent)
+        while fm.fileExists(atPath: destination.path) {
+            destination = directory.appendingPathComponent(UUID().uuidString.prefix(8) + "-" + source.lastPathComponent)
+        }
+        try fm.moveItem(at: stage, to: destination)
+    }
+    static func failure(_ message: String) -> NSError {
+        NSError(domain: "ZonoePluginLibrary", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+}
+
+final class PluginLibraryController: UIViewController, UITableViewDataSource, UITableViewDelegate, UIDocumentPickerDelegate {
+    var onSelection: (([URL]) -> Void)?
+    private var entries = [URL]()
+    private var selected = Set<URL>()
+    private var editingFiles = false
+    private let table = UITableView(frame: .zero, style: .plain)
+    private let editButton = UIButton(type: .system)
+    private let plusButton = UIButton(type: .system)
+    private let selectionBar = UIStackView()
+    private let queue = DispatchQueue(label: "zonoe.plugins.io", qos: .utility)
+    private var importing = false
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = UIColor.systemGroupedBackground
+        let nav = UIView()
+        nav.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(nav)
+        let back = UIButton(type: .system)
+        back.setTitle("返回", for: .normal)
+        back.addTarget(self, action: #selector(close), for: .touchUpInside)
+        back.translatesAutoresizingMaskIntoConstraints = false
+        nav.addSubview(back)
+        let title = UILabel()
+        title.text = onSelection == nil ? "动态库/插件" : "选择注入插件"
+        title.font = .boldSystemFont(ofSize: 18)
+        title.translatesAutoresizingMaskIntoConstraints = false
+        nav.addSubview(title)
+        editButton.setTitle("编辑", for: .normal)
+        editButton.addTarget(self, action: #selector(toggleEdit), for: .touchUpInside)
+        editButton.translatesAutoresizingMaskIntoConstraints = false
+        nav.addSubview(editButton)
+        plusButton.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
+        plusButton.addTarget(self, action: #selector(showImport), for: .touchUpInside)
+        plusButton.translatesAutoresizingMaskIntoConstraints = false
+        nav.addSubview(plusButton)
+        table.translatesAutoresizingMaskIntoConstraints = false
+        table.dataSource = self
+        table.delegate = self
+        table.rowHeight = 67
+        view.addSubview(table)
+        selectionBar.axis = .horizontal
+        selectionBar.distribution = .fillEqually
+        selectionBar.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(selectionBar)
+        for name in ["全选", onSelection == nil ? "删除" : "确定选择", "完成"] {
+            let button = UIButton(type: .system)
+            button.setTitle(name, for: .normal)
+            if name == "删除" { button.setTitleColor(.systemRed, for: .normal) }
+            button.addTarget(self, action: name == "全选" ? #selector(selectAllPlugins) : name == "删除" ? #selector(removeSelected) : name == "完成" ? #selector(toggleEdit) : #selector(commitSelection), for: .touchUpInside)
+            selectionBar.addArrangedSubview(button)
+        }
+        NSLayoutConstraint.activate([
+            nav.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            nav.leadingAnchor.constraint(equalTo: view.leadingAnchor), nav.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            nav.heightAnchor.constraint(equalToConstant: 54),
+            back.leadingAnchor.constraint(equalTo: nav.leadingAnchor, constant: 18), back.centerYAnchor.constraint(equalTo: nav.centerYAnchor),
+            title.centerXAnchor.constraint(equalTo: nav.centerXAnchor), title.centerYAnchor.constraint(equalTo: nav.centerYAnchor),
+            plusButton.trailingAnchor.constraint(equalTo: nav.trailingAnchor, constant: -16), plusButton.centerYAnchor.constraint(equalTo: nav.centerYAnchor),
+            plusButton.widthAnchor.constraint(equalToConstant: 34), plusButton.heightAnchor.constraint(equalToConstant: 42),
+            editButton.trailingAnchor.constraint(equalTo: plusButton.leadingAnchor, constant: -15), editButton.centerYAnchor.constraint(equalTo: nav.centerYAnchor),
+            table.topAnchor.constraint(equalTo: nav.bottomAnchor), table.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            table.trailingAnchor.constraint(equalTo: view.trailingAnchor), table.bottomAnchor.constraint(equalTo: selectionBar.topAnchor),
+            selectionBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            selectionBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            selectionBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            selectionBar.heightAnchor.constraint(equalToConstant: 48)
+        ])
+        if onSelection != nil { editingFiles = true }
+        refresh()
+        updateEditing()
+    }
+    private func refresh() {
+        entries = ZonoePluginLibrary.files()
+        selected.formIntersection(Set(entries))
+        table.reloadData()
+    }
+    private func updateEditing() {
+        selectionBar.isHidden = !editingFiles
+        editButton.setTitle(editingFiles ? "完成" : "编辑", for: .normal)
+    }
+    @objc private func close() { dismiss(animated: true) }
+    @objc private func toggleEdit() {
+        editingFiles.toggle()
+        if !editingFiles { selected.removeAll() }
+        updateEditing()
+        table.reloadData()
+    }
+    @objc private func selectAllPlugins() {
+        selected = Set(entries)
+        table.reloadData()
+    }
+    @objc private func commitSelection() {
+        onSelection?(entries.filter { selected.contains($0) })
+        dismiss(animated: true)
+    }
+    @objc private func removeSelected() {
+        guard !selected.isEmpty else { return }
+        let alert = UIAlertController(title: "删除选中的插件", message: "将删除 " + String(selected.count) + " 个文件或目录，确定继续？", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
+            guard let self = self else { return }
+            let files = Array(self.selected)
+            self.queue.async {
+                var failure: Error?
+                for file in files {
+                    do { try FileManager.default.removeItem(at: file) } catch { failure = error }
+                }
+                DispatchQueue.main.async {
+                    self.selected.removeAll()
+                    self.refresh()
+                    if let failure = failure { self.message(failure.localizedDescription) }
+                }
+            }
+        })
+        present(alert, animated: true)
+    }
+    @objc private func showImport() {
+        let alert = UIAlertController(title: "添加第三方库", message: nil, preferredStyle: .actionSheet)
+        alert.addAction(UIAlertAction(title: "从文件安装", style: .default) { [weak self] _ in
+            guard let self = self else { return }
+            let picker = UIDocumentPickerViewController(documentTypes: ["public.data", "public.folder"], in: .import)
+            picker.allowsMultipleSelection = true
+            picker.delegate = self
+            self.present(picker, animated: true)
+        })
+        alert.addAction(UIAlertAction(title: "从链接安装", style: .default) { [weak self] _ in self?.importLink() })
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.popoverPresentationController?.sourceView = plusButton
+        alert.popoverPresentationController?.sourceRect = plusButton.bounds
+        present(alert, animated: true)
+    }
+    private func importLink() {
+        let alert = UIAlertController(title: "从链接安装", message: "支持直接下载 dylib 或 deb；Framework 请从文件导入", preferredStyle: .alert)
+        alert.addTextField { $0.placeholder = "https://example.com/example.dylib" }
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "下载", style: .default) { [weak self, weak alert] _ in
+            guard let self = self, let raw = alert?.textFields?.first?.text,
+                  let url = URL(string: raw), ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+                  url.host != nil, ["dylib", "deb"].contains(url.pathExtension.lowercased()) else {
+                self?.message("请输入有效的 dylib 或 deb 下载链接")
+                return
+            }
+            guard !self.importing else { self.message("正在导入插件，请稍后重试"); return }
+            self.importing = true
+            URLSession.shared.downloadTask(with: url) { [weak self] location, response, error in
+                guard let self = self else { return }
+                // URLSession owns the temporary download; relocate it before the callback returns.
+                let stagingDir = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("zonoe-plugin-" + UUID().uuidString, isDirectory: true)
+                let staging = stagingDir.appendingPathComponent(url.lastPathComponent)
+                var transferError: Error? = error
+                do {
+                    guard transferError == nil, let location = location,
+                          let code = (response as? HTTPURLResponse)?.statusCode,
+                          (200...299).contains(code) else {
+                        throw transferError ?? ZonoePluginLibrary.failure("下载失败")
+                    }
+                    try FileManager.default.createDirectory(at: stagingDir,
+                                                            withIntermediateDirectories: true, attributes: nil)
+                    try FileManager.default.moveItem(at: location, to: staging)
+                } catch {
+                    transferError = error
+                }
+                self.queue.async {
+                    defer { try? FileManager.default.removeItem(at: stagingDir) }
+                    var failure = transferError
+                    if failure == nil {
+                        do { try ZonoePluginLibrary.importFile(staging) }
+                        catch { failure = error }
+                    }
+                    DispatchQueue.main.async {
+                        self.importing = false
+                        self.refresh()
+                        if let failure = failure { self.message(failure.localizedDescription) }
+                    }
+                }
+            }.resume()
+        })
+        present(alert, animated: true)
+    }
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard !urls.isEmpty, !importing else { return }
+        importing = true
+        queue.async {
+            var failure: Error?
+            for url in urls {
+                do { try ZonoePluginLibrary.importFile(url) } catch { failure = error }
+            }
+            DispatchQueue.main.async {
+                self.importing = false
+                self.refresh()
+                if let failure = failure { self.message(failure.localizedDescription) }
+            }
+        }
+    }
+    private func message(_ text: String) {
+        let alert = UIAlertController(title: "插件管理", message: text, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确定", style: .default))
+        present(alert, animated: true)
+    }
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { entries.count }
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "Plugin") ?? UITableViewCell(style: .subtitle, reuseIdentifier: "Plugin")
+        let file = entries[indexPath.row]
+        cell.textLabel?.text = file.lastPathComponent
+        let resource = try? file.resourceValues(forKeys: [.fileSizeKey])
+        cell.detailTextLabel?.text = file.pathExtension.uppercased() + " · " + ByteCountFormatter.string(fromByteCount: Int64(resource?.fileSize ?? 0), countStyle: .file)
+        cell.imageView?.image = UIImage(systemName: file.pathExtension.lowercased() == "framework" ? "folder" : "doc.zipper")
+        cell.accessoryType = selected.contains(file) ? .checkmark : .none
+        return cell
+    }
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        let file = entries[indexPath.row]
+        if editingFiles {
+            if !selected.insert(file).inserted { selected.remove(file) }
+            tableView.reloadRows(at: [indexPath], with: .none)
+        }
     }
 }

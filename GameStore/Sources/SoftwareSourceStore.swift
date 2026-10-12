@@ -8,6 +8,8 @@ final class SoftwareSourceStore: ObservableObject {
     private static let storageKey = "zonoe.sources"
     private static let identitiesKey = "zonoe.sourceIdentities"
     private static let namesKey = "zonoe.sourceNames"
+    private static let bundledSource = "https://app3.zonoeios.xyz/appstore"
+    private static let bundledSeedKey = "zonoe.bundledSourceSeed.v1"
 
     @Published private(set) var sources: [String]
     @Published private(set) var isLoading = false
@@ -24,7 +26,16 @@ final class SoftwareSourceStore: ObservableObject {
 
     init(session: URLSession = .shared) {
         self.session = session
-        sources = UserDefaults.standard.stringArray(forKey: Self.storageKey) ?? []
+        var savedSources = UserDefaults.standard.stringArray(forKey: Self.storageKey) ?? []
+        // Seed once: preserve the user's existing sources and respect later manual removal.
+        if !UserDefaults.standard.bool(forKey: Self.bundledSeedKey) {
+            if !savedSources.contains(Self.bundledSource) {
+                savedSources.insert(Self.bundledSource, at: 0)
+            }
+            UserDefaults.standard.set(savedSources, forKey: Self.storageKey)
+            UserDefaults.standard.set(true, forKey: Self.bundledSeedKey)
+        }
+        sources = savedSources
         registeredIdentities = UserDefaults.standard.dictionary(forKey: Self.identitiesKey) as? [String: String] ?? [:]
         sourceNames = UserDefaults.standard.dictionary(forKey: Self.namesKey) as? [String: String] ?? [:]
         catalogsBySource = SourceCatalogCache.load().filter { sources.contains($0.key) }
@@ -170,6 +181,15 @@ struct SourceCatalogApp: Identifiable, Codable {
     let sizeBytes: Int64?
     let updatedAt: Date?
     let releaseNotes: String
+    var versionDescription: String { releaseNotes }
+    var versionDate: String {
+        guard let date = updatedAt else { return "—" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 8 * 3600)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return formatter.string(from: date)
+    }
     let requiresUnlock: Bool?
     let unlockURL: URL?
 }
@@ -317,6 +337,8 @@ extension SoftwareSourceStore {
             let dateString = value(app, ["versionDate", "updatedAt", "date"])
             let date: Date? = {
                 let iso = ISO8601DateFormatter()
+                if let d = iso.date(from: dateString) { return d }
+                iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                 if let d = iso.date(from: dateString) { return d }
                 let formatter = DateFormatter()
                 formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -479,33 +501,40 @@ final class SourceUnlockService {
             guard message == "ok，解锁成功" else {
                 completion(.failure(Failure.invalid(message.isEmpty ? "解锁失败" : message))); return
             }
-            self.verify(app: app, udid: device, completion: completion)
+            self.verifyAuthorization(udid: device) { result in
+                switch result {
+                case .success: completion(.success(()))
+                case .failure(let error): completion(.failure(error))
+                }
+            }
         }.resume()
     }
-    private func verify(app: SourceCatalogApp, udid: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let endpoint = URL(string: "https://app.zonoeios.xyz/index/index/apiface"),
-              let target = query(endpoint, [URLQueryItem(name: "udid", value: udid)]) else {
-            completion(.failure(Failure.invalid("校验地址无效"))); return
+    // Authorization is always read from the server, never from persistent grants.
+    func verifyAuthorization(udid: String, completion: @escaping (Result<Date, Error>) -> Void) {
+        let device = udid.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !device.isEmpty,
+              let endpoint = URL(string: "https://app.zonoeios.xyz/index/index/apiface"),
+              let target = query(endpoint, [URLQueryItem(name: "udid", value: device)]) else {
+            completion(.failure(Failure.invalid("UDID 或校验地址无效")))
+            return
         }
         URLSession.shared.dataTask(with: target) { data, response, error in
             if let error = error { completion(.failure(error)); return }
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
-                  let data = data, let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                completion(.failure(Failure.invalid("授权状态响应无效"))); return
+                  let data = data,
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                completion(.failure(Failure.invalid("授权状态响应无效")))
+                return
             }
             let code = (object["code"] as? NSNumber)?.intValue ?? (object["code"] as? String).flatMap(Int.init)
             let expiry = (object["expire"] as? NSNumber)?.doubleValue ?? (object["expire"] as? String).flatMap(Double.init)
-            guard code == 1, object["msg"] as? String == "ok", let expires = expiry,
-                  expires > Date().timeIntervalSince1970 else {
-                completion(.failure(Failure.invalid("授权无效或已过期"))); return
+            guard code == 1, object["msg"] as? String == "ok",
+                  let expires = expiry, expires > Date().timeIntervalSince1970 else {
+                completion(.failure(Failure.invalid("授权无效或已过期")))
+                return
             }
-            UserDefaults.standard.set(expires, forKey: self.grantKey(app: app, udid: udid))
-            completion(.success(()))
+            completion(.success(Date(timeIntervalSince1970: expires)))
         }.resume()
-    }
-    func isUnlocked(_ app: SourceCatalogApp, udid: String?) -> Bool {
-        guard let udid = udid, !udid.isEmpty else { return false }
-        return UserDefaults.standard.double(forKey: grantKey(app: app, udid: udid)) > Date().timeIntervalSince1970
     }
     private func grantKey(app: SourceCatalogApp, udid: String) -> String {
         let identity = app.bundleIdentifier.isEmpty ? app.name : app.bundleIdentifier

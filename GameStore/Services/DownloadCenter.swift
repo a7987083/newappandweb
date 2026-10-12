@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Zip
 
 final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelegate {
     enum State: String {
@@ -19,11 +20,22 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
     @Published private(set) var activeItems: [Item] = []
     @Published private(set) var completedItems: [Item] = []
     @Published private(set) var terminalItems: [Item] = []
+    @Published private(set) var extractionStatus: [String: String] = [:]
+    // Task-bound post-download phase. A transfer at 100% is not a completed import.
+    @Published private(set) var processingPhaseByTask: [Int: String] = [:]
 
     private var resumeDataByURL: [URL: Data] = [:]
     private var pausingTaskIDs = Set<Int>()
     private var resumedTaskIDs = Set<Int>()
+    private var appKeyByTask = [Int: String]()
+    private var activeAppKeys = [UUID: String]()
+    private static let completedAppKeysKey = "zonoe.downloadAppKeys.v1"
+    private static func completedAppKeys() -> [String: String] {
+        UserDefaults.standard.dictionary(forKey: completedAppKeysKey) as? [String: String] ?? [:]
+    }
     private let persistenceQueue = DispatchQueue(label: "com.GameStore.download.persistence")
+    private let archiveQueue = DispatchQueue(label: "com.GameStore.download.archive", qos: .utility)
+    private var recoveryGeneration = 0
     private static let completedSourcesKey = "zonoe.downloadCompletedSources.v1"
 
     private static func completedSources() -> [String: String] {
@@ -57,6 +69,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         let sourceURL: URL
         let progress: Double
         let resumeData: Data
+        let appKey: String?
     }
 
     private static var pauseArchiveURL: URL {
@@ -71,7 +84,8 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             guard item.state == .paused,
                   let data = resumeDataByURL[item.sourceURL] else { return nil }
             return PausedRecord(
-                sourceURL: item.sourceURL, progress: item.progress, resumeData: data
+                sourceURL: item.sourceURL, progress: item.progress, resumeData: data,
+                appKey: activeAppKeys[item.id]
             )
         }
         // Snapshot on main, encode and atomically write on a serial IO queue.
@@ -100,11 +114,13 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                 continue
             }
             resumeDataByURL[record.sourceURL] = record.resumeData
-            activeItems.append(Item(
+            let restored = Item(
                 id: UUID(), sourceURL: record.sourceURL,
                 progress: record.progress, state: .paused,
                 localURL: nil, errorDescription: nil, taskIdentifier: nil
-            ))
+            )
+            activeItems.append(restored)
+            if let key = record.appKey { activeAppKeys[restored.id] = key }
         }
     }
 
@@ -115,6 +131,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
     override init() {
         super.init()
         restorePausedRecords()
+        migrateLegacyDownloads()
         reloadDownloadedItems()
     }
 
@@ -130,7 +147,107 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         )
     }()
 
-    func enqueue(_ url: URL) {
+    func removeTerminalItem(_ item: Item) {
+        precondition(Thread.isMainThread)
+        guard item.state == .failed || item.state == .cancelled else { return }
+        terminalItems.removeAll { $0.id == item.id }
+    }
+
+    func removePausedItem(_ item: Item) {
+        precondition(Thread.isMainThread)
+        guard item.state == .paused else { return }
+        activeItems.removeAll { $0.id == item.id }
+        resumeDataByURL.removeValue(forKey: item.sourceURL)
+        savePausedRecords()
+    }
+
+    func removeExtractionCache(for item: Item, completion: @escaping (Error?) -> Void) {
+        precondition(Thread.isMainThread)
+        guard item.state == .completed, let url = item.localURL else { return }
+        archiveQueue.async { [weak self] in
+            let failure: Error?
+            do { try DownloadIPAExtractor.removeExtraction(for: url); failure = nil }
+            catch { failure = error }
+            DispatchQueue.main.async {
+                if failure == nil { self?.extractionStatus[url.lastPathComponent] = "缓存已删除" }
+                completion(failure)
+            }
+        }
+    }
+
+    func item(forAppKey key: String) -> Item? {
+        if let item = activeItems.first(where: { activeAppKeys[$0.id] == key }) { return item }
+        let saved = Self.completedAppKeys()
+        return completedItems.first(where: {
+            guard let filename = $0.localURL?.lastPathComponent else { return false }
+            return saved[filename] == key
+        })
+    }
+
+    /// Both local and network inputs publish only after one successful extraction.
+    private func validateAndPublish(_ staged: URL, filename: String) throws -> URL {
+        let fm = FileManager.default
+        let directory = Self.downloadsDirectory()
+        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        var safeName = filename.replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "\\", with: "_")
+        if !safeName.lowercased().hasSuffix(".ipa") && !safeName.lowercased().hasSuffix(".tipa") {
+            safeName += ".ipa"
+        }
+        var final = directory.appendingPathComponent(safeName)
+        while fm.fileExists(atPath: final.path) {
+            final = directory.appendingPathComponent(String(UUID().uuidString.prefix(8)) + "-" + safeName)
+        }
+        do {
+            try DownloadIPAExtractor.extract(staged)
+            try DownloadIPAExtractor.promote(from: staged, to: final)
+            return final
+        } catch {
+            try? DownloadIPAExtractor.removeExtraction(for: staged)
+            throw error
+        }
+    }
+
+    func importLocalPackage(_ source: URL, completion: @escaping (Error?) -> Void) {
+        guard ["ipa", "tipa"].contains(source.pathExtension.lowercased()) else {
+            completion(NSError(domain: "GameStore.Import", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "请选择 IPA 或 TIPA 文件"]))
+            return
+        }
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.importLocalPackage(source, completion: completion) }
+            return
+        }
+        let stage = Self.downloadsDirectory().appendingPathComponent(".incoming-" + UUID().uuidString + ".ipa")
+        let key = stage.lastPathComponent
+        extractionStatus[key] = "正在导入"
+        archiveQueue.async { [weak self] in
+            guard let self = self else { return }
+            defer { try? FileManager.default.removeItem(at: stage) }
+            let scoped = source.startAccessingSecurityScopedResource()
+            defer { if scoped { source.stopAccessingSecurityScopedResource() } }
+            do {
+                try FileManager.default.createDirectory(at: stage.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try FileManager.default.copyItem(at: source, to: stage)
+                DispatchQueue.main.async { self.extractionStatus[key] = "正在解压" }
+                let destination = try self.validateAndPublish(stage, filename: source.lastPathComponent)
+                DispatchQueue.main.async {
+                    self.extractionStatus[key] = "正在校验并入库"
+                    self.extractionStatus[destination.lastPathComponent] = "解压完成"
+                    self.reloadDownloadedItems()
+                    self.extractionStatus[key] = "解压完成"
+                    completion(nil)
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.extractionStatus[key] = "解压失败：" + error.localizedDescription
+                    completion(error)
+                }
+            }
+        }
+    }
+
+    func enqueue(_ url: URL, appKey: String? = nil) {
         guard let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https" else {
             return
@@ -138,11 +255,13 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
 
         // All observable queue mutations and duplicate checks run on main.
         guard Thread.isMainThread else {
-            DispatchQueue.main.async { [weak self] in self?.enqueue(url) }
+            DispatchQueue.main.async { [weak self] in self?.enqueue(url, appKey: appKey) }
             return
         }
 
-        guard !activeItems.contains(where: { $0.sourceURL == url }) else {
+        if let key = appKey, item(forAppKey: key) != nil { return }
+        guard !activeItems.contains(where: { $0.sourceURL == url }),
+              !completedItems.contains(where: { $0.sourceURL == url }) else {
             return
         }
 
@@ -162,6 +281,10 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             taskIdentifier: task.taskIdentifier
         )
         activeItems.append(item)
+        if let key = appKey {
+            activeAppKeys[item.id] = key
+            appKeyByTask[task.taskIdentifier] = key
+        }
         updateActiveItem(taskIdentifier: task.taskIdentifier) {
             $0.state = .downloading
         }
@@ -222,6 +345,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             return
         }
         let task = session.downloadTask(withResumeData: data)
+        if let key = activeAppKeys[item.id] { appKeyByTask[task.taskIdentifier] = key }
         resumedTaskIDs.insert(task.taskIdentifier)
         activeItems[index].taskIdentifier = task.taskIdentifier
         activeItems[index].state = .downloading
@@ -266,28 +390,107 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         }
     }
 
-    func deleteDownloadedItem(_ item: Item) throws {
-        precondition(Thread.isMainThread, "DownloadCenter mutations must run on main")
-        guard item.state == .completed,
+    // Extraction and deletion share archiveQueue: a delete cannot race a
+    // late background extraction and recreate its directory.
+    func deleteDownloadedItem(_ item: Item, completion: @escaping (Error?) -> Void) {
+        guard Thread.isMainThread,
+              item.state == .completed,
               let localURL = item.localURL,
               completedItems.contains(where: { $0.id == item.id && $0.localURL == localURL }),
               localURL.deletingLastPathComponent().standardizedFileURL == Self.downloadsDirectory().standardizedFileURL else {
+            completion(NSError(domain: "GameStore.DownloadCenter", code: 1,
+                               userInfo: [NSLocalizedDescriptionKey: "安装包不在可删除目录"]))
             return
         }
-
-        let fileManager = FileManager.default
-        if fileManager.fileExists(atPath: localURL.path) {
-            try fileManager.removeItem(at: localURL)
+        archiveQueue.async { [weak self] in
+            let failure: Error?
+            do {
+                // Clean associated archive directory first: if it fails, retain IPA
+                // and mapping so user can retry without orphaning the extraction.
+                try DownloadIPAExtractor.removeExtraction(for: localURL)
+                if FileManager.default.fileExists(atPath: localURL.path) {
+                    try FileManager.default.removeItem(at: localURL)
+                }
+                failure = nil
+            } catch {
+                failure = error
+            }
+            DispatchQueue.main.async {
+                guard let self = self else { completion(failure); return }
+                if failure == nil {
+                    Self.updateCompletedSource(filename: localURL.lastPathComponent, source: nil)
+                    var keys = Self.completedAppKeys()
+                    keys.removeValue(forKey: localURL.lastPathComponent)
+                    UserDefaults.standard.set(keys, forKey: Self.completedAppKeysKey)
+                    self.extractionStatus.removeValue(forKey: localURL.lastPathComponent)
+                    let path = localURL.standardizedFileURL.path
+                    self.completedItems.removeAll { $0.localURL?.standardizedFileURL.path == path }
+                }
+                completion(failure)
+            }
         }
+    }
 
-        Self.updateCompletedSource(filename: localURL.lastPathComponent, source: nil)
-        let path = localURL.standardizedFileURL.path
-        completedItems.removeAll {
-            $0.localURL?.standardizedFileURL.path == path
+    private func migrateLegacyDownloads() {
+        let fm = FileManager.default
+        let documents = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let legacy = documents.appendingPathComponent("Downloads", isDirectory: true)
+        let destination = Self.downloadsDirectory()
+        guard let files = try? fm.contentsOfDirectory(at: legacy, includingPropertiesForKeys: nil) else { return }
+        do {
+            try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+            for file in files where file.pathExtension.lowercased() == "ipa" {
+                var target = destination.appendingPathComponent(file.lastPathComponent)
+                let stem = file.deletingPathExtension().lastPathComponent
+                var suffix = 2
+                while fm.fileExists(atPath: target.path) {
+                    target = destination.appendingPathComponent("\(stem)-\(suffix).ipa")
+                    suffix += 1
+                }
+                try fm.moveItem(at: file, to: target)
+                let oldMap = Self.completedSources()
+                if let source = oldMap[file.lastPathComponent], let sourceURL = URL(string: source) {
+                    Self.updateCompletedSource(filename: target.lastPathComponent, source: sourceURL)
+                    if target.lastPathComponent != file.lastPathComponent {
+                        Self.updateCompletedSource(filename: file.lastPathComponent, source: nil)
+                    }
+                }
+            }
+        } catch {
+            NSLog("DownloadCenter: legacy IPA migration failed: %@", String(describing: error))
+        }
+    }
+
+    func retryExtraction(for item: Item) {
+        guard Thread.isMainThread, item.state == .completed,
+              let url = item.localURL,
+              completedItems.contains(where: { $0.id == item.id }) else { return }
+        scheduleExtraction(url)
+    }
+
+    private func scheduleExtraction(_ url: URL) {
+        let name = url.lastPathComponent
+        guard extractionStatus[name] != "正在解压" else { return }
+        extractionStatus[name] = "正在解压"
+        archiveQueue.async { [weak self] in
+            do {
+                try DownloadIPAExtractor.extract(url)
+                DispatchQueue.main.async {
+                    self?.extractionStatus[name] = "解压完成"
+                }
+            } catch {
+                NSLog("DownloadCenter: extraction failed for %@: %@", name, error.localizedDescription)
+                DispatchQueue.main.async {
+                    self?.extractionStatus[name] = "解压失败：" + error.localizedDescription
+                }
+            }
         }
     }
 
     func reloadDownloadedItems() {
+        precondition(Thread.isMainThread)
+        recoveryGeneration += 1
+        let generation = recoveryGeneration
         let fileManager = FileManager.default
         let directory = Self.downloadsDirectory(fileManager: fileManager)
 
@@ -304,7 +507,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                 options: [.skipsHiddenFiles]
             )
             .filter { url in
-                guard url.pathExtension.lowercased() == "ipa",
+                guard ["ipa", "tipa"].contains(url.pathExtension.lowercased()),
                       let values = try? url.resourceValues(forKeys: [.isRegularFileKey]) else {
                     return false
                 }
@@ -320,7 +523,24 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                 return lhs > rhs
             }
 
-            DispatchQueue.main.async {
+            // Never publish a recovered archive until extraction and plist validation complete.
+            archiveQueue.async { [weak self] in
+                guard let self = self else { return }
+                var readyFiles = [URL]()
+                for file in files {
+                    if (try? DownloadIPAExtractor.preparedDirectory(for: file)) == nil {
+                        do { try DownloadIPAExtractor.extract(file) }
+                        catch {
+                            NSLog("DownloadCenter: recovery extraction failed for %@: %@", file.lastPathComponent, error.localizedDescription)
+                            continue
+                        }
+                    }
+                    if (try? DownloadIPAExtractor.preparedDirectory(for: file)) != nil {
+                        readyFiles.append(file)
+                    }
+                }
+                DispatchQueue.main.async {
+                guard generation == self.recoveryGeneration else { return }
                 // Check current filesystem state before pruning: a download may
                 // have finished after the directory snapshot was enumerated.
                 let folder = Self.downloadsDirectory()
@@ -337,7 +557,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                     }
                 )
 
-                self.completedItems = files.map { fileURL in
+                let recovered = readyFiles.filter { FileManager.default.fileExists(atPath: $0.path) }.map { fileURL -> Item in
                     let path = fileURL.standardizedFileURL.path
                     if let existing = existingByPath[path] {
                         return existing
@@ -354,6 +574,16 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                         errorDescription: nil,
                         taskIdentifier: nil
                     )
+                }
+                // Preserve packages committed while this recovery scan was running.
+                let recoveredPaths = Set(recovered.compactMap { $0.localURL?.standardizedFileURL.path })
+                let newlyPublished = self.completedItems.filter { item in
+                    guard let url = item.localURL else { return false }
+                    return !recoveredPaths.contains(url.standardizedFileURL.path) &&
+                        FileManager.default.fileExists(atPath: url.path)
+                }
+                self.completedItems = newlyPublished + recovered
+                for file in readyFiles { self.extractionStatus[file.lastPathComponent] = "解压完成" }
                 }
             }
         } catch {
@@ -416,26 +646,45 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                     .value(forHTTPHeaderField: "Content-Disposition")
             )
 
-            // Never delete an existing IPA. downloadDestination already chooses
-            // a unique filename; moveItem fails safely if another writer wins.
-            try FileManager.default.moveItem(at: location, to: destination)
+            // URLSession's temporary file must be moved before this delegate returns.
+            // Hidden staging files never appear as completed packages.
+            let stage = Self.downloadsDirectory().appendingPathComponent(".incoming-" + UUID().uuidString + ".ipa")
+            try FileManager.default.moveItem(at: location, to: stage)
             let originalSource = downloadTask.originalRequest?.url
             DispatchQueue.main.async {
-                // Publish the source map and the completed item in one main-queue
-                // transition. Do not let a stale callback overwrite a newer task.
-                guard self.activeItems.contains(where: { $0.taskIdentifier == taskIdentifier }) else {
-                    return
+                self.extractionStatus[stage.lastPathComponent] = "正在解压"
+                self.processingPhaseByTask[taskIdentifier] = "正在解压安装包"
+            }
+            archiveQueue.async {
+                defer { try? FileManager.default.removeItem(at: stage) }
+                let active = DispatchQueue.main.sync {
+                    self.activeItems.contains { $0.taskIdentifier == taskIdentifier }
                 }
-                Self.updateCompletedSource(
-                    filename: destination.lastPathComponent,
-                    source: originalSource
-                )
-                self.finishActiveItem(
-                    taskIdentifier: taskIdentifier,
-                    state: .completed,
-                    localURL: destination,
-                    errorDescription: nil
-                )
+                guard active else { return }
+                do {
+                    let validated = try self.validateAndPublish(stage, filename: destination.lastPathComponent)
+                    DispatchQueue.main.async {
+                        self.processingPhaseByTask[taskIdentifier] = "正在校验并入库"
+                        self.extractionStatus[stage.lastPathComponent] = "解压完成"
+                        self.extractionStatus[validated.lastPathComponent] = "解压完成"
+                        guard self.activeItems.contains(where: { $0.taskIdentifier == taskIdentifier }) else {
+                            self.archiveQueue.async {
+                                try? DownloadIPAExtractor.removeExtraction(for: validated)
+                                try? FileManager.default.removeItem(at: validated)
+                            }
+                            return
+                        }
+                        Self.updateCompletedSource(filename: validated.lastPathComponent, source: originalSource)
+                        self.finishActiveItem(taskIdentifier: taskIdentifier, state: .completed,
+                                              localURL: validated, errorDescription: nil)
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        self.extractionStatus[stage.lastPathComponent] = "解压失败：" + error.localizedDescription
+                        self.finishActiveItem(taskIdentifier: taskIdentifier, state: .failed,
+                                              localURL: nil, errorDescription: "安装包验证或解压失败：" + error.localizedDescription)
+                    }
+                }
             }
         } catch {
             DispatchQueue.main.async {
@@ -465,6 +714,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                 // or server-side resource change. Retry once from byte zero.
                 let old = self.activeItems[index]
                 let fresh = self.session.downloadTask(with: old.sourceURL)
+                if let key = self.appKeyByTask.removeValue(forKey: task.taskIdentifier) { self.appKeyByTask[fresh.taskIdentifier] = key }
                 self.activeItems[index].taskIdentifier = fresh.taskIdentifier
                 self.activeItems[index].progress = 0
                 self.activeItems[index].state = .downloading
@@ -513,7 +763,15 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
 
         resumedTaskIDs.remove(taskIdentifier)
         pausingTaskIDs.remove(taskIdentifier)
+        processingPhaseByTask.removeValue(forKey: taskIdentifier)
         var item = activeItems.remove(at: index)
+        let appKey = appKeyByTask.removeValue(forKey: taskIdentifier) ?? activeAppKeys[item.id]
+        activeAppKeys.removeValue(forKey: item.id)
+        if state == .completed, let localURL = localURL, let key = appKey {
+            var saved = Self.completedAppKeys()
+            saved[localURL.lastPathComponent] = key
+            UserDefaults.standard.set(saved, forKey: Self.completedAppKeysKey)
+        }
         item.progress = state == .completed ? 1 : item.progress
         item.state = state
         item.localURL = localURL
@@ -547,7 +805,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         ).first!
 
         return documents.appendingPathComponent(
-            "Downloads",
+            "zonoeDownloads",
             isDirectory: true
         )
     }
@@ -593,7 +851,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         // decoded IPA path when the suggested name still contains percent escapes,
         // or has '+' in place of spaces from a legacy form-encoded server.
         if let pathName = fallback, !pathName.isEmpty,
-           pathName.lowercased().hasSuffix(".ipa"),
+           (pathName.lowercased().hasSuffix(".ipa") || pathName.lowercased().hasSuffix(".tipa")),
            let current = fileName,
            (current.contains("%") || (current.contains("+") && pathName.contains(" "))),
            pathName != current {
@@ -611,7 +869,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "\\", with: "_")
 
-        if sanitized.lowercased().hasSuffix(".ipa") == false {
+        if !sanitized.lowercased().hasSuffix(".ipa") && !sanitized.lowercased().hasSuffix(".tipa") {
             sanitized += ".ipa"
         }
 

@@ -27,12 +27,40 @@
             <string>com.zonoe.udid</string>
             <key>CFBundleURLSchemes</key>
             <array><string>zonoe</string></array>
-            <key>NSPhotoLibraryUsageDescription</key>
-    <string>选择图片以替换正在重新签名的应用图标。</string>
 </dict>
     </array>
     <key>CFBundleDocumentTypes</key>
     <array>
+        <dict>
+            <key>CFBundleTypeName</key><string>All Files</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>LSHandlerRank</key><string>Alternate</string>
+            <key>LSItemContentTypes</key><array><string>public.data</string></array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key><string>Frameworks and Bundles</string>
+            <key>CFBundleTypeRole</key><string>Editor</string>
+            <key>LSHandlerRank</key><string>Alternate</string>
+            <key>LSItemContentTypes</key><array><string>com.apple.framework</string><string>com.apple.bundle</string><string>public.directory</string><string>public.folder</string></array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key><string>Dynamic Libraries and Debian Packages</string>
+            <key>CFBundleTypeRole</key><string>Editor</string>
+            <key>LSHandlerRank</key><string>Alternate</string>
+            <key>LSItemContentTypes</key><array><string>com.zonoe.dylib</string><string>com.zonoe.deb</string></array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key><string>TIPA and ZIP Archives</string>
+            <key>CFBundleTypeRole</key><string>Editor</string>
+            <key>LSHandlerRank</key><string>Alternate</string>
+            <key>LSItemContentTypes</key><array><string>com.zonoe.tipa</string><string>public.zip-archive</string></array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key><string>KSIGN Certificate Package</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>LSHandlerRank</key><string>Alternate</string>
+            <key>LSItemContentTypes</key><array><string>com.zonoe.ksign</string></array>
+        </dict>
         <dict>
             <key>CFBundleTypeName</key><string>IPA Package</string>
             <key>CFBundleTypeRole</key><string>Editor</string>
@@ -55,6 +83,30 @@
     <key>UTExportedTypeDeclarations</key>
     <array>
         <dict>
+            <key>UTTypeIdentifier</key><string>com.zonoe.dylib</string>
+            <key>UTTypeDescription</key><string>Mach-O Dynamic Library</string>
+            <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>dylib</string></array></dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>com.zonoe.deb</string>
+            <key>UTTypeDescription</key><string>Debian Package</string>
+            <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>deb</string></array></dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>com.zonoe.tipa</string>
+            <key>UTTypeDescription</key><string>TIPA Package</string>
+            <key>UTTypeConformsTo</key><array><string>public.data</string><string>public.content</string></array>
+            <key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>tipa</string></array></dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>com.zonoe.ksign</string>
+            <key>UTTypeDescription</key><string>KSIGN Certificate Package</string>
+            <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>ksign</string></array></dict>
+        </dict>
+        <dict>
             <key>UTTypeIdentifier</key><string>com.gamestore.ipa</string>
             <key>UTTypeDescription</key><string>iOS Package Archive</string>
             <key>UTTypeConformsTo</key><array><string>public.data</string><string>public.content</string></array>
@@ -76,6 +128,8 @@
             <dict><key>public.filename-extension</key><array><string>mobileprovision</string></array></dict>
         </dict>
     </array>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>选择图片以替换正在重新签名的应用图标。</string>
     <key>UIFileSharingEnabled</key><true/>
     <key>LSSupportsOpeningDocumentsInPlace</key><false/>
     <key>NSAppTransportSecurity</key>

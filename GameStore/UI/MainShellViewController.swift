@@ -1,13 +1,15 @@
 import UIKit
+import Combine
 
 /// Four-tab UIKit shell: retains page controllers and coordinates shared UI.
-final class MainShellViewController: UIViewController, UISearchBarDelegate, UIScrollViewDelegate, UITableViewDataSource, UITableViewDelegate {
+final class MainShellViewController: UIViewController, UISearchBarDelegate, UIScrollViewDelegate, UITableViewDataSource, UITableViewDelegate, UIDocumentPickerDelegate {
     private var selectedTab = 0
     private struct TabPage {
         let controller: UIViewController
         let views: [UIView]
         let table: UITableView?
         let catalog: AppCatalogViewController?
+        let packages: PackageListViewController?
         let searchBar: UISearchBar?
         let header: UIView?
         let headerHeight: CGFloat
@@ -19,6 +21,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     private var pages = [Int: TabPage]()
     private var currentTable: UITableView?
     private var catalog: AppCatalogViewController?
+    private var packages: PackageListViewController?
     private var searchBar: UISearchBar?
     private var header: UIView?
     private var headerHeight: CGFloat = 0
@@ -34,15 +37,171 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     private let bg = UIColor(red: 242/255, green: 242/255, blue: 247/255, alpha: 1)
     private var rows: [(String,String,String)] = []
     private var filtered: [(String,String,String)] = []
+    private var extractionSubscription: AnyCancellable?
+    private var linkDownloadSubscription: AnyCancellable?
+    private var linkDownloadURL: URL?
+    private var linkDownloadAlert: UIAlertController?
+    private var extractionAlert: UIAlertController?
+    private var displayedExtraction: String?
+    private var extractionNames = [String]()
+    private var signedEditing = false
+    private var signedSelected = Set<URL>()
+    private var headerActions = [Int: [UIButton]]()
+    private var signedFiles = [URL]()
+    private var signedVisible = [URL]()
+    private var signedQuery = ""
+    private func reloadSignedFiles() {
+        let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Signed", isDirectory: true)
+        signedFiles = ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
+            .filter { ["ipa", "tipa", "zip"].contains($0.pathExtension.lowercased()) }
+        rows = signedFiles.map { ($0.lastPathComponent, "已签名安装包", "doc.fill") }
+        applySignedFilter()
+    }
+    private func applySignedFilter() {
+        let q = signedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        signedVisible = q.isEmpty ? signedFiles : signedFiles.filter {
+            $0.lastPathComponent.localizedCaseInsensitiveContains(q)
+        }
+        filtered = signedVisible.map { ($0.lastPathComponent, "已签名安装包", "doc.fill") }
+        signedSelected = signedSelected.intersection(Set(signedFiles))
+    }
+    private func showPackageImport(_ sender: UIButton) {
+        let sheet = UIAlertController(title: "导入安装包", message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "从文件安装", style: .default) { [weak self] _ in
+            let picker = UIDocumentPickerViewController(documentTypes: ["public.data"], in: .import)
+            picker.delegate = self
+            self?.present(picker, animated: true)
+        })
+        sheet.addAction(UIAlertAction(title: "从链接安装", style: .default) { [weak self] _ in
+            self?.showLinkImport()
+        })
+        sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
+        sheet.popoverPresentationController?.sourceView = sender
+        sheet.popoverPresentationController?.sourceRect = sender.bounds
+        present(sheet, animated: true)
+    }
+    private func showLinkImport() {
+        let alert = UIAlertController(title: "从链接安装", message: "允许任意 HTTP/HTTPS 下载链接", preferredStyle: .alert)
+        alert.addTextField { $0.placeholder = "https://example.com/download" }
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "下载", style: .default) { [weak self, weak alert] _ in
+            guard let text = alert?.textFields?.first?.text, let url = URL(string: text),
+                  ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else {
+                self?.showImportError("链接无效"); return
+            }
+            self?.observeLinkDownload(url)
+            AppStoreViewModel.shared.downloadCenter.enqueue(url)
+        })
+        present(alert, animated: true)
+    }
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let file = urls.first else { return }
+        IncomingFileRouter.shared.receive(file)
+    }
+    private func showImportError(_ message: String) {
+        let alert = UIAlertController(title: "导入失败", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确定", style: .default))
+        present(alert, animated: true)
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = bg
         SourceCatalogUIBridge.start()
+        observeExtractions()
         showTab(0)
         if !SoftwareSourceStore.shared.sources.isEmpty && SoftwareSourceStore.shared.catalogApps.isEmpty && !SoftwareSourceStore.shared.isCatalogLoading {
             SoftwareSourceStore.shared.refreshCatalog()
         }
+    }
+
+    private func observeLinkDownload(_ url: URL) {
+        linkDownloadSubscription = nil
+        linkDownloadURL = url
+        let center = AppStoreViewModel.shared.downloadCenter
+        linkDownloadSubscription = Publishers.CombineLatest4(center.$activeItems, center.$completedItems,
+            center.$terminalItems, center.$processingPhaseByTask)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] active, completed, terminal, phases in
+                guard let self = self, self.linkDownloadURL == url else { return }
+                if let item = active.first(where: { $0.sourceURL == url }) {
+                    let phase = item.taskIdentifier.flatMap { phases[$0] }
+                    let title = phase ?? "正在下载安装包"
+                    let message = phase == nil
+                        ? "\(Int(min(1, max(0, item.progress)) * 100))% · 正在下载"
+                        : "下载完成 · \(phase!)"
+                    if let alert = self.linkDownloadAlert {
+                        alert.title = title
+                        alert.message = message
+                        return
+                    }
+                    guard self.presentedViewController == nil else { return }
+                    let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+                    self.linkDownloadAlert = alert
+                    self.present(alert, animated: true)
+                } else if let result = completed.first(where: { $0.sourceURL == url }) ??
+                    terminal.first(where: { $0.sourceURL == url }) {
+                    self.linkDownloadURL = nil
+                    self.linkDownloadSubscription = nil
+                    let alert = self.linkDownloadAlert
+                    self.linkDownloadAlert = nil
+                    alert?.dismiss(animated: true) {
+                        if result.state == .failed {
+                            self.showImportError(result.errorDescription ?? "下载失败")
+                        }
+                    }
+                }
+            }
+    }
+
+    private func observeExtractions() {
+        let center = AppStoreViewModel.shared.downloadCenter
+        extractionSubscription = center.$extractionStatus
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] status in
+                self?.updateExtractionAlert(status)
+            }
+    }
+
+    private func updateExtractionAlert(_ status: [String: String]) {
+        // Only foreground extraction events produce alerts; restored entries have
+        // already completed by the time their UI is first observed.
+        let active = status.filter {
+            ["正在导入", "正在解压", "正在校验并入库"].contains($0.value)
+                && $0.key.hasPrefix(".incoming-")
+        }.keys.sorted()
+        if let displayed = displayedExtraction {
+            if let result = status[displayed],
+               !["正在导入", "正在解压", "正在校验并入库"].contains(result) {
+                displayedExtraction = nil
+                let alert = extractionAlert
+                extractionAlert = nil
+                alert?.dismiss(animated: true) { [weak self] in
+                    guard let self = self else { return }
+                    if result.hasPrefix("解压失败") {
+                        let error = UIAlertController(title: "解压失败", message: result, preferredStyle: .alert)
+                        error.addAction(UIAlertAction(title: "确定", style: .default))
+                        self.present(error, animated: true)
+                    } else {
+                        self.updateExtractionAlert(status)
+                    }
+                }
+            } else if let phase = status[displayed] {
+                extractionAlert?.title = phase == "正在导入" ? "正在导入安装包" :
+                    phase == "正在校验并入库" ? "正在校验并入库" : "正在解压安装包"
+                extractionAlert?.message = "正在准备本地安装包…"
+            }
+            return
+        }
+        guard extractionAlert == nil, presentedViewController == nil,
+              let name = active.first else { return }
+        displayedExtraction = name
+        let alert = UIAlertController(title: status[name] == "正在导入" ? "正在导入安装包" : "正在解压安装包",
+                                      message: "正在准备本地安装包…",
+                                      preferredStyle: .alert)
+        extractionAlert = alert
+        present(alert, animated: true)
     }
 
     override func viewDidLayoutSubviews() {
@@ -57,10 +216,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             if sizeChanged { page.controller.view.frame = view.bounds }
             page.dock.frame.origin.y = view.bounds.height - view.safeAreaInsets.bottom - 72
             page.dock.center.x = view.bounds.midX
-            for case let button as UIButton in page.views {
-                let isEdit = button.title(for: .normal) == "编辑"
-                button.frame.origin = CGPoint(x: width - (isEdit ? 108 : 53), y: safeTop + 8)
-            }
+            layoutHeaderActions(index)
             guard index != 3, let head = page.header, let table = page.table else { continue }
             // Do not modify the active search header until its overlay closes.
             if searching && index == selectedTab { continue }
@@ -95,7 +251,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         if let current = pages[selectedTab] {
             pages[selectedTab] = TabPage(
                 controller: current.controller, views: current.views,
-                table: currentTable, catalog: catalog, searchBar: searchBar,
+                table: currentTable, catalog: catalog, packages: packages, searchBar: searchBar,
                 header: header, headerHeight: headerHeight, compact: compact,
                 dock: dock, rows: rows, filtered: filtered)
         }
@@ -106,6 +262,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         if let existing = pages[index] {
             currentTable = existing.table
             catalog = existing.catalog
+            packages = existing.packages
             searchBar = existing.searchBar
             header = existing.header
             headerHeight = existing.headerHeight
@@ -114,12 +271,18 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             rows = existing.rows
             filtered = existing.filtered
             existing.views.forEach { $0.isHidden = false }
+            if index == 2 {
+                reloadSignedFiles()
+                currentTable?.reloadData()
+            }
+            layoutHeaderActions(index)
             if let table = currentTable { scrollViewDidScroll(table) }
             return
         }
         let previousViews = Set(view.subviews.map(ObjectIdentifier.init))
         currentTable = nil
         catalog = nil
+        packages = nil
         searchBar = nil
         header = nil
         rows = []
@@ -137,6 +300,16 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
                 install(c)
                 catalog = c
                 table = c.tableView
+            } else if index == 1 {
+                let c = PackageListViewController()
+                controller = c
+                install(c)
+                packages = c
+                c.onSignPackage = { [weak self] url, info in
+                    guard let self = self else { return }
+                    self.present(SigningEditorViewController(ipaURL: url, packageInfo: info), animated: true)
+                }
+                table = c.tableView
             } else {
                 let c = UIViewController()
                 controller = c
@@ -152,27 +325,22 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
                 table.dataSource = self
                 table.register(ShellPlaceholderCell.self, forCellReuseIdentifier: "Demo")
                 c.view.addSubview(table)
-                rows = index == 1 ? [
-                    ("1","文件夹 · 2026-10-11 09:21（演示）","folder.fill"),
-                    ("Random Dice 2.ipa","273.6 MB · 2026-10-10 02:35（演示）","doc.fill"),
-                    ("test.ipa","960 KB · 2026-10-11 06:42（演示）","doc.fill")
-                ] : []
-                filtered = rows
+                reloadSignedFiles()
             }
             currentTable = table
-            table.delegate = self
+            if index != 1 { table.delegate = self }
             let head = buildHeader(index)
             header = head
             headerHeight = head.bounds.height
             if index == 0 { catalog?.setCatalogHeader(head,height: headerHeight) }
             else { table.tableHeaderView = head }
-            buildCompact(["应用","安装包","插件"][index])
+            buildCompact(["应用","安装包","已签名"][index])
             buildActions(index)
         }
         buildDock()
         let ownedViews = view.subviews.filter { !previousViews.contains(ObjectIdentifier($0)) }
         pages[index] = TabPage(controller: controller, views: ownedViews,
-                               table: currentTable, catalog: catalog,
+                               table: currentTable, catalog: catalog, packages: packages,
                                searchBar: searchBar, header: header,
                                headerHeight: headerHeight, compact: compact,
                                dock: dock, rows: rows, filtered: filtered)
@@ -187,7 +355,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     }
 
     private func buildHeader(_ index: Int) -> UIView {
-        let head = ShellHeaderView(title: ["应用", "安装包", "插件"][index],
+        let head = ShellHeaderView(title: ["应用", "安装包", "已签名"][index],
                                    width: view.bounds.width,
                                    safeTop: view.safeAreaInsets.top,
                                    background: bg)
@@ -211,22 +379,148 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     }
 
     private func buildActions(_ index: Int) {
-        let w = view.bounds.width
-        let y = view.safeAreaInsets.top+8
-        if index != 0 {
-            let edit = UIButton(type: .system)
-            edit.frame = CGRect(x: w-108,y: y,width: 42,height: 34)
-            edit.setTitle("编辑",for: .normal)
-            edit.addTarget(self,action: #selector(demo),for: .touchUpInside)
-            view.addSubview(edit)
+        let labels = index == 0 ? ["刷新"] : index == 1 ?
+            ["编辑", "+", "全选", "签名", "删除", "完成"] :
+            ["编辑", "全选", "删除", "完成"]
+        let buttons = labels.map { label -> UIButton in
+            let button = UIButton(type: .system)
+            if label == "+" {
+                button.setImage(UIImage(systemName: "plus.circle.fill",
+                    withConfiguration: UIImage.SymbolConfiguration(pointSize: 27)), for: .normal)
+                button.tintColor = blue
+            } else {
+                button.setTitle(label, for: .normal)
+                button.setTitleColor(label == "删除" ? .systemRed : blue, for: .normal)
+            }
+            button.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
+            button.accessibilityIdentifier = "\(index):\(label)"
+            button.addTarget(self, action: #selector(headerTapped(_:)), for: .touchUpInside)
+            view.addSubview(button)
+            return button
         }
-        let action = UIButton(type: .system)
-        action.frame = CGRect(x: w-53,y: y,width: 42,height: 42)
-        action.tintColor = blue
-        action.setImage(UIImage(systemName: index == 0 ? "arrow.clockwise.circle.fill" : "plus.circle.fill",
-                                withConfiguration: UIImage.SymbolConfiguration(pointSize: 29)),for: .normal)
-        action.addTarget(self,action: index == 0 ? #selector(refresh) : #selector(demo),for: .touchUpInside)
-        view.addSubview(action)
+        headerActions[index] = buttons
+        layoutHeaderActions(index)
+    }
+
+    private func layoutHeaderActions(_ index: Int) {
+        guard let buttons = headerActions[index] else { return }
+        let editing = index == 1 ? (pages[index]?.packages?.isSelecting ?? packages?.isSelecting ?? false) : signedEditing
+        let names = index == 0 ? ["刷新"] : editing ?
+            (index == 1 ? ["全选","签名","删除","完成"] : ["全选","删除","完成"]) :
+            (index == 1 ? ["编辑","+"] : ["编辑"])
+        let visible = buttons.filter { button in
+            let token = button.accessibilityIdentifier?.split(separator: ":").last.map(String.init) ?? ""
+            return names.contains(token)
+        }
+        for button in buttons { button.isHidden = index != selectedTab || !visible.contains(button) }
+        for (i, button) in visible.enumerated() {
+            button.frame = CGRect(x: view.bounds.width - 9 - CGFloat(visible.count-i)*56,
+                                  y: view.safeAreaInsets.top + 8, width: 52, height: 36)
+        }
+    }
+
+    @objc private func headerTapped(_ sender: UIButton) {
+        guard let tag = sender.accessibilityIdentifier else { return }
+        let parts = tag.split(separator: ":")
+        guard parts.count == 2, let index = Int(parts[0]) else { return }
+        let action = String(parts[1])
+        switch action {
+        case "刷新": refresh()
+        case "+": showPackageImport(sender)
+        case "编辑":
+            if index == 1 { packages?.setSelecting(true) }
+            else { signedEditing = true; signedSelected.removeAll(); currentTable?.reloadData() }
+        case "完成":
+            if index == 1 { packages?.setSelecting(false) }
+            else { signedEditing = false; signedSelected.removeAll(); currentTable?.reloadData() }
+        case "全选":
+            if index == 1 { packages?.toggleSelectAll() }
+            else {
+                let visibleSet = Set(signedVisible)
+                if visibleSet.isSubset(of: signedSelected) { signedSelected.subtract(visibleSet) }
+                else { signedSelected.formUnion(visibleSet) }
+                currentTable?.reloadData()
+            }
+        case "删除":
+            if index == 1 { packages?.deleteSelected() }
+            else { deleteSignedSelection() }
+        case "签名":
+            let selected = packages?.selectedPackages().filter { $0.state == .completed } ?? []
+            guard !selected.isEmpty else {
+                showImportError("请先选择已下载的安装包")
+                return
+            }
+            showSigningCertificateSelection(selected.compactMap { $0.localURL })
+        default: break
+        }
+        layoutHeaderActions(index)
+    }
+
+    private func deleteSignedSelection() {
+        let targets = signedFiles.filter { signedSelected.contains($0) }
+        guard !targets.isEmpty else {
+            showImportError("请先选择要删除的文件")
+            return
+        }
+        let alert = UIAlertController(title: "删除已签名文件", message: "确定删除 \(targets.count) 个文件？", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
+            var failures = [String]()
+            for url in targets {
+                do { try FileManager.default.removeItem(at: url) }
+                catch { failures.append(url.lastPathComponent + "：" + error.localizedDescription) }
+            }
+            self?.signedSelected.removeAll()
+            self?.reloadSignedFiles()
+            self?.currentTable?.reloadData()
+            if !failures.isEmpty { self?.showImportError(failures.joined(separator: "\n")) }
+        })
+        present(alert, animated: true)
+    }
+
+    private func showSigningCertificateSelection(_ files: [URL]) {
+        let store = CertificateStore.shared
+        store.reload()
+        let picker = UIAlertController(title: "选择签名证书", message: nil, preferredStyle: .actionSheet)
+        for cert in store.certificates {
+            picker.addAction(UIAlertAction(title: cert.name, style: .default) { [weak self] _ in
+                self?.signSequentially(files, certificate: cert)
+            })
+        }
+        if store.certificates.isEmpty {
+            picker.message = "请先在设置中导入 P12 与 mobileprovision"
+        }
+        picker.addAction(UIAlertAction(title: "取消", style: .cancel))
+        picker.popoverPresentationController?.sourceView = view
+        picker.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: 50, width: 1, height: 1)
+        present(picker, animated: true)
+    }
+
+    private var signingService: AppSigningService?
+    private func signSequentially(_ files: [URL], certificate: DeviceCertificate) {
+        guard let first = files.first else { return }
+        guard signingService == nil else { return }
+        let dialog = UIAlertController(title: "正在签名", message: first.lastPathComponent, preferredStyle: .alert)
+        present(dialog, animated: true)
+        let service = AppSigningService()
+        signingService = service
+        let password = CertificatePasswordKeychain.read(for: certificate.id) ?? ""
+        service.sign(request: SigningRequest(ipaURL: first, certificate: certificate, password: password),
+            progress: { state in dialog.message = first.lastPathComponent + "\n" + state.rawValue },
+            completion: { [weak self] result in
+                guard let self = self else { return }
+                self.signingService = nil
+                dialog.dismiss(animated: true) {
+                    switch result {
+                    case .success:
+                        self.signSequentially(Array(files.dropFirst()), certificate: certificate)
+                    case .failure(let error):
+                        let notice = UIAlertController(title: "签名失败", message: error.localizedDescription, preferredStyle: .alert)
+                        notice.addAction(UIAlertAction(title: "确定", style: .default))
+                        self.present(notice, animated: true)
+                    }
+                }
+            })
     }
 
     private func buildDock() {
@@ -241,17 +535,110 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     }
 
     @objc private func refresh() { catalog?.refreshSourceCatalog() }
+    @objc private func importPackageTapped(_ sender: UIButton) { showPackageImport(sender) }
     @objc private func demo() {
         let a = UIAlertController(title: "界面演示",message: "当前仅为 UI 占位。",preferredStyle: .alert)
         a.addAction(UIAlertAction(title: "知道了",style: .default))
         present(a,animated: true)
     }
 
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        if selectedTab == 0 { catalog?.openDetail(atVisibleRow: indexPath.row) }
+        else if selectedTab == 2 && signedVisible.indices.contains(indexPath.row) {
+            let file = signedVisible[indexPath.row]
+            if signedEditing {
+                if !signedSelected.insert(file).inserted { signedSelected.remove(file) }
+                tableView.reloadRows(at: [indexPath], with: .none)
+            } else {
+                showSignedActions(for: file, in: tableView, at: indexPath)
+            }
+        }
+    }
+
+    private func showSignedActions(for file: URL, in table: UITableView, at indexPath: IndexPath) {
+        let sheet = UIAlertController(title: file.lastPathComponent, message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "安装", style: .default) { [weak self] _ in
+            self?.installSignedFile(file)
+        })
+        sheet.addAction(UIAlertAction(title: "分享", style: .default) { [weak self, weak table] _ in
+            guard let self = self, FileManager.default.fileExists(atPath: file.path) else {
+                self?.showImportError("已签名文件不存在")
+                return
+            }
+            let activity = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+            activity.popoverPresentationController?.sourceView = table ?? self.view
+            activity.popoverPresentationController?.sourceRect = table?.rectForRow(at: indexPath) ?? self.view.bounds
+            self.present(activity, animated: true)
+        })
+        sheet.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
+            self?.confirmDeleteSignedFile(file)
+        })
+        sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
+        sheet.popoverPresentationController?.sourceView = table
+        sheet.popoverPresentationController?.sourceRect = table.rectForRow(at: indexPath)
+        present(sheet, animated: true)
+    }
+
+    private func installSignedFile(_ file: URL) {
+        guard file.pathExtension.lowercased() == "ipa" else {
+            showImportError("仅支持直接安装 IPA 文件；ZIP 和 TIPA 请先转换为 IPA")
+            return
+        }
+        guard FileManager.default.fileExists(atPath: file.path) else {
+            showImportError("已签名文件不存在")
+            return
+        }
+        // Inspection performs archive I/O; keep it off the UI thread.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Result { try IPAInspector.inspect(file) }
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success(let info):
+                    let artifact = SignedArtifact(ipaURL: file, bundleIdentifier: info.bundleID,
+                                                  displayName: info.displayName, version: info.version)
+                    IPAInstallCoordinator.shared.begin(artifact: artifact, mode: .network) { [weak self] response in
+                        DispatchQueue.main.async {
+                            switch response {
+                            case .success(let accepted):
+                                if !accepted { self?.showImportError("系统未接受安装请求") }
+                            case .failure(let error):
+                                self?.showImportError(error.localizedDescription)
+                            }
+                        }
+                    }
+                case .failure(let error):
+                    self.showImportError("无法读取已签名 IPA：" + error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func confirmDeleteSignedFile(_ file: URL) {
+        let alert = UIAlertController(title: "删除已签名安装包",
+                                      message: "确定删除「" + file.lastPathComponent + "」？", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
+            do {
+                try FileManager.default.removeItem(at: file)
+                self?.signedSelected.remove(file)
+                self?.reloadSignedFiles()
+                self?.currentTable?.reloadData()
+            } catch {
+                self?.showImportError("删除失败：" + error.localizedDescription)
+            }
+        })
+        present(alert, animated: true)
+    }
+
     func tableView(_ tableView: UITableView,numberOfRowsInSection section: Int) -> Int { filtered.count }
     func tableView(_ tableView: UITableView,cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Demo",for: indexPath) as! ShellPlaceholderCell
+        guard filtered.indices.contains(indexPath.row) else { return UITableViewCell() }
         let row = filtered[indexPath.row]
         cell.configure(title: row.0,detail: row.1,symbol: row.2)
+        cell.accessoryType = selectedTab == 2 && signedEditing && signedVisible.indices.contains(indexPath.row) &&
+            signedSelected.contains(signedVisible[indexPath.row]) ? .checkmark : .none
         return cell
     }
 
@@ -309,7 +696,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         let anchor = searchSession.captureCurrent(on: table)
         let searchRow = anchor.row
         let searchAppID = searchRow.flatMap { selectedTab == 0 ? catalog?.appID(atVisibleRow: $0) : nil }
-        let searchDemoName = searchRow.flatMap { selectedTab != 0 && $0 < filtered.count ? filtered[$0].0 : nil }
+        let searchDemoName = searchRow.flatMap { selectedTab > 1 && $0 < filtered.count ? filtered[$0].0 : nil }
         searchSession.restoreViewport(on: table)
         bar.resignFirstResponder()
         bar.text = ""
@@ -360,9 +747,11 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     func searchBar(_ searchBar: UISearchBar,textDidChange value: String) {
         if selectedTab == 0 {
             catalog?.filter(query: value)
+        } else if selectedTab == 1 {
+            packages?.filter(query: value)
         } else {
-            let q = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            filtered = q.isEmpty ? rows : rows.filter { ($0.0+" "+$0.1).localizedCaseInsensitiveContains(q) }
+            signedQuery = value
+            applySignedFilter()
             currentTable?.reloadData()
         }
     }

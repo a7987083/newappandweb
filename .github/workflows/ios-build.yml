@@ -110,6 +110,8 @@ jobs:
           test -d "$APP_PATH"
           # Embed user-supplied icon in the unsigned device app before IPA packaging.
           base64 -D -i GameStore/Resources/AppIconSource.base64 -o /tmp/gamestore-icon-source.png
+          # Fail early if the icon source is not a decodable PNG.
+          sips -g pixelWidth -g pixelHeight /tmp/gamestore-icon-source.png >/dev/null
           sips -s format png -z 120 120 /tmp/gamestore-icon-source.png --out "$APP_PATH/GameStoreIcon120.png" >/dev/null
           sips -s format png -z 180 180 /tmp/gamestore-icon-source.png --out "$APP_PATH/GameStoreIcon180.png" >/dev/null
           sips -s format png -z 152 152 /tmp/gamestore-icon-source.png --out "$APP_PATH/GameStoreIcon152.png" >/dev/null

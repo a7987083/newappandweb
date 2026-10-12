@@ -887,6 +887,23 @@ private final class CertificateSettingsController: UIViewController, UIDocumentP
         list.spacing = 8
         stack.addArrangedSubview(list)
         renderCertificates()
+        NotificationCenter.default.addObserver(self, selector: #selector(loadIncomingCertificates), name: .zonoeIncomingCertificate, object: nil)
+        loadIncomingCertificates()
+    }
+
+    @objc private func loadIncomingCertificates() {
+        let inbox = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("IncomingCertificates", isDirectory: true)
+        let incomingP12 = inbox.appendingPathComponent("incoming.p12")
+        let incomingProvision = inbox.appendingPathComponent("incoming.mobileprovision")
+        if FileManager.default.fileExists(atPath: incomingP12.path) {
+            p12 = incomingP12
+            p12Button.setTitle("P12：已通过 AirDrop 接收", for: .normal)
+        }
+        if FileManager.default.fileExists(atPath: incomingProvision.path) {
+            provision = incomingProvision
+            provisionButton.setTitle("描述文件：已通过 AirDrop 接收", for: .normal)
+        }
     }
 
     private func makeButton(_ title: String, selector: Selector) -> UIButton {

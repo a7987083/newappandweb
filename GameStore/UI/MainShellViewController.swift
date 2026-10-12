@@ -97,10 +97,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     }
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         guard let file = urls.first else { return }
-        AppStoreViewModel.shared.downloadCenter.importLocalPackage(file) { [weak self] error in
-            // The unified progress observer reports import failures.
-            _ = error
-        }
+        IncomingFileRouter.shared.receive(file)
     }
     private func showImportError(_ message: String) {
         let alert = UIAlertController(title: "导入失败", message: message, preferredStyle: .alert)

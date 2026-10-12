@@ -24,6 +24,12 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
     private var resumeDataByURL: [URL: Data] = [:]
     private var pausingTaskIDs = Set<Int>()
     private var resumedTaskIDs = Set<Int>()
+    private var appKeyByTask = [Int: String]()
+    private var activeAppKeys = [UUID: String]()
+    private static let completedAppKeysKey = "zonoe.downloadAppKeys.v1"
+    private static func completedAppKeys() -> [String: String] {
+        UserDefaults.standard.dictionary(forKey: completedAppKeysKey) as? [String: String] ?? [:]
+    }
     private let persistenceQueue = DispatchQueue(label: "com.GameStore.download.persistence")
     private let archiveQueue = DispatchQueue(label: "com.GameStore.download.archive", qos: .utility)
     private static let completedSourcesKey = "zonoe.downloadCompletedSources.v1"
@@ -161,7 +167,16 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         }
     }
 
-    func enqueue(_ url: URL) {
+    func item(forAppKey key: String) -> Item? {
+        if let item = activeItems.first(where: { activeAppKeys[$0.id] == key }) { return item }
+        let saved = Self.completedAppKeys()
+        return completedItems.first(where: {
+            guard let filename = $0.localURL?.lastPathComponent else { return false }
+            return saved[filename] == key
+        })
+    }
+
+    func enqueue(_ url: URL, appKey: String? = nil) {
         guard let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https" else {
             return
@@ -169,10 +184,11 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
 
         // All observable queue mutations and duplicate checks run on main.
         guard Thread.isMainThread else {
-            DispatchQueue.main.async { [weak self] in self?.enqueue(url) }
+            DispatchQueue.main.async { [weak self] in self?.enqueue(url, appKey: appKey) }
             return
         }
 
+        if let key = appKey, item(forAppKey: key) != nil { return }
         guard !activeItems.contains(where: { $0.sourceURL == url }),
               !completedItems.contains(where: { $0.sourceURL == url }) else {
             return
@@ -194,6 +210,10 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             taskIdentifier: task.taskIdentifier
         )
         activeItems.append(item)
+        if let key = appKey {
+            activeAppKeys[item.id] = key
+            appKeyByTask[task.taskIdentifier] = key
+        }
         updateActiveItem(taskIdentifier: task.taskIdentifier) {
             $0.state = .downloading
         }
@@ -327,6 +347,9 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                 guard let self = self else { completion(failure); return }
                 if failure == nil {
                     Self.updateCompletedSource(filename: localURL.lastPathComponent, source: nil)
+                    var keys = Self.completedAppKeys()
+                    keys.removeValue(forKey: localURL.lastPathComponent)
+                    UserDefaults.standard.set(keys, forKey: Self.completedAppKeysKey)
                     self.extractionStatus.removeValue(forKey: localURL.lastPathComponent)
                     let path = localURL.standardizedFileURL.path
                     self.completedItems.removeAll { $0.localURL?.standardizedFileURL.path == path }
@@ -636,6 +659,13 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         resumedTaskIDs.remove(taskIdentifier)
         pausingTaskIDs.remove(taskIdentifier)
         var item = activeItems.remove(at: index)
+        let appKey = appKeyByTask.removeValue(forKey: taskIdentifier) ?? activeAppKeys[item.id]
+        activeAppKeys.removeValue(forKey: item.id)
+        if state == .completed, let localURL = localURL, let key = appKey {
+            var saved = Self.completedAppKeys()
+            saved[localURL.lastPathComponent] = key
+            UserDefaults.standard.set(saved, forKey: Self.completedAppKeysKey)
+        }
         item.progress = state == .completed ? 1 : item.progress
         item.state = state
         item.localURL = localURL

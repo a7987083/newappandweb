@@ -21,7 +21,7 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
     private var pendingRequests = Set<String>()
     private var lastRequestAt = [String: Date]()
     private func downloadKey(_ app: SourceCatalogApp) -> String {
-        app.sourceURL.absoluteString + "#" + app.id
+        app.sourceURL + "#" + app.id
     }
 
     override func loadView() {
@@ -163,8 +163,8 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
         let center = AppStoreViewModel.shared.downloadCenter
         // Prefer a current URL match; signed URLs can change, so resolve the
         // retained file's original download URL as well when possible.
-        guard let url = validDownloadURL(app.downloadURL),
-              let item = center.item(for: url) else { return nil }
+        guard let item = center.item(forAppKey: downloadKey(app)) ??
+            validDownloadURL(app.downloadURL).flatMap({ center.item(for: $0) }) else { return nil }
         switch item.state {
         case .queued: return ("等待中", false)
         case .downloading: return ("\(Int(item.progress * 100))%", false)
@@ -192,8 +192,8 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
         guard !pendingRequests.contains(key),
               Date().timeIntervalSince(lastRequestAt[key] ?? .distantPast) >= 2 else { return }
         let center = AppStoreViewModel.shared.downloadCenter
-        if let url = validDownloadURL(current.downloadURL),
-           let existing = center.item(for: url),
+        if let existing = center.item(forAppKey: key) ??
+            validDownloadURL(current.downloadURL).flatMap({ center.item(for: $0) }),
            existing.state == .completed || existing.state == .downloading ||
            existing.state == .queued || existing.state == .paused { return }
         lastRequestAt[key] = Date()
@@ -208,12 +208,13 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
             SourceUnlockService.shared.verifyAuthorization(udid: udid) { [weak self] result in
                 DispatchQueue.main.async {
                     guard let self = self, UDIDService.shared.udid == udid else { return }
-                    defer { self.pendingRequests.remove(key); self.tableView.reloadData() }
+                    // Hold this request lock until the catalog refresh has returned.
                     switch result {
                     case .success(let expiry):
                         self.verifiedUDID = udid
                         self.authorizationExpiry = expiry
                         SoftwareSourceStore.shared.refreshCatalog {
+                            defer { self.pendingRequests.remove(key); self.tableView.reloadData() }
                             guard SoftwareSourceStore.shared.catalogError == nil,
                                   let fresh = self.latestApp(matching: app),
                                   fresh.requiresUnlock == true,
@@ -221,13 +222,13 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
                                 self.showRefreshMessage("暂不可获取", "软件源未返回最新可用下载地址")
                                 return
                             }
-                            self.pendingRequests.remove(key)
-                            AppStoreViewModel.shared.downloadCenter.enqueue(url)
+                            AppStoreViewModel.shared.downloadCenter.enqueue(url, appKey: key)
                         }
                     case .failure:
                         self.verifiedUDID = nil
                         self.authorizationExpiry = nil
                         self.tableView.reloadData()
+                        self.pendingRequests.remove(key)
                         self.presentUnlock(for: current)
                     }
                 }
@@ -241,7 +242,7 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
             return
         }
         pendingRequests.remove(key)
-        AppStoreViewModel.shared.downloadCenter.enqueue(url)
+        AppStoreViewModel.shared.downloadCenter.enqueue(url, appKey: key)
     }
 
     private func applyFilter() {
@@ -322,8 +323,8 @@ final class AppCatalogViewController: UIViewController, UITableViewDataSource {
         }
         cell.onAction = { [weak self] in
             guard let self = self else { return }
-            if let url = self.validDownloadURL(app.downloadURL),
-               let item = AppStoreViewModel.shared.downloadCenter.item(for: url) {
+            if let item = AppStoreViewModel.shared.downloadCenter.item(forAppKey: self.downloadKey(app)) ??
+                self.validDownloadURL(app.downloadURL).flatMap({ AppStoreViewModel.shared.downloadCenter.item(for: $0) }) {
                 switch item.state {
                 case .paused: AppStoreViewModel.shared.downloadCenter.resume(item); return
                 case .failed, .cancelled: self.requestGet(for: app); return

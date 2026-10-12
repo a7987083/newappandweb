@@ -287,14 +287,24 @@ final class SigningEditorViewController: UIViewController {
     }
     @objc private func selectPlugins() {
         guard !running else { return }
-        let library = PluginLibraryController()
-        library.modalPresentationStyle = .fullScreen
-        library.onSelection = { [weak self] chosen in
-            self?.selectedPlugins = chosen
-            self?.status.text = chosen.isEmpty ? "未选择插件" : "已选择 " + String(chosen.count) + " 个插件（支持 dylib / framework）"
+        let files = ZonoePluginLibrary.files().filter {
+            ["dylib", "framework"].contains($0.pathExtension.lowercased())
         }
-        present(library, animated: true)
+        let entries = files.map { SigningLibrarySelectionController.Item(id: $0.path, title: $0.lastPathComponent, subtitle: nil) }
+        let selection = SigningLibrarySelectionController(
+            title: "选择注入动态库",
+            items: entries,
+            selectedIDs: Set(selectedPlugins.map(\.path))
+        )
+        selection.onConfirm = { [weak self] ids in
+            guard let self = self else { return }
+            self.selectedPlugins = files.filter { ids.contains($0.path) }
+            self.status.text = self.selectedPlugins.isEmpty ? "未选择插件" :
+                "已选择 " + String(self.selectedPlugins.count) + " 个插件（支持 dylib / framework）"
+        }
+        present(selection, animated: true)
     }
+
     @objc private func pickExistingLibraries(_ sender: UIButton) {
         guard !running else { return }
         sender.isEnabled = false
@@ -312,7 +322,8 @@ final class SigningEditorViewController: UIViewController {
                 Zip.addCustomFileExtension("tipa")
                 try Zip.unzipFile(self.ipaURL, destination: scratch, overwrite: true, password: nil)
                 let payload = scratch.appendingPathComponent("Payload")
-                let apps = try fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: nil).filter { $0.pathExtension.lowercased() == "app" }
+                let apps = try fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: nil)
+                    .filter { $0.pathExtension.lowercased() == "app" }
                 guard apps.count == 1, let binary = Bundle(url: apps[0])?.executableURL else {
                     throw ZonoePluginLibrary.failure("IPA 主程序不存在")
                 }
@@ -326,21 +337,27 @@ final class SigningEditorViewController: UIViewController {
                     self.showMessage(failure.localizedDescription)
                     return
                 }
-                let sheet = UIAlertController(title: "移除已有库", message: "点击条目选择或取消；签名时同时移除加载命令与对应实体文件。无法安全定位时会中止签名。", preferredStyle: .actionSheet)
-                for path in paths {
-                    let selected = self.removedLoadPaths.contains(path)
-                    sheet.addAction(UIAlertAction(title: (selected ? "✓ " : "") + path, style: .default) { [weak self, weak sender] _ in
-                        guard let self = self else { return }
-                        if let i = self.removedLoadPaths.firstIndex(of: path) { self.removedLoadPaths.remove(at: i) }
-                        else { self.removedLoadPaths.append(path) }
-                        sender?.setTitle("移除已有库（" + String(self.removedLoadPaths.count) + "）", for: .normal)
-                        if let sender = sender { self.pickExistingLibraries(sender) }
-                    })
+                let items = paths.map { path -> SigningLibrarySelectionController.Item in
+                    let parts = path.split(separator: "/").map(String.init)
+                    let framework = parts.first(where: { $0.lowercased().hasSuffix(".framework") })
+                    return .init(id: path, title: framework ?? (parts.last ?? path), subtitle: nil)
                 }
-                sheet.addAction(UIAlertAction(title: "完成", style: .cancel))
-                sheet.popoverPresentationController?.sourceView = sender
-                sheet.popoverPresentationController?.sourceRect = sender?.bounds ?? .zero
-                self.present(sheet, animated: true)
+                let counts = Dictionary(grouping: items, by: { $0.title }).mapValues(\.count)
+                let display = items.map {
+                    SigningLibrarySelectionController.Item(id: $0.id, title: $0.title,
+                        subtitle: (counts[$0.title] ?? 0) > 1 ? $0.id : nil)
+                }
+                let selection = SigningLibrarySelectionController(
+                    title: "移除已有库",
+                    items: display,
+                    selectedIDs: Set(self.removedLoadPaths)
+                )
+                selection.onConfirm = { [weak self, weak sender] ids in
+                    guard let self = self else { return }
+                    self.removedLoadPaths = paths.filter { ids.contains($0) }
+                    sender?.setTitle("移除已有库（" + String(self.removedLoadPaths.count) + "）", for: .normal)
+                }
+                self.present(selection, animated: true)
             }
         }
     }
@@ -442,5 +459,136 @@ final class SigningEditorViewController: UIViewController {
         let alert = UIAlertController(title: "提示", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "确定", style: .default))
         present(alert, animated: true)
+    }
+}
+
+private final class SigningLibrarySelectionController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+    struct Item {
+        let id: String
+        let title: String
+        let subtitle: String?
+    }
+
+    var onConfirm: ((Set<String>) -> Void)?
+    private let screenTitle: String
+    private let items: [Item]
+    private var selectedIDs: Set<String>
+    private let table = UITableView(frame: .zero, style: .plain)
+    private let countLabel = UILabel()
+    private let accent = UIColor(red: 51/255, green: 124/255, blue: 250/255, alpha: 1)
+
+    init(title: String, items: [Item], selectedIDs: Set<String>) {
+        self.screenTitle = title
+        self.items = items
+        self.selectedIDs = selectedIDs
+        super.init(nibName: nil, bundle: nil)
+        modalPresentationStyle = .fullScreen
+    }
+    required init?(coder: NSCoder) { fatalError("Programmatic only") }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = UIColor(red: 242/255, green: 242/255, blue: 247/255, alpha: 1)
+        let nav = UIView()
+        nav.backgroundColor = .white
+        nav.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(nav)
+
+        let back = UIButton(type: .system)
+        back.setTitle("返回", for: .normal)
+        back.addTarget(self, action: #selector(cancel), for: .touchUpInside)
+        back.translatesAutoresizingMaskIntoConstraints = false
+        nav.addSubview(back)
+
+        let heading = UILabel()
+        heading.text = screenTitle
+        heading.font = .boldSystemFont(ofSize: 17)
+        heading.textAlignment = .center
+        heading.translatesAutoresizingMaskIntoConstraints = false
+        nav.addSubview(heading)
+
+        let confirm = UIButton(type: .system)
+        confirm.setTitle("确定", for: .normal)
+        confirm.addTarget(self, action: #selector(commitSelection), for: .touchUpInside)
+        confirm.translatesAutoresizingMaskIntoConstraints = false
+        nav.addSubview(confirm)
+
+        table.translatesAutoresizingMaskIntoConstraints = false
+        table.backgroundColor = .white
+        table.dataSource = self
+        table.delegate = self
+        table.rowHeight = UITableView.automaticDimension
+        table.estimatedRowHeight = 62
+        table.tableFooterView = UIView()
+        view.addSubview(table)
+
+        countLabel.textColor = .secondaryLabel
+        countLabel.font = .systemFont(ofSize: 13)
+        countLabel.textAlignment = .center
+        countLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(countLabel)
+        updateCount()
+
+        NSLayoutConstraint.activate([
+            nav.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            nav.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            nav.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            nav.heightAnchor.constraint(equalToConstant: 54),
+            back.leadingAnchor.constraint(equalTo: nav.leadingAnchor, constant: 18),
+            back.centerYAnchor.constraint(equalTo: nav.centerYAnchor),
+            confirm.trailingAnchor.constraint(equalTo: nav.trailingAnchor, constant: -18),
+            confirm.centerYAnchor.constraint(equalTo: nav.centerYAnchor),
+            heading.centerXAnchor.constraint(equalTo: nav.centerXAnchor),
+            heading.centerYAnchor.constraint(equalTo: nav.centerYAnchor),
+            heading.leadingAnchor.constraint(greaterThanOrEqualTo: back.trailingAnchor, constant: 8),
+            heading.trailingAnchor.constraint(lessThanOrEqualTo: confirm.leadingAnchor, constant: -8),
+            table.topAnchor.constraint(equalTo: nav.bottomAnchor, constant: 8),
+            table.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            table.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            table.bottomAnchor.constraint(equalTo: countLabel.topAnchor, constant: -8),
+            countLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            countLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            countLabel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
+            countLabel.heightAnchor.constraint(equalToConstant: 28)
+        ])
+    }
+
+    private func updateCount() {
+        countLabel.text = "已选择 " + String(selectedIDs.count) + " 项"
+    }
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        items.count
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let reuseID = "signingLibrarySelection"
+        let cell = tableView.dequeueReusableCell(withIdentifier: reuseID)
+            ?? UITableViewCell(style: .subtitle, reuseIdentifier: reuseID)
+        let item = items[indexPath.row]
+        let checked = selectedIDs.contains(item.id)
+        cell.textLabel?.text = item.title
+        cell.textLabel?.font = .systemFont(ofSize: 16)
+        cell.detailTextLabel?.text = item.subtitle
+        cell.detailTextLabel?.font = .systemFont(ofSize: 11)
+        cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.imageView?.image = UIImage(systemName: checked ? "checkmark.circle.fill" : "circle")
+        cell.imageView?.tintColor = checked ? accent : UIColor.systemGray3
+        cell.backgroundColor = checked ? UIColor(red: 0.92, green: 0.92, blue: 0.94, alpha: 1) : .white
+        cell.selectionStyle = .none
+        return cell
+    }
+
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        let id = items[indexPath.row].id
+        if !selectedIDs.insert(id).inserted { selectedIDs.remove(id) }
+        tableView.reloadRows(at: [indexPath], with: .none)
+        updateCount()
+    }
+
+    @objc private func cancel() { dismiss(animated: true) }
+    @objc private func commitSelection() {
+        onConfirm?(selectedIDs)
+        dismiss(animated: true)
     }
 }

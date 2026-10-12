@@ -68,6 +68,20 @@ jobs:
         run: python3 Tests/search_state_machine.py
 
 
+      - name: Prepare native AppIcon asset catalog
+        run: |
+          set -euo pipefail
+          ICONS=GameStore/Resources/AppIcon.xcassets/AppIcon.appiconset
+          base64 -D -i GameStore/Resources/AppIconSource.base64 -o /tmp/zonoe-icon-input.png
+          sips -g pixelWidth -g pixelHeight /tmp/zonoe-icon-input.png >/dev/null
+          sips -s format png -z 120 120 /tmp/zonoe-icon-input.png --out "$ICONS/AppIcon60x60@2x.png" >/dev/null
+          sips -s format png -z 180 180 /tmp/zonoe-icon-input.png --out "$ICONS/AppIcon60x60@3x.png" >/dev/null
+          sips -s format png -z 76 76 /tmp/zonoe-icon-input.png --out "$ICONS/AppIcon76x76~ipad.png" >/dev/null
+          sips -s format png -z 152 152 /tmp/zonoe-icon-input.png --out "$ICONS/AppIcon76x76@2x~ipad.png" >/dev/null
+          sips -s format png -z 167 167 /tmp/zonoe-icon-input.png --out "$ICONS/AppIcon83.5x83.5@2x~ipad.png" >/dev/null
+          sips -s format png -z 1024 1024 /tmp/zonoe-icon-input.png --out "$ICONS/AppIcon1024.png" >/dev/null
+          test -s "$ICONS/AppIcon1024.png"
+
       - name: Build GameStore for iOS 13 deployment target
         run: |
           set -o pipefail
@@ -108,30 +122,9 @@ jobs:
           echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
           echo "APP_BUILD=$APP_BUILD" >> "$GITHUB_ENV"
           test -d "$APP_PATH"
-          # Embed user-supplied icon in the unsigned device app before IPA packaging.
-          base64 -D -i GameStore/Resources/AppIconSource.base64 -o /tmp/gamestore-icon-source.png
-          # Fail early if the icon source is not a decodable PNG.
-          sips -g pixelWidth -g pixelHeight /tmp/gamestore-icon-source.png >/dev/null
-          sips -s format png -z 120 120 /tmp/gamestore-icon-source.png --out "$APP_PATH/AppIcon60x60@2x.png" >/dev/null
-          sips -s format png -z 180 180 /tmp/gamestore-icon-source.png --out "$APP_PATH/AppIcon60x60@3x.png" >/dev/null
-          sips -s format png -z 152 152 /tmp/gamestore-icon-source.png --out "$APP_PATH/AppIcon76x76@2x~ipad.png" >/dev/null
-          sips -s format png -z 76 76 /tmp/gamestore-icon-source.png --out "$APP_PATH/AppIcon76x76~ipad.png" >/dev/null
-          sips -s format png -z 167 167 /tmp/gamestore-icon-source.png --out "$APP_PATH/AppIcon83.5x83.5@2x~ipad.png" >/dev/null
-          PLIST="$APP_PATH/Info.plist"
-          /usr/libexec/PlistBuddy -c "Delete :CFBundleIcons" "$PLIST" 2>/dev/null || true
-          /usr/libexec/PlistBuddy -c "Delete :CFBundleIcons~ipad" "$PLIST" 2>/dev/null || true
-          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons dict" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons:CFBundlePrimaryIcon dict" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles array" "$PLIST"
-          /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles:0 string AppIcon60x60' "$PLIST"
-          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons~ipad dict" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons~ipad:CFBundlePrimaryIcon dict" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Add :CFBundleIcons~ipad:CFBundlePrimaryIcon:CFBundleIconFiles array" "$PLIST"
-          /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons~ipad:CFBundlePrimaryIcon:CFBundleIconFiles:0 string AppIcon76x76' "$PLIST"
-          /usr/libexec/PlistBuddy -c 'Add :CFBundleIcons~ipad:CFBundlePrimaryIcon:CFBundleIconFiles:1 string AppIcon83.5x83.5' "$PLIST"
-          test -s "$APP_PATH/AppIcon60x60@2x.png"
-          test -s "$APP_PATH/AppIcon60x60@3x.png"
-          test -s "$APP_PATH/AppIcon76x76@2x~ipad.png"
+          # Asset catalog is compiled by Xcode, not injected after building.
+          test -s "$APP_PATH/Assets.car"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName" "$APP_PATH/Info.plist" | grep -Fx AppIcon
           # Bundled third-party binaries are installed from GameStore/Resources/EmbeddedRoot
           # when present; resource staging is separate from Mach-O injection.
           if [ -d GameStore/Resources/EmbeddedRoot ]; then
@@ -217,6 +210,20 @@ jobs:
 
       - name: Xcode version
         run: xcodebuild -version
+
+      - name: Prepare native AppIcon asset catalog
+        run: |
+          set -euo pipefail
+          ICONS=GameStore/Resources/AppIcon.xcassets/AppIcon.appiconset
+          base64 -D -i GameStore/Resources/AppIconSource.base64 -o /tmp/zonoe-icon-input.png
+          sips -g pixelWidth -g pixelHeight /tmp/zonoe-icon-input.png >/dev/null
+          sips -s format png -z 120 120 /tmp/zonoe-icon-input.png --out "$ICONS/AppIcon60x60@2x.png" >/dev/null
+          sips -s format png -z 180 180 /tmp/zonoe-icon-input.png --out "$ICONS/AppIcon60x60@3x.png" >/dev/null
+          sips -s format png -z 76 76 /tmp/zonoe-icon-input.png --out "$ICONS/AppIcon76x76~ipad.png" >/dev/null
+          sips -s format png -z 152 152 /tmp/zonoe-icon-input.png --out "$ICONS/AppIcon76x76@2x~ipad.png" >/dev/null
+          sips -s format png -z 167 167 /tmp/zonoe-icon-input.png --out "$ICONS/AppIcon83.5x83.5@2x~ipad.png" >/dev/null
+          sips -s format png -z 1024 1024 /tmp/zonoe-icon-input.png --out "$ICONS/AppIcon1024.png" >/dev/null
+          test -s "$ICONS/AppIcon1024.png"
 
       - name: Build GameStore against iOS 26 SDK
         run: |

@@ -26,10 +26,11 @@ private final class DeviceAuthorizationMemory {
         assert(Thread.isMainThread)
         guard let udid = UDIDService.shared.udid,
               UDIDLocalServer.validUDID(udid) else {
+            let hadState = snapshot != nil || activeUDID != nil
             snapshot = nil
             activeUDID = nil
             inFlight = false
-            NotificationCenter.default.post(name: Self.didChange, object: nil)
+            if hadState { NotificationCenter.default.post(name: Self.didChange, object: nil) }
             return
         }
         if snapshot?.udid == udid, let checkedAt = snapshot?.checkedAt,

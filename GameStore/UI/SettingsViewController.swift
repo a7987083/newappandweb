@@ -1075,7 +1075,7 @@ final class PluginLibraryController: UIViewController, UITableViewDataSource, UI
             let button = UIButton(type: .system)
             button.setTitle(name, for: .normal)
             if name == "删除" { button.setTitleColor(.systemRed, for: .normal) }
-            button.addTarget(self, action: name == "全选" ? #selector(selectAll) : name == "删除" ? #selector(removeSelected) : name == "完成" ? #selector(toggleEdit) : #selector(commitSelection), for: .touchUpInside)
+            button.addTarget(self, action: name == "全选" ? #selector(selectAllPlugins) : name == "删除" ? #selector(removeSelected) : name == "完成" ? #selector(toggleEdit) : #selector(commitSelection), for: .touchUpInside)
             selectionBar.addArrangedSubview(button)
         }
         NSLayoutConstraint.activate([
@@ -1114,7 +1114,7 @@ final class PluginLibraryController: UIViewController, UITableViewDataSource, UI
         updateEditing()
         table.reloadData()
     }
-    @objc private func selectAll() {
+    @objc private func selectAllPlugins() {
         selected = Set(entries)
         table.reloadData()
     }

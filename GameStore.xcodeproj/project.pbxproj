@@ -6,6 +6,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+    ABCD00000000000000001001 /* SigningEditorViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCD00000000000000001002 /* SigningEditorViewController.swift */; };
     AF000000000000000000000D /* MainShellViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF000000000000000000000E /* MainShellViewController.swift */; };
     AF0000000000000000000031 /* ShellSearchSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0000000000000000000032 /* ShellSearchSession.swift */; };
     AF0000000000000000000033 /* ShellHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0000000000000000000034 /* ShellHeaderView.swift */; };
@@ -49,6 +50,7 @@
     AF0000000000000000000036 /* ShellTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/ShellTabBar.swift; sourceTree = "<group>"; };
     AF0000000000000000000062 /* DownloadIPAExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/Services/DownloadIPAExtractor.swift; sourceTree = "<group>"; };
     AF0000000000000000000052 /* PackageListViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/PackageListViewController.swift; sourceTree = "<group>"; };
+    ABCD00000000000000001002 /* SigningEditorViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/SigningEditorViewController.swift; sourceTree = "<group>"; };
     AF0000000000000000000042 /* AppDetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/AppDetailViewController.swift; sourceTree = "<group>"; };
 		AF000000000000000000000C /* AppCatalogViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/AppCatalogViewController.swift; sourceTree = "<group>"; };
 		AF000000000000000000000A /* AppCatalogCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameStore/UI/AppCatalogCell.swift; sourceTree = "<group>"; };
@@ -108,6 +110,7 @@
                 AF0000000000000000000062 /* DownloadIPAExtractor.swift */,
                 AF0000000000000000000052 /* PackageListViewController.swift */,
                 AF0000000000000000000042 /* AppDetailViewController.swift */,
+                ABCD00000000000000001002 /* SigningEditorViewController.swift */,
 				AF000000000000000000000C /* AppCatalogViewController.swift */,
     AF000000000000000000000E /* MainShellViewController.swift */,
     AF0000000000000000000032 /* ShellSearchSession.swift */,
@@ -160,6 +163,7 @@
                 AF0000000000000000000061 /* DownloadIPAExtractor.swift in Sources */,
                 AF0000000000000000000051 /* PackageListViewController.swift in Sources */,
                 AF0000000000000000000041 /* AppDetailViewController.swift in Sources */,
+                ABCD00000000000000001001 /* SigningEditorViewController.swift in Sources */,
 				AF000000000000000000000B /* AppCatalogViewController.swift in Sources */,
     AF000000000000000000000D /* MainShellViewController.swift in Sources */,
     AF0000000000000000000031 /* ShellSearchSession.swift in Sources */,

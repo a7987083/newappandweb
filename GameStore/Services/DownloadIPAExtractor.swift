@@ -45,8 +45,11 @@ enum DownloadIPAExtractor {
         guard attributes?.isDirectory == true, attributes?.isSymbolicLink != true else { return nil }
         let payload = directory.appendingPathComponent("Payload", isDirectory: true)
         let apps = (try? fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
-        guard apps.filter({ $0.pathExtension.lowercased() == "app" &&
-            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }).count == 1 else { return nil }
+        let validApps = apps.filter { $0.pathExtension.lowercased() == "app" &&
+            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+        guard validApps.count == 1,
+              let plist = NSDictionary(contentsOf: validApps[0].appendingPathComponent("Info.plist")),
+              let bundle = plist["CFBundleIdentifier"] as? String, !bundle.isEmpty else { return nil }
         return directory
     }
 
@@ -88,7 +91,9 @@ enum DownloadIPAExtractor {
             (try? candidate.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true &&
             fm.fileExists(atPath: candidate.appendingPathComponent("Info.plist").path)
         }
-        guard verifiedApps.count == 1 else {
+        guard verifiedApps.count == 1,
+              let plist = NSDictionary(contentsOf: verifiedApps[0].appendingPathComponent("Info.plist")),
+              let bundle = plist["CFBundleIdentifier"] as? String, !bundle.isEmpty else {
             throw NSError(domain: "GameStore.IPAExtractor", code: 5,
                           userInfo: [NSLocalizedDescriptionKey: "IPA 缺少 Payload 应用目录"])
         }

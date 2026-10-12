@@ -515,7 +515,23 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                 return lhs > rhs
             }
 
-            DispatchQueue.main.async {
+            // Never publish a recovered archive until extraction and plist validation complete.
+            archiveQueue.async { [weak self] in
+                guard let self = self else { return }
+                var readyFiles = [URL]()
+                for file in files {
+                    if (try? DownloadIPAExtractor.preparedDirectory(for: file)) == nil {
+                        do { try DownloadIPAExtractor.extract(file) }
+                        catch {
+                            NSLog("DownloadCenter: recovery extraction failed for %@: %@", file.lastPathComponent, error.localizedDescription)
+                            continue
+                        }
+                    }
+                    if (try? DownloadIPAExtractor.preparedDirectory(for: file)) != nil {
+                        readyFiles.append(file)
+                    }
+                }
+                DispatchQueue.main.async {
                 // Check current filesystem state before pruning: a download may
                 // have finished after the directory snapshot was enumerated.
                 let folder = Self.downloadsDirectory()
@@ -532,7 +548,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                     }
                 )
 
-                self.completedItems = files.map { fileURL in
+                self.completedItems = readyFiles.filter { FileManager.default.fileExists(atPath: $0.path) }.map { fileURL in
                     let path = fileURL.standardizedFileURL.path
                     if let existing = existingByPath[path] {
                         return existing
@@ -550,19 +566,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                         taskIdentifier: nil
                     )
                 }
-                // Recover downloads after app restart; skip already verified extractions.
-                for file in files where self.extractionStatus[file.lastPathComponent] == nil {
-                    self.archiveQueue.async { [weak self] in
-                        let ready = (try? DownloadIPAExtractor.preparedDirectory(for: file)) != nil
-                        DispatchQueue.main.async {
-                            guard let self = self else { return }
-                            if ready {
-                                self.extractionStatus[file.lastPathComponent] = "解压完成"
-                            } else {
-                                self.scheduleExtraction(file)
-                            }
-                        }
-                    }
+                for file in readyFiles { self.extractionStatus[file.lastPathComponent] = "解压完成" }
                 }
             }
         } catch {

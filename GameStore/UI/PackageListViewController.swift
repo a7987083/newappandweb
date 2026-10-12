@@ -8,6 +8,8 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
     private var items: [DownloadCenter.Item] = []
     private var visible: [DownloadCenter.Item] = []
     private var query = ""
+    private var infoByPath = [String: AppPackageInfo]()
+    private let metadataQueue = DispatchQueue(label: "com.GameStore.package.metadata", qos: .utility)
     private var subscriptions = Set<AnyCancellable>()
     private var selectionMode = false
     private var selectedIDs = Set<UUID>()
@@ -59,7 +61,7 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
         tableView.separatorStyle = .none
         tableView.contentInsetAdjustmentBehavior = .never
         tableView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 100, right: 0)
-        tableView.rowHeight = 96
+        tableView.rowHeight = 112
         tableView.dataSource = self
         tableView.delegate = self
         tableView.register(PackageDownloadCell.self, forCellReuseIdentifier: "Package")
@@ -68,11 +70,12 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        Publishers.CombineLatest3(center.$activeItems, center.$completedItems, center.$terminalItems)
+        center.$completedItems
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] active, completed, terminal in
-                self?.items = active + completed + terminal
+            .sink { [weak self] completed in
+                self?.items = completed
                 self?.applyFilter()
+                self?.readMetadata(completed)
             }.store(in: &subscriptions)
         center.$extractionStatus.receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.tableView.reloadData() }
@@ -90,9 +93,27 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
         applyFilter()
     }
 
+    private func readMetadata(_ packages: [DownloadCenter.Item]) {
+        let missing = packages.compactMap { $0.localURL }.filter { infoByPath[$0.path] == nil }
+        guard !missing.isEmpty else { return }
+        metadataQueue.async { [weak self] in
+            let found = Dictionary(uniqueKeysWithValues: missing.compactMap { url -> (String, AppPackageInfo)? in
+                guard let info = AppPackageInfo.read(from: url) else { return nil }
+                return (url.path, info)
+            })
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.infoByPath.merge(found) { _, newer in newer }
+                self.applyFilter()
+            }
+        }
+    }
+
     private func applyFilter() {
         visible = query.isEmpty ? items : items.filter {
-            ($0.localURL?.lastPathComponent ?? $0.sourceURL.lastPathComponent)
+            let filename = $0.localURL?.lastPathComponent ?? $0.sourceURL.lastPathComponent
+            let info = $0.localURL.flatMap { infoByPath[$0.path] }
+            return (filename + " " + (info?.name ?? "") + " " + (info?.bundleID ?? ""))
                 .localizedCaseInsensitiveContains(query)
         }
         tableView.reloadData()
@@ -126,8 +147,11 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
         case .failed: state = "下载失败 · 点击重试或删除"; failure = true
         case .cancelled: state = "已取消 · 点击重试或删除"; failure = true
         }
-        cell.configure(name: title(item), status: state, progress: item.progress,
-                       failed: failure, showProgress: item.state == .downloading)
+        let info = item.localURL.flatMap { infoByPath[$0.path] }
+        cell.configure(name: info?.name ?? title(item),
+                       status: info.map { "\($0.version) · \($0.sizeText)\n\($0.bundleID)\n\(title(item))" } ?? state,
+                       progress: item.progress, failed: failure, showProgress: false,
+                       icon: info?.icon)
         cell.accessoryType = selectionMode && selectedIDs.contains(item.id) ? .checkmark : .none
         cell.tintColor = .systemBlue
         return cell
@@ -210,6 +234,7 @@ private final class PackageDownloadCell: UITableViewCell {
     private let nameLabel = UILabel()
     private let statusLabel = UILabel()
     private let progressView = UIProgressView(progressViewStyle: .default)
+    private let appIcon = UIImageView()
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -221,24 +246,72 @@ private final class PackageDownloadCell: UITableViewCell {
         nameLabel.font = .boldSystemFont(ofSize: 14)
         nameLabel.lineBreakMode = .byTruncatingMiddle
         statusLabel.font = .systemFont(ofSize: 12)
-        [nameLabel, statusLabel, progressView].forEach { card.addSubview($0) }
+        appIcon.contentMode = .scaleAspectFit
+        appIcon.layer.cornerRadius = 12
+        appIcon.clipsToBounds = true
+        statusLabel.numberOfLines = 3
+        [nameLabel, statusLabel, progressView, appIcon].forEach { card.addSubview($0) }
     }
 
     required init?(coder: NSCoder) { fatalError("Programmatic only") }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        card.frame = CGRect(x: 18, y: 0, width: max(0, contentView.bounds.width - 36), height: 88)
-        nameLabel.frame = CGRect(x: 14, y: 11, width: max(0, card.bounds.width - 28), height: 23)
-        statusLabel.frame = CGRect(x: 14, y: 40, width: max(0, card.bounds.width - 28), height: 21)
-        progressView.frame = CGRect(x: 14, y: 71, width: max(0, card.bounds.width - 28), height: 4)
+        card.frame = CGRect(x: 18, y: 0, width: max(0, contentView.bounds.width - 36), height: 104)
+        appIcon.frame = CGRect(x: 12, y: 20, width: 62, height: 62)
+        let textWidth = max(0, card.bounds.width - 100)
+        nameLabel.frame = CGRect(x: 84, y: 9, width: textWidth, height: 23)
+        statusLabel.frame = CGRect(x: 84, y: 33, width: textWidth, height: 65)
+        progressView.frame = CGRect(x: 84, y: 94, width: textWidth, height: 3)
     }
 
-    func configure(name: String, status: String, progress: Double, failed: Bool, showProgress: Bool) {
+    func configure(name: String, status: String, progress: Double, failed: Bool, showProgress: Bool, icon: UIImage?) {
+        appIcon.image = icon ?? UIImage(systemName: "app.fill")
+        appIcon.tintColor = .systemGray3
         nameLabel.text = name
         statusLabel.text = status
         statusLabel.textColor = failed ? .systemRed : .secondaryLabel
         progressView.progress = Float(min(1, max(0, progress)))
         progressView.isHidden = !showProgress
+    }
+}
+
+
+private struct AppPackageInfo {
+    let name: String
+    let version: String
+    let bundleID: String
+    let sizeText: String
+    let icon: UIImage?
+
+    static func read(from archive: URL) -> AppPackageInfo? {
+        guard let directory = try? DownloadIPAExtractor.preparedDirectory(for: archive) else { return nil }
+        let payload = directory.appendingPathComponent("Payload", isDirectory: true)
+        guard let app = (try? FileManager.default.contentsOfDirectory(at: payload, includingPropertiesForKeys: nil))?
+            .first(where: { $0.pathExtension.lowercased() == "app" }),
+              let info = NSDictionary(contentsOf: app.appendingPathComponent("Info.plist")),
+              let bundle = info["CFBundleIdentifier"] as? String, !bundle.isEmpty else { return nil }
+        let name = (info["CFBundleDisplayName"] as? String)
+            ?? (info["CFBundleName"] as? String) ?? app.deletingPathExtension().lastPathComponent
+        let version = (info["CFBundleShortVersionString"] as? String)
+            ?? (info["CFBundleVersion"] as? String) ?? "未知"
+        let bytes = (try? archive.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let size = ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+        let iconNames = (info["CFBundleIcons"] as? [String: Any])
+            .flatMap { $0["CFBundlePrimaryIcon"] as? [String: Any] }
+            .flatMap { $0["CFBundleIconFiles"] as? [String] } ?? []
+        let candidates = (iconNames + ["AppIcon60x60", "AppIcon", "Icon"]).reversed()
+        var icon: UIImage?
+        for candidate in candidates {
+            for suffix in ["", "@3x", "@2x"] {
+                let name = candidate + suffix + ".png"
+                if let image = UIImage(contentsOfFile: app.appendingPathComponent(name).path) {
+                    icon = image
+                    break
+                }
+            }
+            if icon != nil { break }
+        }
+        return AppPackageInfo(name: name, version: version, bundleID: bundle, sizeText: size, icon: icon)
     }
 }

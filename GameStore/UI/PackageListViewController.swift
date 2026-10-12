@@ -9,6 +9,7 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
     private var visible: [DownloadCenter.Item] = []
     private var query = ""
     private var infoByPath = [String: AppPackageInfo]()
+    private var metadataPending = Set<String>()
     private let metadataQueue = DispatchQueue(label: "com.GameStore.package.metadata", qos: .utility)
     private var subscriptions = Set<AnyCancellable>()
     private var selectionMode = false
@@ -94,8 +95,13 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
     }
 
     private func readMetadata(_ packages: [DownloadCenter.Item]) {
-        let missing = packages.compactMap { $0.localURL }.filter { infoByPath[$0.path] == nil }
+        let livePaths = Set(packages.compactMap { $0.localURL?.path })
+        infoByPath = infoByPath.filter { livePaths.contains($0.key) }
+        let missing = packages.compactMap { $0.localURL }.filter {
+            infoByPath[$0.path] == nil && !metadataPending.contains($0.path)
+        }
         guard !missing.isEmpty else { return }
+        metadataPending.formUnion(missing.map(\.path))
         metadataQueue.async { [weak self] in
             let found = Dictionary(uniqueKeysWithValues: missing.compactMap { url -> (String, AppPackageInfo)? in
                 guard let info = AppPackageInfo.read(from: url) else { return nil }
@@ -103,7 +109,9 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
             })
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                self.infoByPath.merge(found) { _, newer in newer }
+                self.metadataPending.subtract(missing.map(\.path))
+                let stillPresent = Set(self.items.compactMap { $0.localURL?.path })
+                self.infoByPath.merge(found.filter { stillPresent.contains($0.key) }) { _, newer in newer }
                 self.applyFilter()
             }
         }

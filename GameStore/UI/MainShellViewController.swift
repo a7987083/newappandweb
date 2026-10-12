@@ -38,6 +38,9 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     private var rows: [(String,String,String)] = []
     private var filtered: [(String,String,String)] = []
     private var extractionSubscription: AnyCancellable?
+    private var linkDownloadSubscription: AnyCancellable?
+    private var linkDownloadURL: URL?
+    private var linkDownloadAlert: UIAlertController?
     private var extractionAlert: UIAlertController?
     private var displayedExtraction: String?
     private var extractionNames = [String]()
@@ -87,6 +90,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
                   ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else {
                 self?.showImportError("链接无效"); return
             }
+            self?.observeLinkDownload(url)
             AppStoreViewModel.shared.downloadCenter.enqueue(url)
         })
         present(alert, animated: true)
@@ -112,6 +116,40 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         if !SoftwareSourceStore.shared.sources.isEmpty && SoftwareSourceStore.shared.catalogApps.isEmpty && !SoftwareSourceStore.shared.isCatalogLoading {
             SoftwareSourceStore.shared.refreshCatalog()
         }
+    }
+
+    private func observeLinkDownload(_ url: URL) {
+        linkDownloadSubscription = nil
+        linkDownloadURL = url
+        let center = AppStoreViewModel.shared.downloadCenter
+        linkDownloadSubscription = Publishers.CombineLatest3(center.$activeItems, center.$completedItems, center.$terminalItems)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] active, completed, terminal in
+                guard let self = self, self.linkDownloadURL == url else { return }
+                if let item = active.first(where: { $0.sourceURL == url }) {
+                    guard self.linkDownloadAlert == nil, self.presentedViewController == nil else {
+                        if self.linkDownloadAlert != nil {
+                            self.linkDownloadAlert?.message = "\(Int(item.progress * 100))% · 正在下载"
+                        }
+                        return
+                    }
+                    let alert = UIAlertController(title: "正在下载安装包",
+                        message: "0% · 正在下载", preferredStyle: .alert)
+                    self.linkDownloadAlert = alert
+                    self.present(alert, animated: true)
+                } else if let result = completed.first(where: { $0.sourceURL == url }) ??
+                    terminal.first(where: { $0.sourceURL == url }) {
+                    self.linkDownloadURL = nil
+                    self.linkDownloadSubscription = nil
+                    let alert = self.linkDownloadAlert
+                    self.linkDownloadAlert = nil
+                    alert?.dismiss(animated: true) {
+                        if result.state == .failed {
+                            self.showImportError(result.errorDescription ?? "下载失败")
+                        }
+                    }
+                }
+            }
     }
 
     private func observeExtractions() {

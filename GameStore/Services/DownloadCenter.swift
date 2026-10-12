@@ -33,6 +33,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
     }
     private let persistenceQueue = DispatchQueue(label: "com.GameStore.download.persistence")
     private let archiveQueue = DispatchQueue(label: "com.GameStore.download.archive", qos: .utility)
+    private var recoveryGeneration = 0
     private static let completedSourcesKey = "zonoe.downloadCompletedSources.v1"
 
     private static func completedSources() -> [String: String] {
@@ -483,6 +484,9 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
     }
 
     func reloadDownloadedItems() {
+        precondition(Thread.isMainThread)
+        recoveryGeneration += 1
+        let generation = recoveryGeneration
         let fileManager = FileManager.default
         let directory = Self.downloadsDirectory(fileManager: fileManager)
 
@@ -532,6 +536,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                     }
                 }
                 DispatchQueue.main.async {
+                guard generation == self.recoveryGeneration else { return }
                 // Check current filesystem state before pruning: a download may
                 // have finished after the directory snapshot was enumerated.
                 let folder = Self.downloadsDirectory()
@@ -548,7 +553,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                     }
                 )
 
-                self.completedItems = readyFiles.filter { FileManager.default.fileExists(atPath: $0.path) }.map { fileURL in
+                let recovered = readyFiles.filter { FileManager.default.fileExists(atPath: $0.path) }.map { fileURL -> Item in
                     let path = fileURL.standardizedFileURL.path
                     if let existing = existingByPath[path] {
                         return existing
@@ -566,6 +571,14 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                         taskIdentifier: nil
                     )
                 }
+                // Preserve packages committed while this recovery scan was running.
+                let recoveredPaths = Set(recovered.compactMap { $0.localURL?.standardizedFileURL.path })
+                let newlyPublished = self.completedItems.filter { item in
+                    guard let url = item.localURL else { return false }
+                    return !recoveredPaths.contains(url.standardizedFileURL.path) &&
+                        FileManager.default.fileExists(atPath: url.path)
+                }
+                self.completedItems = newlyPublished + recovered
                 for file in readyFiles { self.extractionStatus[file.lastPathComponent] = "解压完成" }
                 }
             }
@@ -639,12 +652,22 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             }
             archiveQueue.async {
                 defer { try? FileManager.default.removeItem(at: stage) }
+                let active = DispatchQueue.main.sync {
+                    self.activeItems.contains { $0.taskIdentifier == taskIdentifier }
+                }
+                guard active else { return }
                 do {
                     let validated = try self.validateAndPublish(stage, filename: destination.lastPathComponent)
                     DispatchQueue.main.async {
                         self.extractionStatus[stage.lastPathComponent] = "解压完成"
                         self.extractionStatus[validated.lastPathComponent] = "解压完成"
-                        guard self.activeItems.contains(where: { $0.taskIdentifier == taskIdentifier }) else { return }
+                        guard self.activeItems.contains(where: { $0.taskIdentifier == taskIdentifier }) else {
+                            self.archiveQueue.async {
+                                try? DownloadIPAExtractor.removeExtraction(for: validated)
+                                try? FileManager.default.removeItem(at: validated)
+                            }
+                            return
+                        }
                         Self.updateCompletedSource(filename: validated.lastPathComponent, source: originalSource)
                         self.finishActiveItem(taskIdentifier: taskIdentifier, state: .completed,
                                               localURL: validated, errorDescription: nil)

@@ -9,6 +9,40 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
     private var visible: [DownloadCenter.Item] = []
     private var query = ""
     private var subscriptions = Set<AnyCancellable>()
+    private var selectionMode = false
+    private var selectedIDs = Set<UUID>()
+    var isSelecting: Bool { selectionMode }
+    func setSelecting(_ selecting: Bool) {
+        selectionMode = selecting
+        selectedIDs.removeAll()
+        tableView.reloadData()
+    }
+    func selectAll() {
+        selectedIDs = Set(visible.map { $0.id })
+        tableView.reloadData()
+    }
+    func selectedPackages() -> [DownloadCenter.Item] {
+        visible.filter { selectedIDs.contains($0.id) }
+    }
+    func deleteSelected() {
+        let targets = selectedPackages()
+        guard !targets.isEmpty else { return }
+        let confirm = UIAlertController(title: "删除安装包", message: "删除选中的 \(targets.count) 项？", preferredStyle: .alert)
+        confirm.addAction(UIAlertAction(title: "取消", style: .cancel))
+        confirm.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
+            guard let self = self else { return }
+            for item in targets {
+                switch item.state {
+                case .completed: self.center.deleteDownloadedItem(item) { [weak self] error in self?.showError(error) }
+                case .failed, .cancelled: self.center.removeTerminalItem(item)
+                case .paused: self.center.removePausedItem(item)
+                case .queued, .downloading: self.center.cancel(item)
+                }
+            }
+            self.selectedIDs.removeAll()
+        })
+        present(confirm, animated: true)
+    }
     override func loadView() {
         view = UIView()
         tableView.frame = view.bounds
@@ -86,12 +120,18 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
         }
         cell.configure(name: title(item), status: state, progress: item.progress,
                        failed: failure, showProgress: item.state == .downloading)
+        cell.accessoryType = selectionMode && selectedIDs.contains(item.id) ? .checkmark : .none
         return cell
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         let item = visible[indexPath.row]
+        if selectionMode {
+            if !selectedIDs.insert(item.id).inserted { selectedIDs.remove(item.id) }
+            tableView.reloadRows(at: [indexPath], with: .none)
+            return
+        }
         let sheet = UIAlertController(title: title(item), message: nil, preferredStyle: .actionSheet)
         func add(_ title: String, style: UIAlertAction.Style = .default, _ handler: @escaping () -> Void) {
             sheet.addAction(UIAlertAction(title: title, style: style) { _ in handler() })

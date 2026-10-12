@@ -36,6 +36,9 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     private let bg = UIColor(red: 242/255, green: 242/255, blue: 247/255, alpha: 1)
     private var rows: [(String,String,String)] = []
     private var filtered: [(String,String,String)] = []
+    private var signedEditing = false
+    private var signedSelected = Set<URL>()
+    private var headerActions = [Int: [UIButton]]()
     private var signedFiles = [URL]()
     private func reloadSignedFiles() {
         let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -107,10 +110,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             if sizeChanged { page.controller.view.frame = view.bounds }
             page.dock.frame.origin.y = view.bounds.height - view.safeAreaInsets.bottom - 72
             page.dock.center.x = view.bounds.midX
-            for case let button as UIButton in page.views {
-                let isEdit = button.title(for: .normal) == "编辑"
-                button.frame.origin = CGPoint(x: width - (isEdit ? 108 : 53), y: safeTop + 8)
-            }
+            layoutHeaderActions(index)
             guard index != 3, let head = page.header, let table = page.table else { continue }
             // Do not modify the active search header until its overlay closes.
             if searching && index == selectedTab { continue }
@@ -268,22 +268,122 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     }
 
     private func buildActions(_ index: Int) {
-        let w = view.bounds.width
-        let y = view.safeAreaInsets.top+8
-        if index != 0 {
-            let edit = UIButton(type: .system)
-            edit.frame = CGRect(x: w-108,y: y,width: 42,height: 34)
-            edit.setTitle("编辑",for: .normal)
-            edit.addTarget(self,action: #selector(demo),for: .touchUpInside)
-            view.addSubview(edit)
+        let labels = index == 0 ? ["刷新"] : index == 1 ?
+            ["编辑", "+", "全选", "签名", "删除", "完成"] :
+            ["编辑", "全选", "删除", "完成"]
+        let buttons = labels.map { label -> UIButton in
+            let button = UIButton(type: .system)
+            button.setTitle(label, for: .normal)
+            button.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
+            button.accessibilityIdentifier = "\(index):\(label)"
+            button.addTarget(self, action: #selector(headerTapped(_:)), for: .touchUpInside)
+            view.addSubview(button)
+            return button
         }
-        let action = UIButton(type: .system)
-        action.frame = CGRect(x: w-53,y: y,width: 42,height: 42)
-        action.tintColor = blue
-        action.setImage(UIImage(systemName: index == 0 ? "arrow.clockwise.circle.fill" : "plus.circle.fill",
-                                withConfiguration: UIImage.SymbolConfiguration(pointSize: 29)),for: .normal)
-        action.addTarget(self, action: index == 0 ? #selector(refresh) : index == 1 ? #selector(importPackageTapped(_:)) : #selector(demo), for: .touchUpInside)
-        view.addSubview(action)
+        headerActions[index] = buttons
+        layoutHeaderActions(index)
+    }
+
+    private func layoutHeaderActions(_ index: Int) {
+        guard let buttons = headerActions[index] else { return }
+        let editing = index == 1 ? (pages[index]?.packages?.isSelecting ?? packages?.isSelecting ?? false) : signedEditing
+        let names = index == 0 ? ["刷新"] : editing ?
+            (index == 1 ? ["全选","签名","删除","完成"] : ["全选","删除","完成"]) :
+            (index == 1 ? ["编辑","+"] : ["编辑"])
+        let visible = buttons.filter { names.contains($0.title(for: .normal) ?? "") }
+        for button in buttons { button.isHidden = !visible.contains(button) }
+        for (i, button) in visible.enumerated() {
+            button.frame = CGRect(x: view.bounds.width - 9 - CGFloat(visible.count-i)*56,
+                                  y: view.safeAreaInsets.top + 8, width: 52, height: 36)
+        }
+    }
+
+    @objc private func headerTapped(_ sender: UIButton) {
+        guard let tag = sender.accessibilityIdentifier else { return }
+        let parts = tag.split(separator: ":")
+        guard parts.count == 2, let index = Int(parts[0]) else { return }
+        let action = String(parts[1])
+        switch action {
+        case "刷新": refresh()
+        case "+": showPackageImport(sender)
+        case "编辑":
+            if index == 1 { packages?.setSelecting(true) }
+            else { signedEditing = true; signedSelected.removeAll(); currentTable?.reloadData() }
+        case "完成":
+            if index == 1 { packages?.setSelecting(false) }
+            else { signedEditing = false; signedSelected.removeAll(); currentTable?.reloadData() }
+        case "全选":
+            if index == 1 { packages?.selectAll() }
+            else { signedSelected = Set(signedFiles); currentTable?.reloadData() }
+        case "删除":
+            if index == 1 { packages?.deleteSelected() }
+            else { deleteSignedSelection() }
+        case "签名":
+            let selected = packages?.selectedPackages().filter { $0.state == .completed } ?? []
+            guard !selected.isEmpty else { return }
+            showSigningCertificateSelection(selected.compactMap { $0.localURL })
+        default: break
+        }
+        layoutHeaderActions(index)
+    }
+
+    private func deleteSignedSelection() {
+        let targets = signedFiles.filter { signedSelected.contains($0) }
+        guard !targets.isEmpty else { return }
+        let alert = UIAlertController(title: "删除已签名文件", message: "确定删除 \(targets.count) 个文件？", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
+            for url in targets { try? FileManager.default.removeItem(at: url) }
+            self?.signedSelected.removeAll()
+            self?.reloadSignedFiles()
+            self?.currentTable?.reloadData()
+        })
+        present(alert, animated: true)
+    }
+
+    private func showSigningCertificateSelection(_ files: [URL]) {
+        let store = CertificateStore.shared
+        store.reload()
+        let picker = UIAlertController(title: "选择签名证书", message: nil, preferredStyle: .actionSheet)
+        for cert in store.certificates {
+            picker.addAction(UIAlertAction(title: cert.name, style: .default) { [weak self] _ in
+                self?.signSequentially(files, certificate: cert)
+            })
+        }
+        if store.certificates.isEmpty {
+            picker.message = "请先在设置中导入 P12 与 mobileprovision"
+        }
+        picker.addAction(UIAlertAction(title: "取消", style: .cancel))
+        picker.popoverPresentationController?.sourceView = view
+        picker.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: 50, width: 1, height: 1)
+        present(picker, animated: true)
+    }
+
+    private var signingService: AppSigningService?
+    private func signSequentially(_ files: [URL], certificate: DeviceCertificate) {
+        guard let first = files.first else { return }
+        guard signingService == nil else { return }
+        let dialog = UIAlertController(title: "正在签名", message: first.lastPathComponent, preferredStyle: .alert)
+        present(dialog, animated: true)
+        let service = AppSigningService()
+        signingService = service
+        let password = CertificatePasswordKeychain.read(for: certificate.id) ?? ""
+        service.sign(request: SigningRequest(ipaURL: first, certificate: certificate, password: password),
+            progress: { state in dialog.message = first.lastPathComponent + "\n" + state.rawValue },
+            completion: { [weak self] result in
+                guard let self = self else { return }
+                self.signingService = nil
+                dialog.dismiss(animated: true) {
+                    switch result {
+                    case .success:
+                        self.signSequentially(Array(files.dropFirst()), certificate: certificate)
+                    case .failure(let error):
+                        let notice = UIAlertController(title: "签名失败", message: error.localizedDescription, preferredStyle: .alert)
+                        notice.addAction(UIAlertAction(title: "确定", style: .default))
+                        self.present(notice, animated: true)
+                    }
+                }
+            })
     }
 
     private func buildDock() {
@@ -306,8 +406,19 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        guard selectedTab == 0 else { return }
-        catalog?.openDetail(atVisibleRow: indexPath.row)
+        if selectedTab == 0 { catalog?.openDetail(atVisibleRow: indexPath.row) }
+        else if selectedTab == 2 && signedFiles.indices.contains(indexPath.row) {
+            let file = signedFiles[indexPath.row]
+            if signedEditing {
+                if !signedSelected.insert(file).inserted { signedSelected.remove(file) }
+                tableView.reloadRows(at: [indexPath], with: .none)
+            } else {
+                let activity = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+                activity.popoverPresentationController?.sourceView = tableView
+                activity.popoverPresentationController?.sourceRect = tableView.rectForRow(at: indexPath)
+                present(activity, animated: true)
+            }
+        }
     }
 
     func tableView(_ tableView: UITableView,numberOfRowsInSection section: Int) -> Int { filtered.count }
@@ -315,6 +426,8 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         let cell = tableView.dequeueReusableCell(withIdentifier: "Demo",for: indexPath) as! ShellPlaceholderCell
         let row = filtered[indexPath.row]
         cell.configure(title: row.0,detail: row.1,symbol: row.2)
+        cell.accessoryType = selectedTab == 2 && signedEditing && signedFiles.indices.contains(indexPath.row) &&
+            signedSelected.contains(signedFiles[indexPath.row]) ? .checkmark : .none
         return cell
     }
 

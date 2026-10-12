@@ -83,10 +83,12 @@ enum DownloadIPAExtractor {
         try Zip.unzipFile(ipa, destination: staging, overwrite: true, password: nil)
         let payload = staging.appendingPathComponent("Payload", isDirectory: true)
         let applications = (try? fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
-        guard applications.contains(where: { candidate in
+        let verifiedApps = applications.filter { candidate in
             candidate.pathExtension.lowercased() == "app" &&
-            (try? candidate.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
-        }) else {
+            (try? candidate.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true &&
+            fm.fileExists(atPath: candidate.appendingPathComponent("Info.plist").path)
+        }
+        guard verifiedApps.count == 1 else {
             throw NSError(domain: "GameStore.IPAExtractor", code: 5,
                           userInfo: [NSLocalizedDescriptionKey: "IPA 缺少 Payload 应用目录"])
         }
@@ -103,6 +105,28 @@ enum DownloadIPAExtractor {
             try saveMap(mapping)
         } catch {
             try? fm.removeItem(at: destination)
+            throw error
+        }
+    }
+
+    /// Rename the extraction mapping after promoting a hidden, validated download.
+    static func promote(from staged: URL, to final: URL) throws {
+        let fm = FileManager.default
+        var mapping = try loadMap()
+        guard let directory = mapping[staged.lastPathComponent], validIdentifier(directory) else {
+            throw NSError(domain: "GameStore.IPAExtractor", code: 9,
+                userInfo: [NSLocalizedDescriptionKey: "暂存文件没有有效解压映射"])
+        }
+        guard mapping[final.lastPathComponent] == nil else {
+            throw NSError(domain: "GameStore.IPAExtractor", code: 10,
+                userInfo: [NSLocalizedDescriptionKey: "安装包映射已存在"])
+        }
+        try fm.moveItem(at: staged, to: final)
+        mapping.removeValue(forKey: staged.lastPathComponent)
+        mapping[final.lastPathComponent] = directory
+        do { try saveMap(mapping) }
+        catch {
+            try? fm.moveItem(at: final, to: staged)
             throw error
         }
     }

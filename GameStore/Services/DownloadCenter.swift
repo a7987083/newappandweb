@@ -181,36 +181,56 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         })
     }
 
+    /// Both local and network inputs publish only after one successful extraction.
+    private func validateAndPublish(_ staged: URL, filename: String) throws -> URL {
+        let fm = FileManager.default
+        let directory = Self.downloadsDirectory()
+        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        var safeName = filename.replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "\\", with: "_")
+        if !safeName.lowercased().hasSuffix(".ipa") && !safeName.lowercased().hasSuffix(".tipa") {
+            safeName += ".ipa"
+        }
+        var final = directory.appendingPathComponent(safeName)
+        while fm.fileExists(atPath: final.path) {
+            final = directory.appendingPathComponent(String(UUID().uuidString.prefix(8)) + "-" + safeName)
+        }
+        do {
+            try DownloadIPAExtractor.extract(staged)
+            try DownloadIPAExtractor.promote(from: staged, to: final)
+            return final
+        } catch {
+            try? DownloadIPAExtractor.removeExtraction(for: staged)
+            throw error
+        }
+    }
+
     func importLocalPackage(_ source: URL, completion: @escaping (Error?) -> Void) {
         guard ["ipa", "tipa"].contains(source.pathExtension.lowercased()) else {
             completion(NSError(domain: "GameStore.Import", code: 1,
                 userInfo: [NSLocalizedDescriptionKey: "请选择 IPA 或 TIPA 文件"]))
             return
         }
+        let scoped = source.startAccessingSecurityScopedResource()
+        let stage = Self.downloadsDirectory().appendingPathComponent(".incoming-" + UUID().uuidString + ".ipa")
+        do {
+            try FileManager.default.createDirectory(at: stage.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: source, to: stage)
+        } catch {
+            if scoped { source.stopAccessingSecurityScopedResource() }
+            completion(error)
+            return
+        }
+        if scoped { source.stopAccessingSecurityScopedResource() }
         archiveQueue.async {
-            let fm = FileManager.default
-            let stage = fm.temporaryDirectory.appendingPathComponent("zonoe-import-" + UUID().uuidString)
-            defer { try? fm.removeItem(at: stage) }
+            defer { try? FileManager.default.removeItem(at: stage) }
             do {
-                try fm.createDirectory(at: stage, withIntermediateDirectories: true)
-                Zip.addCustomFileExtension("ipa")
-                Zip.addCustomFileExtension("tipa")
-                try Zip.unzipFile(source, destination: stage, overwrite: true, password: nil)
-                let payload = stage.appendingPathComponent("Payload", isDirectory: true)
-                let apps = try fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: nil)
-                    .filter { $0.pathExtension.lowercased() == "app" }
-                guard apps.count == 1, fm.fileExists(atPath: apps[0].appendingPathComponent("Info.plist").path) else {
-                    throw NSError(domain: "GameStore.Import", code: 2,
-                        userInfo: [NSLocalizedDescriptionKey: "文件缺少有效的 Payload/*.app/Info.plist"])
+                let destination = try self.validateAndPublish(stage, filename: source.lastPathComponent)
+                DispatchQueue.main.async {
+                    self.extractionStatus[destination.lastPathComponent] = "解压完成"
+                    self.reloadDownloadedItems()
+                    completion(nil)
                 }
-                let folder = Self.downloadsDirectory()
-                try fm.createDirectory(at: folder, withIntermediateDirectories: true)
-                var destination = folder.appendingPathComponent(source.lastPathComponent)
-                while fm.fileExists(atPath: destination.path) {
-                    destination = folder.appendingPathComponent(String(UUID().uuidString.prefix(8)) + "-" + source.lastPathComponent)
-                }
-                try fm.copyItem(at: source, to: destination)
-                DispatchQueue.main.async { self.reloadDownloadedItems(); completion(nil) }
             } catch { DispatchQueue.main.async { completion(error) } }
         }
     }
@@ -598,29 +618,28 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                     .value(forHTTPHeaderField: "Content-Disposition")
             )
 
-            // Never delete an existing IPA. downloadDestination already chooses
-            // a unique filename; moveItem fails safely if another writer wins.
-            try FileManager.default.moveItem(at: location, to: destination)
-            DispatchQueue.main.async {
-                self.scheduleExtraction(destination)
-            }
+            // URLSession's temporary file must be moved before this delegate returns.
+            // Hidden staging files never appear as completed packages.
+            let stage = Self.downloadsDirectory().appendingPathComponent(".incoming-" + UUID().uuidString + ".ipa")
+            try FileManager.default.moveItem(at: location, to: stage)
             let originalSource = downloadTask.originalRequest?.url
-            DispatchQueue.main.async {
-                // Publish the source map and the completed item in one main-queue
-                // transition. Do not let a stale callback overwrite a newer task.
-                guard self.activeItems.contains(where: { $0.taskIdentifier == taskIdentifier }) else {
-                    return
+            archiveQueue.async {
+                defer { try? FileManager.default.removeItem(at: stage) }
+                do {
+                    let validated = try self.validateAndPublish(stage, filename: destination.lastPathComponent)
+                    DispatchQueue.main.async {
+                        self.extractionStatus[validated.lastPathComponent] = "解压完成"
+                        guard self.activeItems.contains(where: { $0.taskIdentifier == taskIdentifier }) else { return }
+                        Self.updateCompletedSource(filename: validated.lastPathComponent, source: originalSource)
+                        self.finishActiveItem(taskIdentifier: taskIdentifier, state: .completed,
+                                              localURL: validated, errorDescription: nil)
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        self.finishActiveItem(taskIdentifier: taskIdentifier, state: .failed,
+                                              localURL: nil, errorDescription: "安装包验证或解压失败：" + error.localizedDescription)
+                    }
                 }
-                Self.updateCompletedSource(
-                    filename: destination.lastPathComponent,
-                    source: originalSource
-                )
-                self.finishActiveItem(
-                    taskIdentifier: taskIdentifier,
-                    state: .completed,
-                    localURL: destination,
-                    errorDescription: nil
-                )
             }
         } catch {
             DispatchQueue.main.async {

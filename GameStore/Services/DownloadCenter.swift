@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Zip
 
 final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelegate {
     enum State: String {
@@ -65,6 +66,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         let sourceURL: URL
         let progress: Double
         let resumeData: Data
+        let appKey: String?
     }
 
     private static var pauseArchiveURL: URL {
@@ -79,7 +81,8 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             guard item.state == .paused,
                   let data = resumeDataByURL[item.sourceURL] else { return nil }
             return PausedRecord(
-                sourceURL: item.sourceURL, progress: item.progress, resumeData: data
+                sourceURL: item.sourceURL, progress: item.progress, resumeData: data,
+                appKey: activeAppKeys[item.id]
             )
         }
         // Snapshot on main, encode and atomically write on a serial IO queue.
@@ -108,11 +111,13 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                 continue
             }
             resumeDataByURL[record.sourceURL] = record.resumeData
-            activeItems.append(Item(
+            let restored = Item(
                 id: UUID(), sourceURL: record.sourceURL,
                 progress: record.progress, state: .paused,
                 localURL: nil, errorDescription: nil, taskIdentifier: nil
-            ))
+            )
+            activeItems.append(restored)
+            if let key = record.appKey { activeAppKeys[restored.id] = key }
         }
     }
 
@@ -174,6 +179,40 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             guard let filename = $0.localURL?.lastPathComponent else { return false }
             return saved[filename] == key
         })
+    }
+
+    func importLocalPackage(_ source: URL, completion: @escaping (Error?) -> Void) {
+        guard ["ipa", "tipa"].contains(source.pathExtension.lowercased()) else {
+            completion(NSError(domain: "GameStore.Import", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "请选择 IPA 或 TIPA 文件"]))
+            return
+        }
+        archiveQueue.async {
+            let fm = FileManager.default
+            let stage = fm.temporaryDirectory.appendingPathComponent("zonoe-import-" + UUID().uuidString)
+            defer { try? fm.removeItem(at: stage) }
+            do {
+                try fm.createDirectory(at: stage, withIntermediateDirectories: true)
+                Zip.addCustomFileExtension("ipa")
+                Zip.addCustomFileExtension("tipa")
+                try Zip.unzipFile(source, destination: stage, overwrite: true, password: nil)
+                let payload = stage.appendingPathComponent("Payload", isDirectory: true)
+                let apps = try fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: nil)
+                    .filter { $0.pathExtension.lowercased() == "app" }
+                guard apps.count == 1, fm.fileExists(atPath: apps[0].appendingPathComponent("Info.plist").path) else {
+                    throw NSError(domain: "GameStore.Import", code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "文件缺少有效的 Payload/*.app/Info.plist"])
+                }
+                let folder = Self.downloadsDirectory()
+                try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+                var destination = folder.appendingPathComponent(source.lastPathComponent)
+                while fm.fileExists(atPath: destination.path) {
+                    destination = folder.appendingPathComponent(String(UUID().uuidString.prefix(8)) + "-" + source.lastPathComponent)
+                }
+                try fm.copyItem(at: source, to: destination)
+                DispatchQueue.main.async { self.reloadDownloadedItems(); completion(nil) }
+            } catch { DispatchQueue.main.async { completion(error) } }
+        }
     }
 
     func enqueue(_ url: URL, appKey: String? = nil) {
@@ -274,6 +313,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             return
         }
         let task = session.downloadTask(withResumeData: data)
+        if let key = activeAppKeys[item.id] { appKeyByTask[task.taskIdentifier] = key }
         resumedTaskIDs.insert(task.taskIdentifier)
         activeItems[index].taskIdentifier = task.taskIdentifier
         activeItems[index].state = .downloading
@@ -432,7 +472,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                 options: [.skipsHiddenFiles]
             )
             .filter { url in
-                guard url.pathExtension.lowercased() == "ipa",
+                guard ["ipa", "tipa"].contains(url.pathExtension.lowercased()),
                       let values = try? url.resourceValues(forKeys: [.isRegularFileKey]) else {
                     return false
                 }
@@ -610,6 +650,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
                 // or server-side resource change. Retry once from byte zero.
                 let old = self.activeItems[index]
                 let fresh = self.session.downloadTask(with: old.sourceURL)
+                if let key = self.appKeyByTask.removeValue(forKey: task.taskIdentifier) { self.appKeyByTask[fresh.taskIdentifier] = key }
                 self.activeItems[index].taskIdentifier = fresh.taskIdentifier
                 self.activeItems[index].progress = 0
                 self.activeItems[index].state = .downloading
@@ -745,7 +786,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
         // decoded IPA path when the suggested name still contains percent escapes,
         // or has '+' in place of spaces from a legacy form-encoded server.
         if let pathName = fallback, !pathName.isEmpty,
-           pathName.lowercased().hasSuffix(".ipa"),
+           (pathName.lowercased().hasSuffix(".ipa") || pathName.lowercased().hasSuffix(".tipa")),
            let current = fileName,
            (current.contains("%") || (current.contains("+") && pathName.contains(" "))),
            pathName != current {
@@ -763,7 +804,7 @@ final class DownloadCenter: NSObject, ObservableObject, URLSessionDownloadDelega
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "\\", with: "_")
 
-        if sanitized.lowercased().hasSuffix(".ipa") == false {
+        if !sanitized.lowercased().hasSuffix(".ipa") && !sanitized.lowercased().hasSuffix(".tipa") {
             sanitized += ".ipa"
         }
 

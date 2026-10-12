@@ -3,7 +3,7 @@ import UIKit
 /// Four-item floating capsule. Each shell page retains its own bar instance.
 final class ShellTabBar: UIView {
     var onSelect: ((Int) -> Void)?
-    private let titles = ["应用", "安装包", "插件", "设置"]
+    private let titles = ["应用", "安装包", "已签名", "设置"]
     private let icons = ["square.grid.3x3.fill", "shippingbox.fill", "puzzlepiece.fill", "gearshape.fill"]
 
     init(width: CGFloat, height: CGFloat, bottomInset: CGFloat, selectedTab: Int, tint: UIColor) {

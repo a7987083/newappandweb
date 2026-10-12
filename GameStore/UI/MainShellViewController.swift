@@ -1,7 +1,7 @@
 import UIKit
 
 /// Four-tab UIKit shell: retains page controllers and coordinates shared UI.
-final class MainShellViewController: UIViewController, UISearchBarDelegate, UIScrollViewDelegate, UITableViewDataSource, UITableViewDelegate {
+final class MainShellViewController: UIViewController, UISearchBarDelegate, UIScrollViewDelegate, UITableViewDataSource, UITableViewDelegate, UIDocumentPickerDelegate {
     private var selectedTab = 0
     private struct TabPage {
         let controller: UIViewController
@@ -36,6 +36,54 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     private let bg = UIColor(red: 242/255, green: 242/255, blue: 247/255, alpha: 1)
     private var rows: [(String,String,String)] = []
     private var filtered: [(String,String,String)] = []
+    private var signedFiles = [URL]()
+    private func reloadSignedFiles() {
+        let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Signed", isDirectory: true)
+        signedFiles = ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
+            .filter { ["ipa", "tipa", "zip"].contains($0.pathExtension.lowercased()) }
+        rows = signedFiles.map { ($0.lastPathComponent, "已签名安装包", "doc.fill") }
+        filtered = rows
+    }
+    private func showPackageImport(_ sender: UIButton) {
+        let sheet = UIAlertController(title: "导入安装包", message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "从文件安装", style: .default) { [weak self] _ in
+            let picker = UIDocumentPickerViewController(documentTypes: ["public.data"], in: .import)
+            picker.delegate = self
+            self?.present(picker, animated: true)
+        })
+        sheet.addAction(UIAlertAction(title: "从链接安装", style: .default) { [weak self] _ in
+            self?.showLinkImport()
+        })
+        sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
+        sheet.popoverPresentationController?.sourceView = sender
+        sheet.popoverPresentationController?.sourceRect = sender.bounds
+        present(sheet, animated: true)
+    }
+    private func showLinkImport() {
+        let alert = UIAlertController(title: "从链接安装", message: "允许任意 HTTP/HTTPS 下载链接", preferredStyle: .alert)
+        alert.addTextField { $0.placeholder = "https://example.com/download" }
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "下载", style: .default) { [weak self, weak alert] _ in
+            guard let text = alert?.textFields?.first?.text, let url = URL(string: text),
+                  ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else {
+                self?.showImportError("链接无效"); return
+            }
+            AppStoreViewModel.shared.downloadCenter.enqueue(url)
+        })
+        present(alert, animated: true)
+    }
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let file = urls.first else { return }
+        AppStoreViewModel.shared.downloadCenter.importLocalPackage(file) { [weak self] error in
+            if let error = error { self?.showImportError(error.localizedDescription) }
+        }
+    }
+    private func showImportError(_ message: String) {
+        let alert = UIAlertController(title: "导入失败", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确定", style: .default))
+        present(alert, animated: true)
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -105,6 +153,10 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             page.views.forEach { $0.isHidden = true }
         }
         selectedTab = index
+        if index == 2 && pages[index] != nil {
+            reloadSignedFiles()
+            pages[index]?.table?.reloadData()
+        }
         if let existing = pages[index] {
             currentTable = existing.table
             catalog = existing.catalog
@@ -162,12 +214,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
                 table.dataSource = self
                 table.register(ShellPlaceholderCell.self, forCellReuseIdentifier: "Demo")
                 c.view.addSubview(table)
-                rows = index == 1 ? [
-                    ("1","文件夹 · 2026-10-11 09:21（演示）","folder.fill"),
-                    ("Random Dice 2.ipa","273.6 MB · 2026-10-10 02:35（演示）","doc.fill"),
-                    ("test.ipa","960 KB · 2026-10-11 06:42（演示）","doc.fill")
-                ] : []
-                filtered = rows
+                reloadSignedFiles()
             }
             currentTable = table
             if index != 1 { table.delegate = self }
@@ -176,7 +223,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
             headerHeight = head.bounds.height
             if index == 0 { catalog?.setCatalogHeader(head,height: headerHeight) }
             else { table.tableHeaderView = head }
-            buildCompact(["应用","安装包","插件"][index])
+            buildCompact(["应用","安装包","已签名"][index])
             buildActions(index)
         }
         buildDock()
@@ -197,7 +244,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     }
 
     private func buildHeader(_ index: Int) -> UIView {
-        let head = ShellHeaderView(title: ["应用", "安装包", "插件"][index],
+        let head = ShellHeaderView(title: ["应用", "安装包", "已签名"][index],
                                    width: view.bounds.width,
                                    safeTop: view.safeAreaInsets.top,
                                    background: bg)
@@ -235,7 +282,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
         action.tintColor = blue
         action.setImage(UIImage(systemName: index == 0 ? "arrow.clockwise.circle.fill" : "plus.circle.fill",
                                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 29)),for: .normal)
-        action.addTarget(self,action: index == 0 ? #selector(refresh) : #selector(demo),for: .touchUpInside)
+        action.addTarget(self, action: index == 0 ? #selector(refresh) : index == 1 ? #selector(importPackageTapped(_:)) : #selector(demo), for: .touchUpInside)
         view.addSubview(action)
     }
 
@@ -251,6 +298,7 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
     }
 
     @objc private func refresh() { catalog?.refreshSourceCatalog() }
+    @objc private func importPackageTapped(_ sender: UIButton) { showPackageImport(sender) }
     @objc private func demo() {
         let a = UIAlertController(title: "界面演示",message: "当前仅为 UI 占位。",preferredStyle: .alert)
         a.addAction(UIAlertAction(title: "知道了",style: .default))

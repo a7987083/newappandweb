@@ -553,12 +553,85 @@ final class MainShellViewController: UIViewController, UISearchBarDelegate, UISc
                 if !signedSelected.insert(file).inserted { signedSelected.remove(file) }
                 tableView.reloadRows(at: [indexPath], with: .none)
             } else {
-                let activity = UIActivityViewController(activityItems: [file], applicationActivities: nil)
-                activity.popoverPresentationController?.sourceView = tableView
-                activity.popoverPresentationController?.sourceRect = tableView.rectForRow(at: indexPath)
-                present(activity, animated: true)
+                showSignedActions(for: file, in: tableView, at: indexPath)
             }
         }
+    }
+
+    private func showSignedActions(for file: URL, in table: UITableView, at indexPath: IndexPath) {
+        let sheet = UIAlertController(title: file.lastPathComponent, message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "安装", style: .default) { [weak self] _ in
+            self?.installSignedFile(file)
+        })
+        sheet.addAction(UIAlertAction(title: "分享", style: .default) { [weak self, weak table] _ in
+            guard let self = self, FileManager.default.fileExists(atPath: file.path) else {
+                self?.showImportError("已签名文件不存在")
+                return
+            }
+            let activity = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+            activity.popoverPresentationController?.sourceView = table ?? self.view
+            activity.popoverPresentationController?.sourceRect = table?.rectForRow(at: indexPath) ?? self.view.bounds
+            self.present(activity, animated: true)
+        })
+        sheet.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
+            self?.confirmDeleteSignedFile(file)
+        })
+        sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
+        sheet.popoverPresentationController?.sourceView = table
+        sheet.popoverPresentationController?.sourceRect = table.rectForRow(at: indexPath)
+        present(sheet, animated: true)
+    }
+
+    private func installSignedFile(_ file: URL) {
+        guard file.pathExtension.lowercased() == "ipa" else {
+            showImportError("仅支持直接安装 IPA 文件；ZIP 和 TIPA 请先转换为 IPA")
+            return
+        }
+        guard FileManager.default.fileExists(atPath: file.path) else {
+            showImportError("已签名文件不存在")
+            return
+        }
+        // Inspection performs archive I/O; keep it off the UI thread.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Result { try IPAInspector.inspect(file) }
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success(let info):
+                    let artifact = SignedArtifact(ipaURL: file, bundleIdentifier: info.bundleID,
+                                                  displayName: info.displayName, version: info.version)
+                    IPAInstallCoordinator.shared.begin(artifact: artifact, mode: .network) { [weak self] response in
+                        DispatchQueue.main.async {
+                            switch response {
+                            case .success(let accepted):
+                                if !accepted { self?.showImportError("系统未接受安装请求") }
+                            case .failure(let error):
+                                self?.showImportError(error.localizedDescription)
+                            }
+                        }
+                    }
+                case .failure(let error):
+                    self.showImportError("无法读取已签名 IPA：" + error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func confirmDeleteSignedFile(_ file: URL) {
+        let alert = UIAlertController(title: "删除已签名安装包",
+                                      message: "确定删除「" + file.lastPathComponent + "」？", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
+            do {
+                try FileManager.default.removeItem(at: file)
+                self?.signedSelected.remove(file)
+                self?.reloadSignedFiles()
+                self?.currentTable?.reloadData()
+            } catch {
+                self?.showImportError("删除失败：" + error.localizedDescription)
+            }
+        })
+        present(alert, animated: true)
     }
 
     func tableView(_ tableView: UITableView,numberOfRowsInSection section: Int) -> Int { filtered.count }

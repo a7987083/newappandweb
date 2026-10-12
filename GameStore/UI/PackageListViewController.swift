@@ -4,6 +4,7 @@ import Combine
 /// Live download tasks and locally retained IPA archives.
 final class PackageListViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
     let tableView = UITableView(frame: .zero, style: .plain)
+    var onSignPackage: ((URL) -> Void)?
     private let center = AppStoreViewModel.shared.downloadCenter
     private var items: [DownloadCenter.Item] = []
     private var visible: [DownloadCenter.Item] = []
@@ -189,7 +190,15 @@ final class PackageListViewController: UIViewController, UITableViewDataSource, 
             add("删除失败记录", style: .destructive) { [weak self] in self?.center.removeTerminalItem(item) }
         case .completed:
             guard let url = item.localURL else { return }
-            // No signing entry until a certificate-selection UI exists.
+            add("签名") { [weak self] in
+                guard FileManager.default.fileExists(atPath: url.path),
+                      (try? DownloadIPAExtractor.preparedDirectory(for: url)) != nil else {
+                    self?.showError(NSError(domain: "GameStore.PackageSigning", code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "安装包尚未准备完成，请重新解压"]))
+                    return
+                }
+                self?.onSignPackage?(url)
+            }
             if center.extractionStatus[url.lastPathComponent]?.hasPrefix("解压失败") == true ||
                 center.extractionStatus[url.lastPathComponent] == "缓存已删除" {
                 add("重新解压") { [weak self] in self?.center.retryExtraction(for: item) }
